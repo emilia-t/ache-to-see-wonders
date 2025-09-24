@@ -16,8 +16,9 @@ coverage
 
 /cypress/videos/
 /cypress/screenshots/
+/python/miracle-kanban/kanban_env
 
-# Editor directories and files
+# Editor directories and files f
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -28,3 +29,4 @@ coverage
 *.sw?
 
 *.tsbuildinfo
+
