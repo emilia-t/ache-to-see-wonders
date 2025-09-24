@@ -1,0 +1,19 @@
+# 确保使用 python 版本 : 3.10.11
+
+# 进入看板代码根目录
+cd miracle-kanba
+
+# 创建虚拟环境
+python -m venv kanban_env
+
+# 激活虚拟环境
+# Windows:
+kanban_env\Scripts\activate
+# Linux/Mac:
+# source kanban_env/bin/activate
+
+# 安装依赖
+pip install PyQt5
+
+# 运行程序
+python main.py
