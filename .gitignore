@@ -30,3 +30,6 @@ coverage
 
 *.tsbuildinfo
 
+serve_frontend.mjs
+serve_frontend.js
+draft_1.psd
