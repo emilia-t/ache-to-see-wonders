@@ -17,10 +17,10 @@ except ImportError:
 
 from PyQt5.QtGui import QFont, QIcon, QPainter, QColor, QMouseEvent, QCursor, QLinearGradient
 
-from pages.home_page import HomePage
-from pages.settings_page import SettingsPage
-from pages.about_page import AboutPage
-from pages.model_page import ModelPage
+from pages.page_home import HomePage
+from pages.page_settings import SettingsPage
+from pages.page_about import AboutPage
+from pages.page_model import ModelPage
 from PyQt5.QtGui import QDesktopServices
 
 '''

@@ -194,7 +194,7 @@ process.on('SIGTERM', () => {
 
             # 这里需要根据实际的后端启动命令修改
             self.backend_process = subprocess.Popen(
-                ["python", "backend/main.py", "--port", str(backend_port)],
+                ["python", "backend/backend_main.py", "--port", str(backend_port)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
