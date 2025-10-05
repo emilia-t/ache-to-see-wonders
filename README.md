@@ -1,7 +1,7 @@
 # ATSW 项目介绍
 
 <p align="center">
-  <img src="https://via.placeholder.com/150" alt="ATSW Logo" width="150">
+  <img src="https://raw.githubusercontent.com/emilia-t/ache-to-see-wonders/refs/heads/master/atswsite/public/favicon.ico" alt="ATSW Logo" width="150">
   <br>
   <strong>ATSW 开发仓库</strong>
 </p>
@@ -55,7 +55,7 @@
 # ATSW Project Introduction
 
 <p align="center">
-  <img src="https://via.placeholder.com/150" alt="ATSW Logo" width="150">
+  <img src="https://raw.githubusercontent.com/emilia-t/ache-to-see-wonders/refs/heads/master/atswsite/public/favicon.ico" alt="ATSW Logo" width="150">
   <br>
   <strong>ATSW Development Repository</strong>
 </p>
