@@ -7,6 +7,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+.github
 node_modules
 .DS_Store
 dist
@@ -33,3 +34,7 @@ coverage
 serve_frontend.mjs
 serve_frontend.js
 draft_1.psd
+draft_2.psd
+draft_3.psd
+draft_4.psd
+draft_5.psd

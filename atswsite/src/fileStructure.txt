@@ -1,0 +1,8 @@
+components----
+
+    PageXXXXXXX-----Can only be switched through routing
+
+    BoxXXXXXXX------Various independent components on the page（Can be nested with each other）
+
+    ViewXXXXXX------Only for display static purposes（For example, fixed buttons）
+

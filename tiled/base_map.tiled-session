@@ -1,0 +1,28 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "draft.tmx",
+    "expandedProjectPaths": [
+        "."
+    ],
+    "fileStates": {
+        "draft.tmx": {
+            "scale": 1.5843229166666666,
+            "selectedLayer": 2,
+            "viewCenter": {
+                "x": 479.70018738288576,
+                "y": 319.69492751241006
+            }
+        }
+    },
+    "map.lastUsedFormat": "tmx",
+    "openFiles": [
+        "draft.tmx"
+    ],
+    "project": "base_map.tiled-project",
+    "recentFiles": [
+        "draft.tmx"
+    ]
+}

@@ -8,7 +8,7 @@ python -m venv kanban_env
 
 # 激活虚拟环境
 # Windows:
-kanban_env\Scripts\activate
+kanban_env\Scripts\activate  #running scripts is disabled on this system :run -->>> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 # Linux/Mac:
 # source kanban_env/bin/activate
 
@@ -17,3 +17,4 @@ pip install PyQt5
 
 # 运行程序
 python main.py
+
