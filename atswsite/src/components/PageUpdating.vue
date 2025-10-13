@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // The relative position of this file: src/components/PageUpdating.vue
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import ViewFilingLicense from '@/components/ViewFilingLicense.vue'
 
 const EndMaintenanceDate = 1763254800;//网站维护的截止时间戳(秒)
 
@@ -63,6 +64,7 @@ const completionDateStr = computed(() => {
       </div>
     </div>
   </div>
+  <ViewFilingLicense></ViewFilingLicense>
 </template>
 
 <style scoped>

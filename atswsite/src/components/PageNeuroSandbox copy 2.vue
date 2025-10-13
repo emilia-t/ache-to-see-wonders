@@ -3,6 +3,7 @@
 // 贴图存放在 /textures 
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { mat4, vec3 } from 'gl-matrix';
+import ViewFilingLicense from '@/components/ViewFilingLicense.vue'
 
 const windowWidth = ref(window.innerWidth);
 const windowHeight = ref(window.innerHeight);
@@ -1726,6 +1727,7 @@ function resetView() {
       </div>
     </div>
   </div>
+  <ViewFilingLicense></ViewFilingLicense>
 </template>
 
 <style scoped>

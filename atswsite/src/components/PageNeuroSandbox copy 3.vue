@@ -3,6 +3,7 @@
 // 贴图存放在 /textures 
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { mat4, vec3 } from 'gl-matrix';
+import ViewFilingLicense from '@/components/ViewFilingLicense.vue'
 
 const windowWidth = ref(window.innerWidth);
 const windowHeight = ref(window.innerHeight);
@@ -1305,6 +1306,7 @@ function togglePerformanceMode() {
       <p>性能模式: {{ performanceMode ? '开启' : '关闭' }}</p>
     </div>
   </div>
+  <ViewFilingLicense></ViewFilingLicense>
 </template>
 
 <style scoped>

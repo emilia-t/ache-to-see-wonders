@@ -3,6 +3,7 @@
 
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { mat4, vec3 } from 'gl-matrix';
+import ViewFilingLicense from '@/components/ViewFilingLicense.vue'
 
 const windowWidth = ref(window.innerWidth);
 const windowHeight = ref(window.innerHeight);
@@ -772,6 +773,7 @@ function setupMouseControls(canvas: HTMLCanvasElement) {
       </div>
     </div>
   </div>
+  <ViewFilingLicense></ViewFilingLicense>
 </template>
 
 <style scoped>
