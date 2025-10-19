@@ -1,0 +1,166 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 2395,
+      "max": [
+        34.33154296875,
+        20.0,
+        31.5
+      ],
+      "min": [
+        -30.0,
+        -20.0,
+        0.0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 2395,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 24,
+      "componentType": 5126,
+      "count": 2395,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5125,
+      "count": 12096,
+      "type": "SCALAR"
+    }
+  ],
+  "asset": {
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 76640,
+      "byteStride": 32,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 48384,
+      "byteOffset": 76640,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 125024,
+      "uri": "S_teapot.bin"
+    }
+  ],
+  "images": [
+    {
+      "uri": "tripo_node_baf04a9c_b54f_44e7_b6c7_8f51963130eebasecolortexture.png"
+    }
+  ],
+  "materials": [
+    {
+      "name": "tripo_node_baf04a9c_b54f_44e7_b6c7_8f51963130ee",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "S_teapot",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 1,
+            "POSITION": 0,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "matrix": [
+        0.001,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.001,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.001,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "mesh": 0,
+      "name": "S_teapot"
+    },
+    {
+      "children": [
+        0
+      ],
+      "matrix": [
+        -0.07000401616096497,
+        0.0,
+        5.858177661895752,
+        0.0,
+        5.857516288757324,
+        0.08801230043172836,
+        0.06999611854553223,
+        0.0,
+        -0.08800601214170456,
+        5.857934951782227,
+        -0.001051653758622706,
+        0.0,
+        0.5029986267089844,
+        0.975732666015625,
+        -0.030641632080078127,
+        1.0
+      ]
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9729,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "scenes": [
+    {
+      "nodes": [
+        1
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "name": "texture_source0_sampler0",
+      "sampler": 0,
+      "source": 0
+    }
+  ]
+}

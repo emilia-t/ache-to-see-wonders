@@ -20,7 +20,7 @@ let controls: OrbitControls;
 let directionalLight: THREE.DirectionalLight;
 let coffeeTable: THREE.Group; // 咖啡桌模型组
 let chessBoard: THREE.Group; // 棋盘模型组
-let chessTest: THREE.Group; // 棋盘模型组
+let chessPieces: THREE.Group; // 棋盘模型组
 let panoramaCube: THREE.Mesh; // 全景立方体
 
 // ==============================
@@ -35,28 +35,21 @@ const sceneConfig = {
   },
   
   // 咖啡桌模型配置
-  table: {
-    modelPath: '/gltf/CoffeeTable1/CoffeeTable1.json',
+  S_table: {
+    modelPath: '/gltf/game_scene/build/S_table/S_table.gltf',
     scale: 1,
     position: { x: 0, y: 0, z: 0 }
   },
 
   // 棋盘模型配置
-  chess_board: {
-    modelPath: '/gltf/ChessBoard3/chess_model3.json',
-    scale: 4,
-    position: { x: 0, y: 1.003, z: 0 }
+  S_chess_board: {
+    modelPath: '/gltf/game_scene/build/S_chess_board/S_chess_board.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
   },
 
-  // 测试棋子模型配置
-  chess_black_chariot: {
-    modelPath: '/gltf/Chess/hei_che/hei_che.json',
-    scale: 0.14,
-    position: { x: 0, y: 0.982, z: 0 }
-  },
-
-  // 棋盘配置
-  board: {
+  // 模型加载失败时使用的棋盘配置
+  Fall_board: {
     size: { width: 48, height: 2, depth: 48 },
     color: 0xe6cb63,
     position: { y: 1.005 }, // 棋盘高度（在咖啡桌上方）
@@ -97,46 +90,168 @@ const sceneConfig = {
 // ==============================
 // 棋子配置
 // ==============================
-const piecesConfig = {
-  // 棋子几何属性
-  geometry: {
-    radiusTop: 1.8,
-    radiusBottom: 1.8,
-    height: 1.3,
-    radialSegments: 32
+const piecesConfig = [
+  {
+    modelPath: '/gltf/game_scene/build/Black_00_chariot_left/Black_00_chariot_left.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
   },
-  
-  // 棋子材质
-  material: {
-    color: 0xc13b29
+  {
+    modelPath: '/gltf/game_scene/build/Black_01_horse_left/Black_01_horse_left.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
   },
-  
-  // 棋盘网格配置
-  board: {
-    width: 40,   // 棋盘宽度（厘米）
-    length: 40,  // 棋盘长度（厘米）
-    cols: 8,     // 列数
-    rows: 9      // 行数
+  {
+    modelPath: '/gltf/game_scene/build/Black_02_elephant_left/Black_02_elephant_left.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
   },
-  
-  // 棋子布局配置
-  layout: {
-    // 红方（下方）棋子类型和位置
-    red: {
-      mainRow: 0,    // 主力行
-      cannonRow: 2,  // 炮行
-      soldierRow: 3  // 兵行
-    },
-    // 黑方（上方）棋子类型和位置  
-    black: {
-      mainRow: 0,    // 主力行
-      cannonRow: 2,  // 炮行
-      soldierRow: 3  // 卒行
-    }
+  {
+    modelPath: '/gltf/game_scene/build/Black_03_advisor_left/Black_03_advisor_left.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
   },
-  
-  scaleFactor: 100 // 缩放因子，将厘米转换为米
-};
+  {
+    modelPath: '/gltf/game_scene/build/Black_04_general/Black_04_general.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_05_advisor_right/Black_05_advisor_right.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_06_elephant_right/Black_06_elephant_right.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_07_horse_right/Black_07_horse_right.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_08_chariot_right/Black_08_chariot_right.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_09_cannon_left/Black_09_cannon_left.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_10_cannon_right/Black_10_cannon_right.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_11_soldier_1/Black_11_soldier_1.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_12_soldier_2/Black_12_soldier_2.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_13_soldier_3/Black_13_soldier_3.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_14_soldier_4/Black_14_soldier_4.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Black_15_soldier_5/Black_15_soldier_5.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_16_soldier_1/Red_16_soldier_1.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_17_soldier_2/Red_17_soldier_2.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_18_soldier_3/Red_18_soldier_3.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_19_soldier_4/Red_19_soldier_4.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_20_soldier_5/Red_20_soldier_5.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_21_cannon_left/Red_21_cannon_left.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_22_cannon_right/Red_22_cannon_right.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_23_chariot_left/Red_23_chariot_left.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_24_horse_left/Red_24_horse_left.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_25_elephant_left/Red_25_elephant_left.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_26_advisor_left/Red_26_advisor_left.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_27_general/Red_27_general.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_28_advisor_right/Red_28_advisor_right.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_29_elephant_right/Red_29_elephant_right.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_30_horse_right/Red_30_horse_right.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  },
+  {
+    modelPath: '/gltf/game_scene/build/Red_31_chariot_right/Red_31_chariot_right.gltf',
+    scale: 1, 
+    position: { x: 0, y: 0, z: 0 }
+  }
+];
 
 // ==============================
 // 相机配置
@@ -334,8 +449,11 @@ const createSceneContent = () => {
   // 创建咖啡桌模型
   createCoffeeTable();
 
-  // 创建棋盘和棋子
-  createChessBoardAndPieces();
+  // 创建棋盘
+  createChessBoard();
+
+  // 创建棋子
+  createChessPieces();
 }
 
 /**
@@ -449,20 +567,20 @@ const createPanoramaCube = () => {
 const createCoffeeTable = () => {
   const loader = new GLTFLoader();
   loader.load(
-    sceneConfig.table.modelPath,
+    sceneConfig.S_table.modelPath,
     (gltf) => {
       coffeeTable = gltf.scene;
       
       // 设置咖啡桌的位置和缩放
       coffeeTable.position.set(
-        sceneConfig.table.position.x,
-        sceneConfig.table.position.y,
-        sceneConfig.table.position.z
+        sceneConfig.S_table.position.x,
+        sceneConfig.S_table.position.y,
+        sceneConfig.S_table.position.z
       );
       coffeeTable.scale.set(
-        sceneConfig.table.scale,
-        sceneConfig.table.scale,
-        sceneConfig.table.scale
+        sceneConfig.S_table.scale,
+        sceneConfig.S_table.scale,
+        sceneConfig.S_table.scale
       );
       
       // 启用阴影
@@ -475,59 +593,11 @@ const createCoffeeTable = () => {
       
       scene.add(coffeeTable);
       console.log('咖啡桌模型加载成功');
-      
-      // 模型加载后，调整棋盘位置使其位于咖啡桌上方
-      adjustBoardPosition();
     },
     undefined,
     (error) => {
       console.error('咖啡桌模型加载失败:', error);
-      // 如果模型加载失败，创建备用立方体桌子
       createFallbackTable();
-    }
-  );
-}
-
-
-/**
- * 加载棋盘模型
- */
-const createChessBoard = () => {
-  const loader = new GLTFLoader();
-  loader.load(
-    sceneConfig.chess_board.modelPath,
-    (gltf) => {
-      chessBoard = gltf.scene;
-      
-      // 设置棋盘的位置和缩放
-      chessBoard.position.set(
-        sceneConfig.chess_board.position.x,
-        sceneConfig.chess_board.position.y,
-        sceneConfig.chess_board.position.z
-      );
-      chessBoard.scale.set(
-        sceneConfig.chess_board.scale,
-        sceneConfig.chess_board.scale,
-        sceneConfig.chess_board.scale
-      );
-      
-      // 启用阴影
-      chessBoard.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
-      });
-      
-      scene.add(chessBoard);
-      console.log('棋盘模型加载成功');
-      
-    },
-    undefined,
-    (error) => {
-      console.error('棋盘模型加载失败:', error);
-      // 如果模型加载失败，创建备用立方体桌子
-      createFallbackChessBoard();
     }
   );
 }
@@ -545,216 +615,168 @@ const createFallbackTable = () => {
   table.castShadow = true;
   table.receiveShadow = true;
   scene.add(table);
-  console.log('创建备用立方体桌子');
+  console.log('备用立方体桌子创建完成');
 }
 
 /**
- * 调整棋盘位置使其位于咖啡桌上方
+ * 加载棋盘模型
  */
-const adjustBoardPosition = () => {
-  // 这里可以根据咖啡桌的实际高度调整棋盘位置
-  // 目前使用预设的位置
-  console.log('调整棋盘位置到咖啡桌上方');
-}
-
-/**
- * 创建棋盘和棋子
- */
-const createChessBoardAndPieces = () => {
-  // 创建棋盘
-  createChessBoard();
-  
-  // 创建所有棋子
-  createChessPieces();
-}
-
-/**
- * 创建棋盘
- */
-const createFallbackChessBoard = () => {
-  const scaleFactor = sceneConfig.board.scaleFactor;
-  const boardGeometry = new THREE.BoxGeometry(
-    sceneConfig.board.size.width / scaleFactor,
-    sceneConfig.board.size.height / scaleFactor,
-    sceneConfig.board.size.depth / scaleFactor
-  );
-  const boardMaterial = new THREE.MeshLambertMaterial({ 
-    color: sceneConfig.board.color 
-  });
-  const board = new THREE.Mesh(boardGeometry, boardMaterial);
-  board.position.y = sceneConfig.board.position.y;
-  board.castShadow = true;
-  board.receiveShadow = true;
-  scene.add(board);
-  
-  console.log('棋盘创建完成');
-}
-
-/**
- * 创建所有棋子
- */
-const createChessPieces = () => {
+const createChessBoard = () => {
   const loader = new GLTFLoader();
   loader.load(
-    sceneConfig.chess_black_chariot.modelPath,
+    sceneConfig.S_chess_board.modelPath,
     (gltf) => {
-      chessTest = gltf.scene;
+      chessBoard = gltf.scene;
       
       // 设置棋盘的位置和缩放
-      chessTest.position.set(
-        sceneConfig.chess_black_chariot.position.x,
-        sceneConfig.chess_black_chariot.position.y,
-        sceneConfig.chess_black_chariot.position.z
+      chessBoard.position.set(
+        sceneConfig.S_chess_board.position.x,
+        sceneConfig.S_chess_board.position.y,
+        sceneConfig.S_chess_board.position.z
       );
-      chessTest.scale.set(
-        sceneConfig.chess_black_chariot.scale,
-        sceneConfig.chess_black_chariot.scale,
-        sceneConfig.chess_black_chariot.scale
+      chessBoard.scale.set(
+        sceneConfig.S_chess_board.scale,
+        sceneConfig.S_chess_board.scale,
+        sceneConfig.S_chess_board.scale
       );
       
       // 启用阴影
-      chessTest.traverse((child) => {
+      chessBoard.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           child.castShadow = true;
           child.receiveShadow = true;
         }
       });
       
-      scene.add(chessTest);
-      console.log('棋子模型加载成功');
+      scene.add(chessBoard);
+      console.log('棋盘模型加载成功');
       
     },
     undefined,
     (error) => {
-      console.error('棋子模型加载失败:', error);
-      // 如果模型加载失败，创建备用立方体桌子
-      createFallbackChessPieces();
+      console.error('棋盘模型加载失败:', error);
+      createFallbackChessBoard();
     }
   );
 }
 
 /**
- * 创建所有棋子
+ * 创建棋盘
  */
-const createFallbackChessPieces = () => {
-  const scaleFactor = piecesConfig.scaleFactor;
-  
-  // 创建棋子几何体
-  const pieceGeometry = new THREE.CylinderGeometry(
-    piecesConfig.geometry.radiusTop / scaleFactor,
-    piecesConfig.geometry.radiusBottom / scaleFactor,
-    piecesConfig.geometry.height / scaleFactor,
-    piecesConfig.geometry.radialSegments
+const createFallbackChessBoard = () => {
+  const scaleFactor = sceneConfig.Fall_board.scaleFactor;
+  const boardGeometry = new THREE.BoxGeometry(
+    sceneConfig.Fall_board.size.width / scaleFactor,
+    sceneConfig.Fall_board.size.height / scaleFactor,
+    sceneConfig.Fall_board.size.depth / scaleFactor
   );
-  const pieceMaterial = new THREE.MeshLambertMaterial({ 
-    color: piecesConfig.material.color 
+  const boardMaterial = new THREE.MeshLambertMaterial({ 
+    color: sceneConfig.Fall_board.color 
   });
+  const board = new THREE.Mesh(boardGeometry, boardMaterial);
+  board.position.y = sceneConfig.Fall_board.position.y;
+  board.castShadow = true;
+  board.receiveShadow = true;
+  scene.add(board);
+  
+  console.log('备用棋盘创建完成');
+}
 
-  // 计算棋子位置
-  const piecePositions = calculatePiecePositions();
-
-  // 创建所有棋子
-  piecePositions.forEach((pos, index) => {
-    const piece = new THREE.Mesh(pieceGeometry, pieceMaterial);
-    piece.position.set(
-      pos.x / scaleFactor, 
-      sceneConfig.board.position.y + sceneConfig.board.size.height / 115, 
-      pos.z / scaleFactor
+/**
+ * 创建棋子
+ */
+const createChessPieces = () => {
+  const loader = new GLTFLoader();
+  chessPieces = new THREE.Group(); // 创建棋子组
+  chessPieces.name = 'chess-pieces-group';
+  
+  // 遍历棋子配置数组，加载所有棋子模型
+  piecesConfig.forEach((pieceConfig, index) => {
+    loader.load(
+      pieceConfig.modelPath,
+      (gltf) => {
+        const piece = gltf.scene;
+        
+        // 设置棋子的位置和缩放
+        piece.position.set(
+          pieceConfig.position.x,
+          pieceConfig.position.y,
+          pieceConfig.position.z
+        );
+        piece.scale.set(
+          pieceConfig.scale,
+          pieceConfig.scale,
+          pieceConfig.scale
+        );
+        
+        // 启用阴影
+        piece.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        
+        // 为棋子添加名称标识，便于调试和交互
+        piece.name = `chess-piece-${index}`;
+        
+        // 添加到棋子组
+        chessPieces.add(piece);
+        
+        console.log(`棋子模型加载成功: ${pieceConfig.modelPath}`);
+      },
+      undefined,
+      (error) => {
+        console.error(`棋子模型加载失败: ${pieceConfig.modelPath}`, error);
+        // 如果棋子加载失败，创建备用棋子
+        createFallbackChessPiece(pieceConfig, index);
+      }
     );
-    piece.castShadow = true;
-    piece.receiveShadow = true;
-    
-    // 给棋子命名以便后续识别
-    piece.name = `chess-piece-${index}`;
+  });
+  
+  // 将棋子组添加到场景
+  scene.add(chessPieces);
+  console.log(`开始加载 ${piecesConfig.length} 个棋子模型`);
+}
+
+/**
+ * 创建备用棋子（如果模型加载失败）
+ */
+const createFallbackChessPiece = (pieceConfig: any, index: number) => {
+  // 根据棋子索引确定颜色（黑棋或红棋）
+  const isBlack = index < 16; // 前16个是黑棋
+  const pieceColor = isBlack ? 0x000000 : 0xff0000;
+  
+  // 创建简单的圆柱体作为备用棋子
+  const pieceGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.15, 16);
+  const pieceMaterial = new THREE.MeshLambertMaterial({ 
+    color: pieceColor 
+  });
+  const piece = new THREE.Mesh(pieceGeometry, pieceMaterial);
+  
+  // 设置位置
+  piece.position.set(
+    pieceConfig.position.x,
+    pieceConfig.position.y + 0.075, // 圆柱体高度的一半
+    pieceConfig.position.z
+  );
+  
+  // 启用阴影
+  piece.castShadow = true;
+  piece.receiveShadow = true;
+  
+  // 添加名称标识
+  piece.name = `fallback-chess-piece-${index}`;
+  
+  // 添加到棋子组
+  if (chessPieces) {
+    chessPieces.add(piece);
+  } else {
+    // 如果棋子组不存在，直接添加到场景
     scene.add(piece);
-  });
-  
-  console.log(`棋子创建完成，共 ${piecePositions.length} 个棋子`);
-}
-
-/**
- * 计算所有棋子的位置
- */
-const calculatePiecePositions = () => {
-  const positions: any[] = [];
-  const boardWidth = piecesConfig.board.width;
-  const boardLength = piecesConfig.board.length;
-  const gridSizeX = boardWidth / piecesConfig.board.cols;
-  const gridSizeZ = boardLength / piecesConfig.board.rows;
-
-  // 红方棋子 (下方)
-  createRedPieces(positions, boardWidth, boardLength, gridSizeX, gridSizeZ);
-  
-  // 黑方棋子 (上方)
-  createBlackPieces(positions, boardWidth, boardLength, gridSizeX, gridSizeZ);
-
-  return positions;
-}
-
-/**
- * 创建红方棋子
- */
-const createRedPieces = (positions: any[], boardWidth: number, boardLength: number, gridSizeX: number, gridSizeZ: number) => {
-  const layout = piecesConfig.layout.red;
-  
-  // 红方主力行（车马相士帅士相马车）
-  for (let i = 0; i < 9; i++) {
-    positions.push({
-      x: -boardWidth/2 + i * gridSizeX,
-      z: boardLength/2 - layout.mainRow * gridSizeZ
-    });
   }
   
-  // 红方炮
-  positions.push({
-    x: -boardWidth/2 + 1 * gridSizeX,
-    z: boardLength/2 - layout.cannonRow * gridSizeZ
-  });
-  positions.push({
-    x: -boardWidth/2 + 7 * gridSizeX,
-    z: boardLength/2 - layout.cannonRow * gridSizeZ
-  });
-  
-  // 红方兵
-  for (let i = 0; i < 5; i++) {
-    positions.push({
-      x: -boardWidth/2 + i * 2 * gridSizeX,
-      z: boardLength/2 - layout.soldierRow * gridSizeZ
-    });
-  }
-}
-
-/**
- * 创建黑方棋子
- */
-const createBlackPieces = (positions: any[], boardWidth: number, boardLength: number, gridSizeX: number, gridSizeZ: number) => {
-  const layout = piecesConfig.layout.black;
-  
-  // 黑方主力行
-  for (let i = 0; i < 9; i++) {
-    positions.push({
-      x: -boardWidth/2 + i * gridSizeX,
-      z: -boardLength/2 + layout.mainRow * gridSizeZ
-    });
-  }
-  
-  // 黑方炮
-  positions.push({
-    x: -boardWidth/2 + 1 * gridSizeX,
-    z: -boardLength/2 + layout.cannonRow * gridSizeZ
-  });
-  positions.push({
-    x: -boardWidth/2 + 7 * gridSizeX,
-    z: -boardLength/2 + layout.cannonRow * gridSizeZ
-  });
-  
-  // 黑方卒
-  for (let i = 0; i < 5; i++) {
-    positions.push({
-      x: -boardWidth/2 + i * 2 * gridSizeX,
-      z: -boardLength/2 + layout.soldierRow * gridSizeZ
-    });
-  }
+  console.log(`备用棋子创建完成: ${pieceConfig.modelPath}`);
 }
 
 /**
@@ -778,6 +800,24 @@ const debugPanorama = () => {
     });
   } else {
     console.log('全景立方体未创建');
+  }
+}
+
+/**
+ * 调试函数：检查棋子状态
+ */
+const debugChessPieces = () => {
+  if (chessPieces) {
+    console.log('棋子组信息:');
+    console.log('- 棋子数量:', chessPieces.children.length);
+    console.log('- 位置:', chessPieces.position);
+    
+    // 统计成功加载的棋子数量
+    chessPieces.children.forEach((child, index) => {
+      console.log(`  棋子 ${index}: ${child.name}`);
+    });
+  } else {
+    console.log('棋子组未创建');
   }
 }
 
@@ -815,6 +855,7 @@ onMounted(() => {
   // 延迟检查全景状态
   setTimeout(() => {
     debugPanorama();
+    debugChessPieces();
   }, 2000);
 })
 
