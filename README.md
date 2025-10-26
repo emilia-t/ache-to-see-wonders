@@ -23,12 +23,12 @@
 #### 1. **奇迹看板 (miracle-kanban)**
 - **用途**: 管理用户本地的 Web 网站和后端程序的启动与关闭
 - **语言**: Python
-- **特点**: 提供便捷的本地服务管理界面
+- **作用**: 提供便捷的本地服务管理界面
 
 #### 2. **主站前端 (atswsite)**
 - **用途**: ATSW 主站的前端界面
 - **语言**: Vue 3
-- **特点**: 现代化的前端架构和用户体验
+- **文档**: [指令设计文档](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md)
 
 ### 🗂️ 其他资源文件
 
@@ -82,7 +82,7 @@ While this repository might not see many visitors, we still need to make an impo
 #### 2. **Main Site Frontend (atswsite)**
 - **Purpose**: Frontend interface for the ATSW main website
 - **Tech Stack**: Vue 3
-- **Features**: Modern frontend architecture and user experience
+- **Document**: [Instruct design document](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md)
 
 ### 🗂️ Other Resource Files
 
