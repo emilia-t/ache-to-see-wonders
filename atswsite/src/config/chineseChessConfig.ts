@@ -1,3 +1,4 @@
+// The relative position of this file: src/config/chineseChessConfig.ts
 import * as THREE from 'three';
 // ==============================
 // 场景配置
@@ -122,6 +123,53 @@ export const sceneConfig = {
   }
 };
 // ==============================
+// 相机配置
+// ==============================
+export const cameraConfig = {
+  position: { x: 0, y: sceneConfig.firstPerson.playerHeight, z: 1 }, // 相机位置（第一人称高度）
+  fov: 50,      // 视野角度
+  near: 0.1,    // 近裁剪面
+  far: 2000     // 远裁剪面
+};
+// ==============================
+// 渲染器配置
+// ==============================
+export const rendererConfig = {
+  antialias: true,           // 抗锯齿
+  alpha: true,               // 允许透明
+  shadowMap: {
+    enabled: true,           // 启用阴影
+    type: THREE.PCFSoftShadowMap // 阴影类型
+  }
+};
+// ==============================
+// 灯光配置
+// ==============================
+export const lightConfig = {
+  // 定向光配置
+  directional: {
+    color: 0xffffff,
+    intensity: 5.0,
+    position: { x: 2, y: 3, z: 1 },
+    shadow: {
+      mapSize: { width: 2048, height: 2048 },
+      camera: {
+        near: 0.0,
+        far: 0.0,
+        left: -5,
+        right: 5,
+        top: 5,
+        bottom: -5
+      }
+    }
+  },
+  // 环境光配置
+  ambient: {
+    color: 0x404040,
+    intensity: 0.6 // 环境光强度
+  }
+};
+// ==============================
 // 棋子模型配置
 // ==============================
 export const piecesConfig =  [
@@ -222,50 +270,3 @@ export const piecesConfig =  [
     modelPath: '/gltf/game_scene/build/Red_31_chariot_right/Red_31_chariot_right.gltf',
     scale: 1, position: { x: 0, y: 0, z: 0 }}
 ];
-// ==============================
-// 相机配置
-// ==============================
-export const cameraConfig = {
-  position: { x: 0, y: sceneConfig.firstPerson.playerHeight, z: 1 }, // 相机位置（第一人称高度）
-  fov: 50,      // 视野角度
-  near: 0.1,    // 近裁剪面
-  far: 2000     // 远裁剪面
-};
-// ==============================
-// 渲染器配置
-// ==============================
-export const rendererConfig = {
-  antialias: true,           // 抗锯齿
-  alpha: true,               // 允许透明
-  shadowMap: {
-    enabled: true,           // 启用阴影
-    type: THREE.PCFSoftShadowMap // 阴影类型
-  }
-};
-// ==============================
-// 灯光配置
-// ==============================
-export const lightConfig = {
-  // 定向光配置
-  directional: {
-    color: 0xffffff,
-    intensity: 5.0,
-    position: { x: 2, y: 3, z: 1 },
-    shadow: {
-      mapSize: { width: 2048, height: 2048 },
-      camera: {
-        near: 0.0,
-        far: 0.0,
-        left: -5,
-        right: 5,
-        top: 5,
-        bottom: -5
-      }
-    }
-  },
-  // 环境光配置
-  ambient: {
-    color: 0x404040,
-    intensity: 0.6 // 环境光强度
-  }
-};
