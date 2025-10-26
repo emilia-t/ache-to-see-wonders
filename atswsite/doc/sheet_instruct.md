@@ -4,16 +4,16 @@
 
 |修订| 适范围 |           描述        |      $type           |    #class    |    conveyor   |      time(示例)         | data                       | 返回指令          | 备注         |
 |---|--------|-----------------------|----------------------|--------------|---------------|------------------------|----------------------------|-------------------|--------------|
-| — | 客户   |  用于检测网络连接延迟   | ping                 |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |$pong             |—             |
-| — | 服务端 |  用于检测网络连接延迟   | pong                 |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |—                 |—             |
-| — | 客户   |  用于获取服务端RSA公钥  | get_publickey        |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |$publickey        |—             |
-| — | 服务端 |  用于发送服务端RSA公钥  | publickey            |       —      |       —       |'2023-03-26 15:55:45:214'|'RSA_publickey'             |—                 |—             |
-| — | 客户   |  用于登录账号          | get_login            |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |$login            |—             |
-| — | 服务端 |  用于登录账号          | login                |       —      |       —       |'2023-03-26 15:55:45:214'|'ok'                        |—                 |—             |
-| — | 客户   |  用于登录匿名账号      | get_anonymous_login  |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |$anonymous_login  |—             |
-| — | 服务端 |  用于登录匿名账号      | anonymous_login      |       —      |       —       |'2023-03-26 15:55:45:214'|'ok'                        |—                 |—             |
-| — | 客户   |  用于登录匿名账号      | get_server_config    |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |$anonymous_login  |—             |
-| — | 服务端 |  用于登录匿名账号      | server_config        |       —      |       —       |'2023-03-26 15:55:45:214'| 详见:详细指令结构            |—                 |—             |
+| — | 客户   |  用于检测网络连接延迟   | [ping](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md#ping-%E6%8C%87%E4%BB%A4)                 |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |$pong             |—             |
+| — | 服务端 |  用于检测网络连接延迟   | [pong](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md#pong-%E6%8C%87%E4%BB%A4)                 |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |—                 |—             |
+| — | 客户   |  用于获取服务端RSA公钥  | [get_publickey](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md#get_publickey-%E6%8C%87%E4%BB%A4)        |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |$publickey        |—             |
+| — | 服务端 |  用于发送服务端RSA公钥  | [publickey](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md#publickey-%E6%8C%87%E4%BB%A4)            |       —      |       —       |'2023-03-26 15:55:45:214'|'RSA_publickey'             |—                 |—             |
+| — | 客户   |  用于登录账号          | [get_login](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md#get_login-%E6%8C%87%E4%BB%A4)            |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |$login            |—             |
+| — | 服务端 |  用于登录账号          | [login](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md#login-%E6%8C%87%E4%BB%A4)                |       —      |       —       |'2023-03-26 15:55:45:214'|'ok'                        |—                 |—             |
+| — | 客户   |  用于登录匿名账号      | [get_anonymous_login](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md#get_anonymous_login-%E6%8C%87%E4%BB%A4)  |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |$anonymous_login  |—             |
+| — | 服务端 |  用于登录匿名账号      | [anonymous_login](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md#anonymous_login-%E6%8C%87%E4%BB%A4)      |       —      |       —       |'2023-03-26 15:55:45:214'|'ok'                        |—                 |—             |
+| — | 客户   |  用于登录匿名账号      | [get_server_config](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md#get_server_config-%E6%8C%87%E4%BB%A4)    |       —      |       —       |'2023-03-26 15:55:45:214'|             —              |$anonymous_login  |—             |
+| — | 服务端 |  用于登录匿名账号      | [server_config](https://github.com/emilia-t/ache-to-see-wonders/blob/master/atswsite/doc/sheet_instruct.md#server_config-%E6%8C%87%E4%BB%A4)        |       —      |       —       |'2023-03-26 15:55:45:214'| 详见:详细指令结构            |—                 |—             |
 ## 建立连接过程
 - **wss**：
   ```js
@@ -122,8 +122,8 @@
       "password": "account and password need encryption(ues server publickey)",
     }
   }
-### login 指令(data value either 'ok' or 'no')
-- **完整结构**：
+### login 指令
+- **完整结构(data value either 'ok' or 'no')**：
   ```json
   {
     "type": "login",
@@ -144,8 +144,8 @@
       "email": "any@anonymous"
     }
   }
-### anonymous_login 指令(data value either 'ok' or 'no')
-- **完整结构**：
+### anonymous_login 指令
+- **完整结构(data value either 'ok' or 'no')**：
   ```json
   {
     "type": "anonymous_login",
