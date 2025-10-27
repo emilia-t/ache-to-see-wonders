@@ -32,9 +32,10 @@ export default abstract class Instruct {
     // 事件处理
     // ==============================
     public onLog: (message: string, type: 'tip' | 'warn' | 'error', data?: any) => LogConfig = () => {return {code: 0,time: '',text: '',from: 'Instruct',type: '',data: {}}};
-    public onOpen: () => void = () => {};// 外部可以重写这些方法以自定义处理事件
-    public onClose: () => void = () => {};
-    public onError: () => void = () => {};
+    public onOpen: (ev: Event) => void = () => {};// 外部可以重写这些方法以自定义处理事件
+    public onClose: (ev: Event) => void = () => {};
+    public onError: (ev: Event) => void = () => {};
+    public onMessage: (instructObj: InstructObject) => void = () => {};
     /**
      * 指令的具体处理
      * @param ev 
@@ -71,25 +72,26 @@ export default abstract class Instruct {
             default:
                 this.handleExpandInstruct(instructObj);
         }
+        this.onMessage(instructObj);
     }
     private onOpenHandler(ev: Event): void {
         this.isLink = true;
         this.onLog('服务器连接成功', 'tip');
-        this.onOpen();
+        this.onOpen(ev);
     }
     private onCloseHandler(ev: CloseEvent): void {
         this.isLink = false;
         this.isLogin = false;
         this.pingIntervalStop();
         this.onLog('服务器连接中断', 'warn');
-        this.onClose();
+        this.onClose(ev);
     }
     private onErrorHandler(ev: Event): void {
         this.isLink = false;
         this.isLogin = false;
         this.pingIntervalStart();
         this.onLog('服务器连接失败', 'warn');
-        this.onError();
+        this.onError(ev);
     }
     
     // ==============================

@@ -4,6 +4,11 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { sceneConfig, piecesConfig, cameraConfig, rendererConfig, lightConfig } from '@/config/chineseChessConfig.ts';
+import ChineseChessInstruct from '@/class/ChineseChessInstruct';
+import Tool from '@/class/Tool';
+import type LogConfig from '@/interface/LogConfig';
+import type InstructObject from '@/interface/InstructObject';
+
 
 // ==============================
 // 组件引用
@@ -51,6 +56,34 @@ let pickedPiece: THREE.Object3D | null = null;
 let originalMaterial: THREE.Material | THREE.Material[] | null = null;
 let transparentMaterial: THREE.MeshLambertMaterial;
 
+// ==============================
+// 通信相关
+// ==============================
+const ccInstruct = new ChineseChessInstruct("ws://127.0.0.1:2424");
+ccInstruct.onLog = (message:string,type:'tip'|'warn'|'error',data?:any):LogConfig=>{
+  const logConfig = {
+    code:0,
+    time:Tool.getFormatTime(),
+    text:message,
+    from:'ChineseChessInstruct',
+    type:type,
+    data:data
+  }
+  console.log(logConfig);
+  return logConfig;
+};
+ccInstruct.onOpen = (ev: Event):void=>{
+  console.log("服务器已连接");
+};
+ccInstruct.onClose = (ev: Event):void=>{
+  console.log("服务器断开连接",ev);
+};
+ccInstruct.onError = (ev: Event):void=>{
+  console.log("服务器连接失败",ev);
+};
+ccInstruct.onMessage = (instructObj: InstructObject):void=>{
+  console.log(instructObj);
+};
 // ==============================
 // 工具函数
 // ==============================

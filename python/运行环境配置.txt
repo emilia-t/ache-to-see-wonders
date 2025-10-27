@@ -1,19 +1,21 @@
 # 确保使用 python 版本 : 3.10.11
 
 # 进入看板代码根目录
+cd python
 cd miracle-kanba
 
-# 创建虚拟环境
+# 创建虚拟环境(首次运行时)
 python -m venv kanban_env
 
 # 激活虚拟环境
-# Windows:
+# Windows系统运行这行:
 kanban_env\Scripts\activate  #running scripts is disabled on this system :run -->>> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-# Linux/Mac:
-# source kanban_env/bin/activate
+# Linux/Mac系统运行这行:
+source kanban_env/bin/activate
 
-# 安装依赖
+# 安装依赖(首次运行时)
 pip install PyQt5
+pip install websockets
 
 # 运行程序
 python main.py
