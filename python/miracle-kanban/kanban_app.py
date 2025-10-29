@@ -1,10 +1,10 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# The relative position of this file: /kanban_app.py
 
 import sys
 import os
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QPushButton, QLabel, QStackedWidget, QSizePolicy,
-                             QFrame, QApplication)
+from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,QPushButton, QLabel, QStackedWidget, QSizePolicy, QFrame, QApplication
 from PyQt5.QtCore import Qt, QSize, QUrl, QRect, QPropertyAnimation
 
 # 动态导入 pyqtProperty

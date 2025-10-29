@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# The relative position of this file: /backend/chineseChess/RSAKEYPAIR.py.example.py
+
+_PUBLICKEY_ = """-----BEGIN PUBLIC KEY-----
+MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCeTnXDtfPGRwab6OateEyAVklp
+kzKRXvdnNKCazoKLc5b8EB639P+b40cQE5fuVKdy2sAInNuMEQ5T4kp6H7ITJIs9
+etHYA/beRNqncFnG2wGKGrVrVQdE8xS9YjIHC/Qbk8WOtBFxAQPE5pOTjY3izQrT
+w7YxfHUTP7SqEaLC2wIDAQAB
+-----END PUBLIC KEY-----
+"""
+_PRIVATEKEY_ = """-----BEGIN PRIVATE KEY-----
+MIICdwIBADANBgkqhkiG9w0BAQEFAASCAmEwggJdAgEAAoGBAJ5OdcO188ZHBpvo
+5q14TIBWSWmTMpFe92c0oJrOgotzlvwQHrf0/5vjRxATl+5Up3LawAic24wRDlPi
+SnofshMkiz160dgD9t5E2qdwWcbbAYoatWtVB0TzFL1iMgcL9BuTxY60EXEBA8Tm
+k5ONjeLNCtPDtjF8dRM/tKoRosLbAgMBAAECgYBZS3qD/ZNXCWNB+Hp96PiF/6YD
+RkNk2oOFFJtvFwNt87J71f/t1eWEogvIlrTBe8DEOX3OneP9OvWw/VjzUAOag4t0
+U282Zcr9dF9CLPxs73vODSaAsjDdTX6hAFwlnKZVGq4bTRBQfWoBxU4lPfkxh7fn
+Cj/rkolmsHaPwNApMQJBAMnn4ZyYeSoiDtEYA8QlKHKIYE7FCjKvTz7H41dXTdyy
+AlTlPvn804oGZDz7OLcnQDsxKpPYGqawVOR+8U2O32MCQQDIuDtj3+1ZOsYUfKE4
+MTLFn+J7ePNGzOL4LGzMka17i6GICdPXuPw+WJDi/awPpc1hm2YmqE2fi5NKQWcj
+IdQpAkEAlHUHktkZ3j0EoAIEYujfgLd9+O0wvmvg3MylAMeU3L2WsU2OrMmV0Vs5
+wQ0HesRFmkBgiizQC9iD0y7zxo9S+QJBAJ857vsix3Fye3IDEA24kZNOa2cRosN2
+g1LmQwThR6LrOJ/nU+McfxWiQoWfQKBFIjEdCqL9/l3jZluQmJW5H0kCQB3EXrsH
+6aGYqWf1dO1wUn/hiUTPcwTDxg4CJ/CoMftTGkit4ibzso8paAI5QEQc8sJMzXoQ
+xrRrXZrE/oL2SFw=
+-----END PRIVATE KEY-----
+"""
+
+"""Key format:  """
+"""PKCS#8       """
+"""PEM/Base64   """
+"""Key length:  """
+"""1024bit      """

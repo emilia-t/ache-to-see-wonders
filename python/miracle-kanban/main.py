@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# The relative position of this file: /main.py
 
 import sys
 import os
-import platform
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 
 from kanban_app import KanbanApp

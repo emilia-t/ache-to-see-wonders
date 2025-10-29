@@ -1,8 +1,8 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# The relative position of this file: /pages/page_settings.py
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                             QLineEdit, QPushButton, QComboBox, QCheckBox,
-                             QGroupBox, QSpinBox, QFormLayout)
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QGroupBox, QSpinBox, QFormLayout
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 import json

@@ -1,12 +1,12 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# The relative position of this file: /pages/page_home.py
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                             QLabel, QTextEdit, QGroupBox, QProgressBar, QMessageBox)
-from PyQt5.QtCore import Qt, QProcess
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTextEdit, QGroupBox, QMessageBox
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 import subprocess
 import os
-import sys
 import json
 
 

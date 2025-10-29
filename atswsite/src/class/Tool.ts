@@ -80,4 +80,118 @@ export default class Tool {
         }
         return endTimestamp - startTimestamp;
     }
+
+    /**
+     * 使用RSA公钥加密字符串
+     * @param plainText 要加密的明文
+     * @param publicKey 公钥字符串
+     * @returns 加密后的base64字符串
+     */
+    public static async rsaEncrypt(plainText: string, publicKey: string): Promise<string> {
+        try {
+            const key = await Tool.importPublicKey(publicKey);
+            const encoder = new TextEncoder();
+            const data = encoder.encode(plainText);
+            const encrypted = await crypto.subtle.encrypt(
+                {name: "RSA-OAEP"},
+                key,
+                data
+            );
+            return Tool.arrayBufferToBase64(encrypted);
+        } catch (error) {
+            console.error('RSA encryption failed:', error);
+            throw new Error('RSA encryption failed');
+        }
+    }
+
+    /**
+     * 使用RSA私钥解密字符串
+     * @param encryptedText 加密的base64字符串
+     * @param privateKey 私钥字符串
+     * @returns 解密后的明文
+     */
+    public static async rsaDecrypt(encryptedText: string, privateKey: string): Promise<string>{
+        try {
+            const key = await Tool.importPrivateKey(privateKey);
+            const encryptedData = Tool.base64ToArrayBuffer(encryptedText);
+            const decrypted = await crypto.subtle.decrypt(
+                {name: "RSA-OAEP"},
+                key,
+                encryptedData
+            );
+            const decoder = new TextDecoder();
+            return decoder.decode(decrypted);
+        } catch (error) {
+            console.error('RSA decryption failed:', error);
+            throw new Error('RSA decryption failed');
+        }
+    }
+
+    /**
+     * 导入RSA公钥
+     * @param pem 公钥PEM格式字符串
+     * @returns CryptoKey对象
+     */
+    private static async importPublicKey(pem: string): Promise<CryptoKey> {
+        const pemContents = pem
+            .replace(/-----BEGIN PUBLIC KEY-----/, '')
+            .replace(/-----END PUBLIC KEY-----/, '')
+            .replace(/\s/g, '');
+        const binaryDer = Tool.base64ToArrayBuffer(pemContents);
+        return await crypto.subtle.importKey(
+            "spki",
+            binaryDer,
+            {name: "RSA-OAEP",hash: "SHA-256"},
+            true,
+            ["encrypt"]
+        );
+    }
+
+    /**
+     * 导入RSA私钥
+     * @param pem 私钥PEM格式字符串
+     * @returns CryptoKey对象
+     */
+    private static async importPrivateKey(pem: string): Promise<CryptoKey> {
+        const pemContents = pem
+            .replace(/-----BEGIN PRIVATE KEY-----/, '')
+            .replace(/-----END PRIVATE KEY-----/, '')
+            .replace(/\s/g, '');
+        const binaryDer = Tool.base64ToArrayBuffer(pemContents);
+        return await crypto.subtle.importKey(
+            "pkcs8",
+            binaryDer,
+            {name: "RSA-OAEP",hash: "SHA-256"},
+            true,
+            ["decrypt"]
+        );
+    }
+
+    /**
+     * 将base64字符串转换为ArrayBuffer
+     * @param base64 base64字符串
+     * @returns ArrayBuffer
+     */
+    private static base64ToArrayBuffer(base64: string): ArrayBuffer {
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    /**
+     * 将ArrayBuffer转换为base64字符串
+     * @param buffer ArrayBuffer
+     * @returns base64字符串
+     */
+    private static arrayBufferToBase64(buffer: ArrayBuffer): string {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+    }
 }

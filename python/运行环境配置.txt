@@ -14,8 +14,10 @@ kanban_env\Scripts\activate  #running scripts is disabled on this system :run --
 source kanban_env/bin/activate
 
 # 安装依赖(首次运行时)
-pip install PyQt5
-pip install websockets
+pip install PyQt5==5.15.11
+pip install PyQtWebEngine==5.15.7
+pip install websockets==15.0.1
+pip install cryptography==46.0.2
 
 # 运行程序
 python main.py

@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# The relative position of this file: /backend/backend_main.py
 
 import sys
 import os
 import asyncio
 import threading
-import subprocess
-import signal
 import time
 
 # 添加当前目录到Python路径

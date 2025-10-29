@@ -184,8 +184,23 @@ export default abstract class Instruct {
         this.send(Instruct._getServerConfig_());
     }
 
-    public getLogin(email: string, password: string): void {
-        this.send(Instruct._getLogin_(email, password));
+    public async getLogin(email: string, password: string): Promise<boolean> {
+        try{
+            const trimE = email.trim();
+            const trimP = password.trim();
+            if (trimE === '' || trimP === '') {
+                return false;
+            }
+            else{
+                const encryptE = await Tool.rsaEncrypt(trimE,this.publicKey);
+                const encryptP = await Tool.rsaEncrypt(trimP,this.publicKey);
+                this.send(Instruct._getLogin_(encryptE, encryptP));
+                return true;
+            }
+        }catch (error){
+            console.error('RSA decryption failed:', error);
+            return false;
+        }
     }
 
     public getAnonymousLogin(email: string): void {

@@ -1,9 +1,8 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# The relative position of this file: /pages/page_model.py
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                             QPushButton, QListWidget, QListWidgetItem,
-                             QGroupBox, QProgressBar, QLineEdit, QFileDialog,
-                             QMessageBox)
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget, QListWidgetItem,QGroupBox, QProgressBar, QLineEdit, QFileDialog, QMessageBox
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 import os

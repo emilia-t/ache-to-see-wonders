@@ -2,6 +2,7 @@
 logs
 *.log
 *.db
+*.key
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -39,3 +40,5 @@ draft_2.psd
 draft_3.psd
 draft_4.psd
 draft_5.psd
+
+RSAKEYPAIR.py
