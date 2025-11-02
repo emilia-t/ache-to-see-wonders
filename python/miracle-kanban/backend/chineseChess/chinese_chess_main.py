@@ -62,8 +62,9 @@ class ChineseChessServer:
 
     def init_create_tables(self, cursor):
         """创建数据库表"""
-        cursor.execute(sql_statement._users_table_)
         cursor.execute(sql_statement._server_config_table_)
+        cursor.execute(sql_statement._users_table_)
+        cursor.execute(sql_statement._pieces_table_)
         cursor.execute(sql_statement._insert_server_config_)
 
     """

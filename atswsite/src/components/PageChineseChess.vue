@@ -8,7 +8,7 @@ import ChineseChessInstruct from '@/class/ChineseChessInstruct';
 import Tool from '@/class/Tool';
 import type LogConfig from '@/interface/LogConfig';
 import type InstructObject from '@/interface/InstructObject';
-
+import ViewUserLayer from './ViewUserLayer.vue';
 
 // ==============================
 // 组件引用
@@ -33,12 +33,7 @@ let centerAxesHelper: THREE.AxesHelper; // 参考坐标轴
 // 第一人称视角控制相关变量
 // ==============================
 let isPointerLocked = false;
-const moveState = {
-  forward: false,
-  backward: false,
-  left: false,
-  right: false
-};
+const moveState = {forward: false,backward: false,left: false,right: false};
 let canJump = false;
 let prevTime = performance.now();
 const velocity = new THREE.Vector3();
@@ -97,8 +92,7 @@ const createIntersectableFilter = (excludePiece: THREE.Object3D | null = null) =
            obj !== excludePiece && 
            obj !== centerGridHelper &&
            obj !== centerAxesHelper &&
-           obj !== panoramaCube;
-  };
+           obj !== panoramaCube;};
 };
 
 /**
@@ -149,7 +143,6 @@ const restoreObjectMaterial = (object: THREE.Object3D) => {
 // ==============================
 // 主要功能函数
 // ==============================
-
 const initScene = () => {
   if (!sceneRef.value) return;
   createScene();// 场景
@@ -169,26 +162,22 @@ const initScene = () => {
  */
 const initInteractionSystem = () => {
   raycaster = new THREE.Raycaster();// 初始化射线投射器
-  
   transparentMaterial = new THREE.MeshLambertMaterial({// 创建透明材质用于拿起状态
     transparent: true,
     opacity: sceneConfig.pieceInteraction.transparency
   });
-  
   if (renderer.domElement) {// 添加鼠标键盘事件监听
     renderer.domElement.addEventListener('click', onClick);
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
     document.addEventListener('mousemove', onMouseMove);
   }
-  
   const element = renderer.domElement;// 初始化指针锁定
   element.addEventListener('click', () => {
     if (!isPointerLocked) {
       element.requestPointerLock();
     }
   });
-  
   document.addEventListener('pointerlockchange', onPointerLockChange);// 指针锁定状态变化事件
   document.addEventListener('mozpointerlockchange', onPointerLockChange);
 }
@@ -205,7 +194,6 @@ const onPointerLockChange = () => {
  */
 const onClick = (event: MouseEvent) => {
   if (!isPointerLocked) return;
-  
   isPicking ? placePiece() : tryPickPiece();
 }
 
@@ -214,14 +202,11 @@ const onClick = (event: MouseEvent) => {
  */
 const onMouseMove = (event: MouseEvent) => {
   if (!isPointerLocked) return;
-  
   const movementX = event.movementX || 0;
   const movementY = event.movementY || 0;
-  
   yaw -= movementX * rotationSpeed;// 使用四元数控制相机旋转，避免万向节锁
   pitch -= movementY * rotationSpeed;
   pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));// 限制俯仰角范围（避免翻转）
-  
   const quaternion = new THREE.Quaternion();// 使用四元数设置相机旋转
   quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
   camera.setRotationFromQuaternion(quaternion);
@@ -232,7 +217,6 @@ const onMouseMove = (event: MouseEvent) => {
  */
 const onKeyDown = (event: KeyboardEvent) => {
   if (!isPointerLocked) return;
-  
   const keyActions: { [key: string]: () => void } = {
     'ArrowUp': () => moveState.forward = true,
     'KeyW': () => moveState.forward = true,
@@ -249,7 +233,6 @@ const onKeyDown = (event: KeyboardEvent) => {
       }
     }
   };
-  
   keyActions[event.code]?.();
 }
 
@@ -258,7 +241,6 @@ const onKeyDown = (event: KeyboardEvent) => {
  */
 const onKeyUp = (event: KeyboardEvent) => {
   if (!isPointerLocked) return;
-  
   const keyActions: { [key: string]: () => void } = {
     'ArrowUp': () => moveState.forward = false,
     'KeyW': () => moveState.forward = false,
@@ -269,7 +251,6 @@ const onKeyUp = (event: KeyboardEvent) => {
     'ArrowRight': () => moveState.right = false,
     'KeyD': () => moveState.right = false
   };
-  
   keyActions[event.code]?.();
 }
 
@@ -287,7 +268,6 @@ const tryPickPiece = () => {
     while (piece.parent && piece.parent !== chessPieces && piece.parent !== scene) {// 向上查找父对象，直到找到棋子组中的直接子对象
       piece = piece.parent;
     }
-    
     if (chessPieces.children.includes(piece)) {
       pickUpPiece(piece);
     }
@@ -452,7 +432,6 @@ const createCamera = () => {
     cameraConfig.position.y,
     cameraConfig.position.z
   );
-  
   pitch = 0;// 初始化旋转角度
   yaw = 0;
   const quaternion = new THREE.Quaternion();// 设置初始朝向（看向负Z轴）
@@ -465,7 +444,6 @@ const createCamera = () => {
  */
 const createRenderer = () => {
   if (!sceneRef.value) return;
-  
   renderer = new THREE.WebGLRenderer({ 
     antialias: rendererConfig.antialias,
     alpha: rendererConfig.alpha
@@ -490,7 +468,6 @@ const createLights = () => {
     lightConfig.directional.position.z
   );
   directionalLight.castShadow = true;
-  
   const shadowConfig = lightConfig.directional.shadow;// 配置阴影属性
   directionalLight.shadow.mapSize.width = shadowConfig.mapSize.width;
   directionalLight.shadow.mapSize.height = shadowConfig.mapSize.height;
@@ -500,9 +477,7 @@ const createLights = () => {
   directionalLight.shadow.camera.right = shadowConfig.camera.right;
   directionalLight.shadow.camera.top = shadowConfig.camera.top;
   directionalLight.shadow.camera.bottom = shadowConfig.camera.bottom;
-  
   scene.add(directionalLight);
-
   const ambientLight = new THREE.AmbientLight(// 创建环境光
     lightConfig.ambient.color, 
     lightConfig.ambient.intensity
@@ -522,7 +497,6 @@ const createHelpers = () => {
   );
   centerGridHelper.position.y = sceneConfig.helpers.grid.position.y;
   scene.add(centerGridHelper);
-
   centerAxesHelper = new THREE.AxesHelper(sceneConfig.helpers.axes.size);// 坐标轴辅助对象
   centerAxesHelper.setColors(sceneConfig.color.axesX, sceneConfig.color.axesY, sceneConfig.color.axesZ);
   scene.add(centerAxesHelper);
@@ -554,7 +528,6 @@ const createGround = () => {
 const createPanoramaCube = () => {
   const cubeSize = sceneConfig.panorama.size;
   const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);// 创建立方体几何体
-  
   const sides = [// 定义六个面的顺序（Three.js默认顺序）
     { path: sceneConfig.panorama.texturePaths.right, name: 'right' },
     { path: sceneConfig.panorama.texturePaths.left, name: 'left' },
@@ -563,7 +536,6 @@ const createPanoramaCube = () => {
     { path: sceneConfig.panorama.texturePaths.front, name: 'front' },
     { path: sceneConfig.panorama.texturePaths.back, name: 'back' }
   ];
-  
   const textureLoader = new THREE.TextureLoader();// 创建纹理加载器
   const materials = sides.map((side, index) => {// 为每个面创建材质
     try {
@@ -586,7 +558,6 @@ const createPanoramaCube = () => {
       });
     }
   });
-  
   panoramaCube = new THREE.Mesh(geometry, materials);// 创建立方体网格
   panoramaCube.name = 'panorama-cube';
   scene.add(panoramaCube);
@@ -614,7 +585,6 @@ const createModel = (
       const model = gltf.scene;
       model.position.set(position.x, position.y, position.z);
       model.scale.set(scale, scale, scale);
-      
       model.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           child.castShadow = true;
@@ -622,12 +592,10 @@ const createModel = (
           child.name = name;
         }
       });
-      
       // 计算模型高度
       const bbox = new THREE.Box3().setFromObject(model);
       const altitudeKey = name === 'table' ? 'S_table' : 'S_chess_board';
       sceneConfig.altitude[altitudeKey] = bbox.max.y;
-      
       onLoad?.(model);
       scene.add(model);
     },
@@ -671,7 +639,6 @@ const createChessPieces = () => {
   const loader = new GLTFLoader();
   chessPieces = new THREE.Group();
   chessPieces.name = 'chess-pieces-group';
-  
   piecesConfig.forEach((pieceConfig, index) => {
     loader.load(
       pieceConfig.modelPath,
@@ -687,16 +654,13 @@ const createChessPieces = () => {
           pieceConfig.scale,
           pieceConfig.scale
         );
-        
         piece.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             child.castShadow = true;
             child.receiveShadow = true;
           }
         });
-        
         piece.name = pieceConfig.name;
-        
         // 计算棋子尺寸（只在第一个棋子时计算）
         if (index === 0) {
           const pieceBbox = new THREE.Box3().setFromObject(piece);
@@ -707,21 +671,18 @@ const createChessPieces = () => {
           sceneConfig.altitude.S_chess_pieces_max_plus = 
             sceneConfig.altitude.S_chess_pieces_max - sceneConfig.altitude.S_chess_pieces_height;
         }
-        
         // 记录棋子偏移
         const pos_xyz = {
           x: piece.children[0].position.x,
           y: piece.children[0].position.y,
           z: piece.children[0].position.z,
         };
-        
         const pieceName = pieceConfig.name as keyof typeof sceneConfig.piecesOffset;
         if (sceneConfig.piecesOffset[pieceName]) {
           sceneConfig.piecesOffset[pieceName].x = pos_xyz.x;
           sceneConfig.piecesOffset[pieceName].y = pos_xyz.y;
           sceneConfig.piecesOffset[pieceName].z = pos_xyz.z;
         }
-        
         chessPieces.add(piece);
       },
       undefined,
@@ -730,7 +691,6 @@ const createChessPieces = () => {
       }
     );
   });
-  
   scene.add(chessPieces);
 }
 
@@ -739,14 +699,11 @@ const createChessPieces = () => {
  */
 const animate = () => {
   requestAnimationFrame(animate);
-  
   const time = performance.now();// 计算时间增量
   const delta = (time - prevTime) / 1000;
   prevTime = time;
-  
   updateFirstPersonMovement(delta);// 更新第一人称移动
   updatePieceFollowing();// 更新棋子跟随视角
-  
   if (renderer && scene && camera) {
     renderer.render(scene, camera);
   }
@@ -762,7 +719,6 @@ onMounted(() => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
-  
   initScene();
   initInteractionSystem();
   animate();
@@ -778,24 +734,22 @@ onUnmounted(() => {
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('pointerlockchange', onPointerLockChange);
     document.removeEventListener('mozpointerlockchange', onPointerLockChange);
-    
     renderer.dispose();
   }
-  
   if (scene) {
     scene.clear();
   }
 });
+const user_info = null;
 </script>
-
 <template>
   <div class="pageBox">
     <div ref="sceneRef" class="chess-container"></div>
     <div class="crosshair"></div>
     <div class="consoleBorad"></div>
+    <view-user-layer :user-info="user_info" theme="light" design="C"/>
   </div>
 </template>
-
 <style scoped>
 .pageBox{
   width: 100vw;

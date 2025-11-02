@@ -12,8 +12,9 @@ _users_table_ = """CREATE TABLE IF NOT EXISTS users (
                 qq INTEGER,
                 theme_color VARCHAR(50) DEFAULT 'rgba(255,255,255,1)',
                 anonymous_user BOOLEAN DEFAULT FALSE,
+                head_img VARCHAR(255) DEFAULT 'none',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                last_login DATETIME DEFAULT CURRENT_TIMESTAMP
+                last_login DATETIME DEFAULT CURRENT_TIMESTAMP,
             )"""
 
 _server_config_table_ = """CREATE TABLE IF NOT EXISTS server_config (
@@ -25,6 +26,16 @@ _server_config_table_ = """CREATE TABLE IF NOT EXISTS server_config (
                 server_name VARCHAR(100) DEFAULT '中国象棋服务器',
                 max_online INTEGER DEFAULT 100,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )"""
+
+_pieces_table_ = """CREATE TABLE IF NOT EXISTS chess_piece_table (
+                id INTEGER PRIMARY KEY CHECK (id = 0),
+                name VARCHAR(25) DEFAULT '1.0.0',
+                x REAL DEFAULT 0,
+                y REAL DEFAULT 0,
+                z REAL DEFAULT 0,
+                used BOOLEAN DEFAULT FALSE,
+                use_player VARCHAR(100) DEFAULT 'none'
             )"""
 
 _insert_server_config_          =f"INSERT OR IGNORE INTO server_config (id,version,anonymous_login,server_key,server_url,server_name,max_online) VALUES (1,'{server_config._config_version_}',{server_config._config_anonymous_login_},'{server_config._config_server_key_}','{server_config._config_server_url_}','{server_config._config_server_name_}',{server_config._config_max_online_})"

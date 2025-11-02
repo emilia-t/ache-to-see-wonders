@@ -4,6 +4,7 @@ import type ServerConfig from "@/interface/ServerConfig";
 import type InstructObject from "@/interface/InstructObject";
 import type LogConfig from "@/interface/LogConfig";
 import type UserData from "@/interface/UserData";
+import type ChineseChessUserData from "@/interface/ChineseChessUserData";
 import Tool from "./Tool";
 
 export default abstract class Instruct {
@@ -16,7 +17,7 @@ export default abstract class Instruct {
     private pingInterval: number | null = null;
     private publicKey: string = '';//服务端的公钥 用于部分加密操作
     private serverConfig: ServerConfig | null = null;
-    private userData: UserData | null = null;
+    private userData: UserData | ChineseChessUserData | null = null;
     /*
      * 构造器
      */
@@ -99,29 +100,29 @@ export default abstract class Instruct {
     // ==============================
     abstract handleBroadcastInstruct (instruct: InstructObject) : void;// 子类必须实现这个方法以处理广播指令
     abstract handleExpandInstruct (instruct: InstructObject) : void;// 子类必须实现这个方法以处理扩展指令
-    public handlePong (instruct: InstructObject) : void {
+    private handlePong (instruct: InstructObject) : void {
         const time = Tool.formatTime2Timestamp(instruct.time);
         if(!Number.isNaN(time)){
             this.lastPong = time;
         }
     }
-    public handleLogin (instruct: InstructObject) : void {
+    private handleLogin (instruct: InstructObject) : void {
         instruct.data === 'ok' ? this.setterIsLogin(true) : this.setterIsLogin(false);
     }
-    public handlePublickey (instruct: InstructObject) : void {
+    private handlePublickey (instruct: InstructObject) : void {
         if (typeof instruct.data === 'string' && instruct.data.trim() !== '') {
             this.publicKey = instruct.data;
         }
     }
-    public handleAnonymousLogin (instruct: InstructObject) : void {
+    private handleAnonymousLogin (instruct: InstructObject) : void {
         instruct.data === 'ok' ? this.setterIsLogin(true) : this.setterIsLogin(false);
     }
-    public handleServerConfig (instruct: InstructObject) : void {
+    private handleServerConfig (instruct: InstructObject) : void {
         if (typeof instruct.data === 'object' && instruct.data !== null) {
             this.serverConfig = instruct.data as ServerConfig;
         }
     }
-    public handleUserData (instruct: InstructObject) : void {
+    private handleUserData (instruct: InstructObject) : void {
         if (typeof instruct.data === 'object' && instruct.data !== null) {
             this.userData = instruct.data as UserData;
         }
@@ -131,7 +132,7 @@ export default abstract class Instruct {
      * @param data 
      * @returns InstructObject
      */
-    public instructParse(data: string): InstructObject | null {
+    private instructParse(data: string): InstructObject | null {
         if (typeof data !== 'string' || data.trim() === '') {
             this.onLog('指令数据为空或不是字符串', 'error', data);
             return null;
@@ -139,7 +140,13 @@ export default abstract class Instruct {
         try {
             const parsed = JSON.parse(data);
             if (this.isValidInstructObject(parsed)) {
-                return parsed;
+                return {
+                    type:parsed.type,
+                    class:parsed.class,
+                    conveyor:parsed.conveyor,
+                    time:parsed.time,
+                    data:parsed.data
+                };
             } else {
                 this.onLog('指令格式验证失败', 'error', {
                     received: parsed,
@@ -175,15 +182,12 @@ export default abstract class Instruct {
     public ping(): void {
         this.send(Instruct._ping_());
     }
-
     public getPublickey(): void {
         this.send(Instruct._getPublickey_());
     }
-
     public getServerConfig(): void {
         this.send(Instruct._getServerConfig_());
     }
-
     public async getLogin(email: string, password: string): Promise<boolean> {
         try{
             const trimE = email.trim();
@@ -202,15 +206,12 @@ export default abstract class Instruct {
             return false;
         }
     }
-
     public getAnonymousLogin(email: string): void {
         this.send(Instruct._getAnonymousLogin_(email));
     }
-
     public getUserData(): void {
         this.send(Instruct._getUserData_());
     }
-
     // ==============================
     // 创建指令对象的静态方法
     // ==============================

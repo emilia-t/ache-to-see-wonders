@@ -4,13 +4,19 @@ import PageUpdating from '@/components/PageUpdating.vue'
 import PageNeuroSandbox from '@/components/PageNeuroSandbox.vue'
 import PageTestSandbox from '@/components/PageTestSandbox.vue'
 import PageChineseChess from '@/components/PageChineseChess.vue'
+import PageHome from '@/components/PageHome.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
-      redirect: '/chinese-chess'  // 添加根路径重定向到/updating
+      redirect: '/home'  // 添加根路径重定向到??
+    },
+    {
+      path: '/home',
+      name: 'home',
+      component: PageHome
     },
     {
       path: '/updating',
@@ -31,9 +37,8 @@ const router = createRouter({
       path: '/chinese-chess',
       name: 'chinese-chess',
       component: PageChineseChess
-    },
-    // 可以添加其他路由
-  ],
+    }
+  ]
 })
 
 export default router

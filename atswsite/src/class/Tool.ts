@@ -1,5 +1,6 @@
 // The relative position of this file: src/class/Tool.ts
 export default class Tool {
+    public static defaultHeadImgCache = new Map<string,string>();//头像缓存
     /**
      * 生成格式为 'YYYY-MM-DD HH:mm:ss:SSS' 的时间字符串
      * @param date 可选，Date对象，默认为当前时间
@@ -193,5 +194,84 @@ export default class Tool {
             binary += String.fromCharCode(bytes[i]);
         }
         return btoa(binary);
+    }
+
+    /**
+     * 根据用户名生成默认头像
+     * @param {string} username - 用户名
+     * @param {number} size - 头像尺寸，默认100px
+     * @returns {string} - 返回base64格式的头像图片
+     */
+    private static createDefaultHeadImg(username: string, size: number = 100): string {
+        // 创建canvas元素
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) return '';
+        
+        // 如果用户名为空，使用默认字符
+        const displayChar = username && username.length > 0 
+            ? username.charAt(0).toUpperCase() 
+            : '?';
+        
+        // 创建渐变背景 - 深绿色到浅绿色（左上到右下）
+        const gradient = ctx.createLinearGradient(0, 0, size, size);
+        gradient.addColorStop(0, '#1b5e20');  // 深绿色
+        gradient.addColorStop(0.5, '#2e7d32'); // 中等绿色
+        gradient.addColorStop(1, '#4caf50');  // 浅绿色
+        
+        // 绘制圆形背景
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        
+        // 添加微妙的阴影效果
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // 绘制文字
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${size * 0.45}px 'Microsoft YaHei', sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // 添加文字阴影
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+        ctx.shadowBlur = 3;
+        ctx.shadowOffsetX = 1;
+        ctx.shadowOffsetY = 1;
+        
+        // 向下偏移
+        ctx.fillText(displayChar, size / 2, size / 2 + 4);
+        
+        // 重置阴影
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        
+        return canvas.toDataURL('image/png');
+    }
+
+    /**
+     * 获取用户头像URL（支持缓存）
+     * @param {string} username - 用户名
+     * @param {number} size - 头像尺寸
+     * @returns {string} - 头像URL
+     */
+    public static getDefaultHeadImg(username: string, size: number = 100): string {
+        const cacheKey = `${username}_${size}`;
+        if (this.defaultHeadImgCache.has(cacheKey)) {
+            return this.defaultHeadImgCache.get(cacheKey)!;
+        }
+        const avatar = this.createDefaultHeadImg(username, size);
+        this.defaultHeadImgCache.set(cacheKey, avatar);
+        return avatar;
     }
 }
