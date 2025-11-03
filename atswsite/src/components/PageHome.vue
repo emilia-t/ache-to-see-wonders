@@ -6,7 +6,6 @@ import ViewUserLayer from './ViewUserLayer.vue'
 import type ChineseChessUserData from '@/interface/ChineseChessUserData'
 import type UserData from '@/interface/UserData'
 
-const userData = null;
 let loading = true;
 let theme = 'light';
 let design = 'B';
@@ -95,7 +94,6 @@ onUnmounted(() => {
         <!-- 用户信息 -->
         <view-user-layer 
           class="user-section"
-          :user-data="userData" 
           :loading="loading" 
           :theme="theme" 
           :design="design"

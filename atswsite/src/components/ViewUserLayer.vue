@@ -5,202 +5,290 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type ChineseChessUserData from '@/interface/ChineseChessUserData'
 import type UserData from '@/interface/UserData'
 import Tool from '@/class/Tool'
+import { useUserStore } from '@/stores/store'
+import { apiService, type LoginCredentials, type RegisterData } from '@/services/api'
 
-// Props定义
+// ==================== 接口定义 ====================
 interface Props {
-  // 用户信息，如果存在则表示已登录
-  userData?: UserData | ChineseChessUserData | null
-  // 是否显示加载状态
-  loading?: boolean
-  // 界面显示主题(dark and light)
-  theme?: string
-  // 界面的样式类型(具体参考html模板)
-  design?: string
+  loading?: boolean  // 是否显示加载状态
+  theme?: string     // 界面显示主题(dark and light)
+  design?: string    // 界面的样式类型(具体参考html模板)
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  userData: null,
   loading: false,
   theme: '',
   design: ''
-});
+})
 
 // 事件定义
 const emit = defineEmits<{
   login: [credentials?: any]
   logout: []
   'update:userData': [userData: UserData | ChineseChessUserData | null]
-}>();
+}>()
 
+// ==================== Store 和 状态管理 ====================
+const userStore = useUserStore()
+
+// ==================== 响应式数据 ====================
 // 设备类型检测
-const isMobile = ref(false);
-const isTablet = ref(false);
+const isMobile = ref(false)
+const isTablet = ref(false)
 
-// 注册相关的响应式数据
-const showRegisterModal = ref(false); // PC 注册界面
-const showMobileRegisterModal = ref(false); // 移动版 注册界面
-// 注册表单数据
+// 弹窗显示状态
+const showLoginModal = ref(false)           // PC 登录界面
+const showMobileLoginModal = ref(false)     // 移动版 登录界面
+const showRegisterModal = ref(false)        // PC 注册界面
+const showMobileRegisterModal = ref(false)  // 移动版 注册界面
+const showUserDropdown = ref(false)
+const showMobileUserMenu = ref(false)
+
+// 表单数据
+const loginForm = ref({
+  email: '',
+  password: ''
+})
+
 const registerForm = ref({
   email: '',
   password: '',
   name: '',
   qq: ''
-});
+})
 
-// 统一的注册弹窗切换
+// 错误信息
+const loginError = ref('')
+const registerError = ref('')
+
+// ==================== 计算属性 ====================
+const isLoggedIn = computed(() => userStore.isLoggedIn)
+const userData = computed(() => userStore.userData)
+
+const userHeadImg = computed(() => {
+  if (!userData.value) return ''
+  // 使用自定义头像
+  if ('head_img' in userData.value && userData.value.head_img) {
+    return userData.value.head_img
+  }
+  return Tool.getDefaultHeadImg(userData.value.name, 100)
+})
+
+// ==================== 方法定义 ====================
+// 弹窗管理方法
+const toggleLogin = () => {
+  // 平板设备也可以使用移动端界面
+  if (isMobile.value || isTablet.value) {
+    showMobileLoginModal.value = !showMobileLoginModal.value
+    showLoginModal.value = false
+  } else {
+    showLoginModal.value = !showLoginModal.value
+    showMobileLoginModal.value = false
+  }
+  // 清空错误信息
+  loginError.value = ''
+  // 关闭其他弹窗
+  showUserDropdown.value = false
+  showMobileUserMenu.value = false
+}
+
 const toggleRegister = () => {
   if (isMobile.value || isTablet.value) {
-    showMobileRegisterModal.value = !showMobileRegisterModal.value;
-    showRegisterModal.value = false;
+    showMobileRegisterModal.value = !showMobileRegisterModal.value
+    showRegisterModal.value = false
   } else {
-    showRegisterModal.value = !showRegisterModal.value;
-    showMobileRegisterModal.value = false;
+    showRegisterModal.value = !showRegisterModal.value
+    showMobileRegisterModal.value = false
   }
-};
+  // 清空错误信息
+  registerError.value = ''
+}
 
-// 计算属性：是否已登录
-const isLoggedIn = computed(() => {return props.userData !== null && props.userData !== undefined;});
-
-// 计算属性：获取用户头像URL
-const userHeadImg = computed(() => {
-  if (!props.userData) return '';
-  // 使用自定义头像
-  if ('head_img' in props.userData && props.userData.head_img) {
-    return props.userData.head_img;
-  }
-  return Tool.getDefaultHeadImg(props.userData.name, 100);
-});
-
-// 登录方法
-const handleLogin = (credentials?: any) => {
-  emit('login', credentials);
-};
-
-// 登出方法
-const handleLogout = () => {
-  emit('logout');
-};
-
-// 更新用户信息
-const updateUserData = (userData: ChineseChessUserData | null) => {
-  emit('update:userData', userData);
-};
-
-// 响应式数据
-const showLoginModal = ref(false);// PC 登录界面
-const showMobileLoginModal = ref(false);// 移动版 登录界面
-const showUserDropdown = ref(false);
-const showMobileUserMenu = ref(false);
-
-// 切换用户下拉菜单
 const toggleUserDropdown = () => {
-  showUserDropdown.value = !showUserDropdown.value;
-};
+  showUserDropdown.value = !showUserDropdown.value
+}
 
-// 切换移动端用户菜单
 const toggleMobileUserMenu = () => {
-  showMobileUserMenu.value = !showMobileUserMenu.value;
-};
+  showMobileUserMenu.value = !showMobileUserMenu.value
+}
 
-// 统一的登录弹窗切换
-const toggleLogin = () => {
-  // 平板设备也可以使用移动端界面，或者根据需求调整
-  if (isMobile.value || isTablet.value) {
-    showMobileLoginModal.value = !showMobileLoginModal.value;
-    showLoginModal.value = false;
-  } else {
-    showLoginModal.value = !showLoginModal.value;
-    showMobileLoginModal.value = false;
-  }
-  
-  // 关闭其他弹窗
-  showUserDropdown.value = false;
-  showMobileUserMenu.value = false;
-};
-
-// 注册方法
-const handleRegister = () => {
-  const credentials = { ...registerForm.value };
-  // 这里可以添加注册逻辑
-  console.log('注册信息:', credentials);
-  // 注册成功后关闭弹窗
-  closeAllModals();
-};
-
-// 从登录切换到注册
-const switchToRegister = () => {
-  // 关闭其他弹窗
-  closeAllModals();
-  toggleRegister();
-};
-
-// 从注册切换到登录
-const switchToLogin = () => {
-  // 关闭其他弹窗
-  closeAllModals();
-  toggleLogin();
-};
-
-// 关闭所有弹窗
 const closeAllModals = () => {
-  showLoginModal.value = false;
-  showMobileLoginModal.value = false;
-  showRegisterModal.value = false;
-  showMobileRegisterModal.value = false;
-  showUserDropdown.value = false;
-  showMobileUserMenu.value = false;
+  showLoginModal.value = false
+  showMobileLoginModal.value = false
+  showRegisterModal.value = false
+  showMobileRegisterModal.value = false
+  showUserDropdown.value = false
+  showMobileUserMenu.value = false
   
+  // 清空错误信息
+  loginError.value = ''
+  registerError.value = ''
+
   // 清空注册表单
   registerForm.value = {
     email: '',
     password: '',
     name: '',
     qq: ''
-  };
-};
+  }
+}
 
-// 点击外部关闭弹窗
+// 弹窗切换方法
+const switchToRegister = () => {
+  closeAllModals()
+  toggleRegister()
+}
+
+const switchToLogin = () => {
+  closeAllModals()
+  toggleLogin()
+}
+
+// 认证相关方法
+const handleLogin = async () => {
+  loginError.value = ''
+  userStore.setLoading(true)
+
+  try {
+    const credentials: LoginCredentials = {
+      email: loginForm.value.email,
+      password: loginForm.value.password
+    }
+
+    const response = await apiService.login(credentials)
+    
+    if (response.success) {
+      // 保存token和用户ID到localStorage
+      localStorage.setItem('user_token', response.user?.token || '')
+      localStorage.setItem('user_id', response.user?.id?.toString() || '')
+      
+      // 更新store
+      userStore.setUser(response.user)
+      userStore.setToken(response.user?.token || '')
+      
+      // 关闭登录弹窗
+      closeAllModals()
+      
+      // 清空登录表单
+      loginForm.value = { email: '', password: '' }
+      
+      // 触发事件
+      emit('login', credentials)
+    } else {
+      loginError.value = response.message
+    }
+  } catch (error) {
+    loginError.value = error instanceof Error ? error.message : '登录失败，请重试'
+  } finally {
+    userStore.setLoading(false)
+  }
+}
+
+const handleRegister = async () => {
+  registerError.value = ''
+  userStore.setLoading(true)
+
+  try {
+    const registerData: RegisterData = {
+      email: registerForm.value.email,
+      password: registerForm.value.password,
+      name: registerForm.value.name,
+      qq: registerForm.value.qq || undefined
+    }
+
+    const response = await apiService.register(registerData)
+    
+    if (response.success) {
+      // 注册成功，显示成功消息
+      alert('注册成功！请查看邮箱激活您的账户。')
+      
+      // 关闭注册弹窗，切换到登录
+      closeAllModals()
+      switchToLogin()
+      
+      // 清空注册表单
+      registerForm.value = { email: '', password: '', name: '', qq: '' }
+    } else {
+      registerError.value = response.message
+    }
+  } catch (error) {
+    registerError.value = error instanceof Error ? error.message : '注册失败，请重试'
+  } finally {
+    userStore.setLoading(false)
+  }
+}
+
+const handleLogout = () => {
+  userStore.logout()
+  closeAllModals()
+  emit('logout')
+}
+
+// 自动登录检查
+const checkAutoLogin = async () => {
+  const authInfo = userStore.restoreAuth()
+  if (authInfo) {
+    try {
+      userStore.setLoading(true)
+      const response = await apiService.getUserData(authInfo.userId, authInfo.token)
+      if (response.success && response.user) {
+        userStore.setUser(response.user)
+      } else {
+        // token无效，清除本地存储
+        userStore.logout()
+      }
+    } catch (error) {
+      console.error('自动登录失败:', error)
+      userStore.logout()
+    } finally {
+      userStore.setLoading(false)
+    }
+  }
+}
+
+// 工具方法
 const handleClickOutside = (event: Event) => {
-  const target = event.target as HTMLElement;
+  const target = event.target as HTMLElement
   if (!target.closest('.user-avatar') && !target.closest('.user-dropdown') && 
       !target.closest('.login-modal') && !target.closest('.mobile-user-menu')) {
-    closeAllModals();
+    closeAllModals()
   }
-};
+}
 
-// 设备类型检测
 const detectDeviceType = () => {
-  const userAgent = navigator.userAgent.toLowerCase();
-  const screenWidth = window.innerWidth;
+  const userAgent = navigator.userAgent.toLowerCase()
+  const screenWidth = window.innerWidth
   
   // 移动设备特征检测
-  const isMobileDevice = /mobile|android|iphone|ipad|ipod|blackberry|windows phone|webos/i.test(userAgent);
+  const isMobileDevice = /mobile|android|iphone|ipad|ipod|blackberry|windows phone|webos/i.test(userAgent)
   const isTabletDevice = /ipad|tablet|playbook|silk|kindle/i.test(userAgent) || 
-                         (isMobileDevice && screenWidth >= 768 && screenWidth <= 1024);
+                         (isMobileDevice && screenWidth >= 768 && screenWidth <= 1024)
   
-  isMobile.value = isMobileDevice && !isTabletDevice;
-  isTablet.value = isTabletDevice;
-};
+  isMobile.value = isMobileDevice && !isTabletDevice
+  isTablet.value = isTabletDevice
+}
 
+// ==================== 生命周期 ====================
 onMounted(() => {
-  detectDeviceType();
-  document.addEventListener('click', handleClickOutside);
-  window.addEventListener('resize', detectDeviceType);
-});
+  detectDeviceType()
+  document.addEventListener('click', handleClickOutside)
+  window.addEventListener('resize', detectDeviceType)
+  // 检查自动登录
+  checkAutoLogin()
+})
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside);
-  window.removeEventListener('resize', detectDeviceType);
-});
+  document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('resize', detectDeviceType)
+})
 
-// 提供模板使用的响应式数据和方法
+// ==================== 暴露给模板的方法和数据 ====================
 defineExpose({
   isLoggedIn,
   userHeadImg,
   handleLogin,
-  handleLogout,
-  updateUserData
-});
+  handleLogout
+})
 </script>
 
 <template>
@@ -208,13 +296,13 @@ defineExpose({
     <!-- 样式 A : 悬浮固定在右上角的卡片样式，会美观的显示用户信息，点击头像会展开登录弹窗 -->
     <div v-if="props.design == 'A'" class="design-a">
       <div class="user-card" :class="{ 'logged-in': isLoggedIn }">
-        <div v-if="isLoggedIn && props.userData" class="user-info">
+        <div v-if="isLoggedIn && userData" class="user-info">
           <div class="avatar-container" @click="toggleUserDropdown">
-            <img :src="userHeadImg" :alt="props.userData.name" class="user-avatar" />
+            <img :src="userHeadImg" :alt="userData.name" class="user-avatar" />
           </div>
           <div class="user-details">
-            <div class="user-name">{{ props.userData.name }}</div>
-            <div class="user-email">{{ props.userData.email }}</div>
+            <div class="user-name">{{ userData.name }}</div>
+            <div class="user-email">{{ userData.email }}</div>
           </div>
           <div v-if="showUserDropdown" class="user-dropdown">
             <div class="dropdown-item" @click="handleLogout">退出登录</div>
@@ -229,13 +317,13 @@ defineExpose({
     <!-- 样式 B : 非固定悬浮的，跟随父组件的文档流的单一头像+用户名的样式，鼠标悬浮在头像或用户名上会显示用户信息，点击头像或用户名会展开登录弹窗 -->
     <div v-if="props.design == 'B'" class="design-b">
       <div class="user-compact" :class="{ 'logged-in': isLoggedIn }">
-        <div v-if="isLoggedIn && props.userData" class="user-info-hoverable">
-          <img :src="userHeadImg" :alt="props.userData.name" class="user-avatar" />
-          <span class="user-name">{{ props.userData.name }}</span>
+        <div v-if="isLoggedIn && userData" class="user-info-hoverable">
+          <img :src="userHeadImg" :alt="userData.name" class="user-avatar" />
+          <span class="user-name">{{ userData.name }}</span>
           <div class="user-tooltip">
             <div class="tooltip-content">
-              <p>{{ props.userData.name }}</p>
-              <p>{{ props.userData.email }}</p>
+              <p>{{ userData.name }}</p>
+              <p>{{ userData.email }}</p>
               <button class="logout-btn" @click="handleLogout">退出</button>
             </div>
           </div>
@@ -250,13 +338,13 @@ defineExpose({
     <!-- 样式 C : 悬浮固定在右上角的单一头像+用户名的样式，鼠标悬浮在头像或用户名上会显示用户信息，点击头像或用户名会展开登录弹窗 -->
     <div v-if="props.design == 'C'" class="design-c">
       <div class="user-fixed" :class="{ 'logged-in': isLoggedIn }">
-        <div v-if="isLoggedIn && props.userData" class="user-info-fixed">
-          <img :src="userHeadImg" :alt="props.userData.name" class="user-avatar" />
-          <span class="user-name">{{ props.userData.name }}</span>
+        <div v-if="isLoggedIn && userData" class="user-info-fixed">
+          <img :src="userHeadImg" :alt="userData.name" class="user-avatar" />
+          <span class="user-name">{{ userData.name }}</span>
           <div class="user-tooltip">
             <div class="tooltip-content">
-              <p>{{ props.userData.name }}</p>
-              <p>{{ props.userData.email }}</p>
+              <p>{{ userData.name }}</p>
+              <p>{{ userData.email }}</p>
               <button class="logout-btn" @click="handleLogout">退出</button>
             </div>
           </div>
@@ -270,8 +358,8 @@ defineExpose({
 
     <!-- 样式 D : 非固定悬浮的，跟随父组件的文档流的仅显示用户头像的样式，没有任何其他的行为 -->
     <div v-if="props.design == 'D'" class="design-d">
-      <div v-if="isLoggedIn && props.userData" class="user-avatar-only">
-        <img :src="userHeadImg" :alt="props.userData.name" class="user-avatar" />
+      <div v-if="isLoggedIn && userData" class="user-avatar-only">
+        <img :src="userHeadImg" :alt="userData.name" class="user-avatar" />
       </div>
       <div v-else class="avatar-placeholder-only">
         <div class="avatar-placeholder"></div>
@@ -280,8 +368,8 @@ defineExpose({
 
     <!-- 样式 E : 悬浮固定在右上角的单一头像的样式，没有任何其他的行为 -->
     <div v-if="props.design == 'E'" class="design-e">
-      <div v-if="isLoggedIn && props.userData" class="user-avatar-fixed">
-        <img :src="userHeadImg" :alt="props.userData.name" class="user-avatar" />
+      <div v-if="isLoggedIn && userData" class="user-avatar-fixed">
+        <img :src="userHeadImg" :alt="userData.name" class="user-avatar" />
       </div>
       <div v-else class="avatar-placeholder-fixed">
         <div class="avatar-placeholder"></div>
@@ -291,13 +379,13 @@ defineExpose({
     <!-- 样式 F : 非固定悬浮的，跟随父组件的文档流的仅显示用户头像+用户名的样式，专为移动端定制，轻触头像会展开或关闭用户的信息与登出按钮(如果未登录的话会展开登录弹窗) -->
     <div v-if="props.design == 'F'" class="design-f">
       <div class="user-mobile" :class="{ 'logged-in': isLoggedIn }">
-        <div v-if="isLoggedIn && props.userData" class="user-mobile-logged">
+        <div v-if="isLoggedIn && userData" class="user-mobile-logged">
           <div class="mobile-user-header" @click="toggleMobileUserMenu">
-            <img :src="userHeadImg" :alt="props.userData.name" class="user-avatar" />
-            <span class="user-name">{{ props.userData.name }}</span>
+            <img :src="userHeadImg" :alt="userData.name" class="user-avatar" />
+            <span class="user-name">{{ userData.name }}</span>
           </div>
           <div v-if="showMobileUserMenu" class="mobile-user-menu">
-            <div class="menu-item">{{ props.userData.email }}</div>
+            <div class="menu-item">{{ userData.email }}</div>
             <div class="menu-item" @click="handleLogout">退出登录</div>
           </div>
         </div>
@@ -320,13 +408,17 @@ defineExpose({
           <form @submit.prevent="handleLogin">
             <div class="form-group">
               <label for="email">邮箱</label>
-              <input type="email" id="email" autocomplete="autocomplete" required placeholder="请输入邮箱" />
+              <input type="email" id="email" autocomplete="autocomplete" v-model="loginForm.email" required placeholder="请输入邮箱" />
             </div>
             <div class="form-group">
               <label for="password">密码</label>
-              <input type="password" id="password" required placeholder="请输入密码" />
+              <input type="password" id="password" v-model="loginForm.password" required placeholder="请输入密码" />
             </div>
-            <button type="submit" class="submit-btn">登录</button>
+            <!-- 显示服务器的登录错误信息 -->
+            <div v-if="loginError" class="error-message">{{ loginError }}</div>
+            <button type="submit" class="submit-btn" :disabled="userStore.loading">
+              {{ userStore.loading ? '登录中...' : '登录' }}
+            </button>
           </form>
           <div class="register-prompt">
             没有账号? <a href="#" class="register-link" @click.prevent.stop="switchToRegister">立即注册</a>
@@ -346,12 +438,16 @@ defineExpose({
         <div class="modal-body">
           <form @submit.prevent="handleLogin">
             <div class="form-group">
-              <input type="email" id="email" autocomplete="autocomplete" required placeholder="邮箱" />
+              <input type="email" id="email" autocomplete="autocomplete" v-model="loginForm.email" required placeholder="邮箱" />
             </div>
             <div class="form-group">
-              <input type="password" id="password" required placeholder="密码" />
+              <input type="password" id="password" v-model="loginForm.password" required placeholder="密码" />
             </div>
-            <button type="submit" class="submit-btn">登录</button>
+            <!-- 显示服务器的登录错误信息 -->
+            <div v-if="loginError" class="error-message">{{ loginError }}</div>
+            <button type="submit" class="submit-btn" :disabled="userStore.loading">
+              {{ userStore.loading ? '登录中...' : '登录' }}
+            </button>
           </form>
           <div class="mobile-login-options">
             <a href="#" class="mobile-option-link1">没有账号?</a>
@@ -376,7 +472,7 @@ defineExpose({
               <input 
                 type="email" 
                 id="reg-email" 
-                v-model="registerForm.email"
+                v-model="registerForm.email" 
                 required 
                 placeholder="请输入邮箱" 
               />
@@ -386,7 +482,7 @@ defineExpose({
               <input 
                 type="password" 
                 id="reg-password" 
-                v-model="registerForm.password"
+                v-model="registerForm.password" 
                 required 
                 placeholder="请输入密码" 
               />
@@ -396,7 +492,7 @@ defineExpose({
               <input 
                 type="text" 
                 id="reg-name" 
-                v-model="registerForm.name"
+                v-model="registerForm.name" 
                 required 
                 placeholder="请输入昵称" 
               />
@@ -406,11 +502,15 @@ defineExpose({
               <input 
                 type="text" 
                 id="reg-qq" 
-                v-model="registerForm.qq"
+                v-model="registerForm.qq" 
                 placeholder="请输入QQ号" 
               />
             </div>
-            <button type="submit" class="submit-btn register-submit-btn">注册</button>
+            <!-- 显示服务器的登录错误信息 -->
+            <div v-if="registerError" class="error-message">{{ registerError }}</div>
+            <button type="submit" class="submit-btn register-submit-btn" :disabled="userStore.loading">
+              {{ userStore.loading ? '注册中...' : '注册' }}
+            </button>
           </form>
           <div class="login-prompt">
             已有账号? <a href="#" class="login-link" @click.prevent="switchToLogin">立即登录</a>
@@ -433,7 +533,7 @@ defineExpose({
               <input 
                 type="email" 
                 id="reg-email" 
-                v-model="registerForm.email"
+                v-model="registerForm.email" 
                 required 
                 placeholder="邮箱" 
               />
@@ -442,7 +542,7 @@ defineExpose({
               <input 
                 type="password" 
                 id="reg-password" 
-                v-model="registerForm.password"
+                v-model="registerForm.password" 
                 required 
                 placeholder="密码" 
               />
@@ -451,7 +551,7 @@ defineExpose({
               <input 
                 type="text" 
                 id="reg-name" 
-                v-model="registerForm.name"
+                v-model="registerForm.name" 
                 required 
                 placeholder="昵称" 
               />
@@ -460,11 +560,15 @@ defineExpose({
               <input 
                 type="text" 
                 id="reg-qq" 
-                v-model="registerForm.qq"
+                v-model="registerForm.qq" 
                 placeholder="QQ号 (选填)" 
               />
             </div>
-            <button type="submit" class="submit-btn register-submit-btn">注册</button>
+            <!-- 显示服务器的登录错误信息 -->
+            <div v-if="registerError" class="error-message">{{ registerError }}</div>
+            <button type="submit" class="submit-btn register-submit-btn" :disabled="userStore.loading">
+              {{ userStore.loading ? '注册中...' : '注册' }}
+            </button>
           </form>
           <div class="mobile-login-options">
             <a href="#" class="mobile-option-link1">已有账号?</a>
@@ -1007,5 +1111,22 @@ defineExpose({
 
 .theme-dark .login-prompt {
   color: #ccc;
+}
+
+/* 注册和登录的服务器消息 */
+.error-message {
+  color: #f44336;
+  background: #ffebee;
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
 }
 </style>

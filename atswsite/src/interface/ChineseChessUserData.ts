@@ -6,8 +6,7 @@ export default interface ChineseChessUserData {
     name: string; // 用户名
     qq: number; // QQ 号码
     theme_color: string; // 主题颜色（暗黑和亮色）
-    
     head_img: string; // 头像的URI
-    created_at: number; // 账户创建日期（时间戳）
-    last_login: number; // 最后登录日期（时间戳）
+    /* 游戏账号相关数据-存在游戏数据库 */
+    player_leave: number; // 玩家等级
 }
