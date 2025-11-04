@@ -6,7 +6,7 @@ import type ChineseChessUserData from '@/interface/ChineseChessUserData'
 import type UserData from '@/interface/UserData'
 import Tool from '@/class/Tool'
 import { useUserStore } from '@/stores/store'
-import { apiService, type LoginCredentials, type RegisterData } from '@/services/api'
+import { accountApiService, type LoginCredentials, type RegisterData } from '@/services/api'
 
 // ==================== 接口定义 ====================
 interface Props {
@@ -154,8 +154,7 @@ const handleLogin = async () => {
       email: loginForm.value.email,
       password: loginForm.value.password
     }
-
-    const response = await apiService.login(credentials)
+    const response = await accountApiService.login(credentials)
     
     if (response.success) {
       // 保存token和用户ID到localStorage
@@ -195,9 +194,8 @@ const handleRegister = async () => {
       name: registerForm.value.name,
       qq: registerForm.value.qq || undefined
     }
+    const response = await accountApiService.register(registerData)
 
-    const response = await apiService.register(registerData)
-    
     if (response.success) {
       // 注册成功，显示成功消息
       alert('注册成功！请查看邮箱激活您的账户。')
@@ -230,7 +228,7 @@ const checkAutoLogin = async () => {
   if (authInfo) {
     try {
       userStore.setLoading(true)
-      const response = await apiService.getUserData(authInfo.userId, authInfo.token)
+      const response = await accountApiService.getUserData(authInfo.userId, authInfo.token)
       if (response.success && response.user) {
         userStore.setUser(response.user)
       } else {

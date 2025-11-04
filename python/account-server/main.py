@@ -16,8 +16,24 @@ from email.mime.text import MIMEText
 from email.header import Header
 import special_config
 import ssl
+import datetime
+import sys
 
 characters_ = string.digits + string.ascii_letters
+maxcLength = 500 # 记录每个响应内容在日志内的最大长度
+
+# 创建日志文件
+current_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+log_filename = f"{current_time}-log.txt"
+log_file = open(log_filename, 'w', encoding='utf-8')
+
+def log_message(message):
+    """记录日志信息到文件和控制台"""
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    formatted_message = f"[{timestamp}] {message}"
+    print(formatted_message)
+    log_file.write(formatted_message + '\n')
+    log_file.flush()  # 确保立即写入文件
 
 class DatabaseManager:
     """数据库管理类"""
@@ -81,7 +97,7 @@ class EmailUtils:
         smtp_port = special_config._smtp_port_
         sender_email = special_config._sender_email_
         sender_password = special_config._sender_password_
-        
+
         # 激活链接 
         activation_link = f"{special_config._run_site_}/activate?code={verification_code}&user_id={user_id}"
         
@@ -110,15 +126,15 @@ class EmailUtils:
             msg['To'] = email
             
             # 发送邮件
-            server = smtplib.SMTP(smtp_server, smtp_port)
-            server.starttls()
+            server = smtplib.SMTP_SSL(host=smtp_server, port=smtp_port, timeout=5)
             server.login(sender_email, sender_password)
             server.sendmail(sender_email, [email], msg.as_string())
             server.quit()
             
+            log_message(f"账号激活邮件发送成功: {email}")
             return True
         except Exception as e:
-            print(f"发送邮件失败: {e}")
+            log_message(f"发送账号激活邮件失败: {email}, 错误: {e}")
             return False
 
 class AccountService:
@@ -178,6 +194,11 @@ class AccountService:
         response = f"HTTP/1.1 {status_code} {status_text}\r\n"
         response += f"Content-Type: {content_type}\r\n"
         
+        # 添加CORS头允许跨域访问api
+        response += "Access-Control-Allow-Origin: *\r\n"
+        response += "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+        response += "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+        
         if cookies:
             for cookie in cookies:
                 response += f"Set-Cookie: {cookie}\r\n"
@@ -189,9 +210,46 @@ class AccountService:
         
         return response.encode('utf-8')
     
+    def log_request(self, method, path, params, addr):
+        """记录请求信息"""
+        # 隐藏敏感信息
+        safe_params = params.copy()
+        if 'password' in safe_params:
+            safe_params['password'] = '***hidden***'
+        
+        log_message(f"请求来自 {addr}: {method} {path}")
+        log_message(f"请求参数: {safe_params}")
+    
+    def log_response(self, response_data, addr):
+        """记录响应信息"""
+        try:
+            # 尝试解析响应内容
+            response_str = response_data.decode('utf-8')
+            # 提取状态码
+            status_line = response_str.split('\r\n')[0]
+            # 提取响应体
+            body_start = response_str.find('\r\n\r\n') + 4
+            body = response_str[body_start:] if body_start > 3 else ""
+            
+            # 尝试解析JSON响应体
+            try:
+                json_body = json.loads(body) if body else {}
+                # 隐藏敏感信息
+                safe_body = json_body.copy()
+                if 'user' in safe_body and safe_body['user'] and 'password' in safe_body['user']:
+                    safe_body['user']['password'] = '***'
+                
+                log_message(f"响应给 {addr}: {status_line}")
+                log_message(f"响应内容: {json.dumps(safe_body, ensure_ascii=False)}")
+            except:
+                log_message(f"响应给 {addr}: {status_line}")
+                log_message(f"响应内容: {body[:maxcLength]}...")
+        except:
+            log_message(f"响应给 {addr}: [二进制数据，长度: {len(response_data)}]")
+    
     def handle_register(self, params):
         """处理注册请求"""
-        response = {"success": False, "message": "", "user_id": None}
+        response = {"success": False, "message": ""}
         
         try:
             email = params.get('email', '').strip().lower()
@@ -462,12 +520,15 @@ class AccountService:
         
         return response
     
-    def handle_request(self, request_data):
+    def handle_request(self, request_data, addr):
         """处理HTTP请求"""
         method, path, params = self.parse_request(request_data)
         
         if not method or not path:
             return self.create_response({"error": "Invalid request"}, 400)
+        
+        # 记录请求信息
+        self.log_request(method, path, params, addr)
         
         # 获取Cookie
         cookies = []
@@ -475,25 +536,30 @@ class AccountService:
             if line.startswith('Cookie:'):
                 cookies = [c.strip() for c in line[8:].split(';')]
         
+        # 处理OPTIONS预检请求 返回空响应
+        if method == 'OPTIONS':
+            return self.create_response({})
+
         # 路由处理
         if path == '/register' and method == 'POST':
             result = self.handle_register(params)
-            return self.create_response(result)
-        
+            response = self.create_response(result)
         elif path == '/login' and method == 'POST':
             result, cookie_list = self.handle_login(params, cookies)
-            return self.create_response(result, cookies=cookie_list)
-        
+            response = self.create_response(result, cookies=cookie_list)
         elif path == '/activate' and method == 'GET':
             result = self.handle_activate(params)
-            return self.create_response(result)
-        
+            response = self.create_response(result)
         elif path == '/getuserdata' and method == 'POST':
             result = self.handle_getuserdata(params, cookies)
-            return self.create_response(result)
-        
+            response = self.create_response(result)
         else:
-            return self.create_response({"error": "Not found"}, 404)
+            response = self.create_response({"error": "Not found"}, 404)
+        
+        # 记录响应信息
+        self.log_response(response, addr)
+        
+        return response
 
 class AccountServer:
     """账号服务器类"""
@@ -506,7 +572,7 @@ class AccountServer:
         self.ssl_crt_file = special_config._ssl_crt_file_
         self.ssl_key_file = special_config._ssl_key_file_
     
-    def handle_client(self, client_socket):
+    def handle_client(self, client_socket, addr):
         """处理客户端连接"""
         try:
             # 接收请求数据
@@ -515,13 +581,13 @@ class AccountServer:
                 return
             
             # 处理请求并生成响应
-            response = self.account_service.handle_request(request_data)
+            response = self.account_service.handle_request(request_data, addr)
             
             # 发送响应
             client_socket.send(response)
             
         except Exception as e:
-            print(f"处理客户端请求时出错: {e}")
+            log_message(f"处理客户端请求时出错: {e}")
         finally:
             client_socket.close()
     
@@ -543,31 +609,32 @@ class AccountServer:
                     
                     # 包装socket
                     server_socket = context.wrap_socket(server_socket, server_side=True)
-                    print(f"账号服务已启动（SSL加密），监听端口 {self.port}")
+                    log_message(f"账号服务已启动（SSL加密），监听端口 {self.port}")
                 except Exception as e:
-                    print(f"SSL配置失败: {e}")
-                    print(f"账号服务已启动（无SSL），监听端口 {self.port}")
+                    log_message(f"SSL配置失败: {e}")
+                    log_message(f"账号服务已启动（无SSL），监听端口 {self.port}")
             else:
-                print(f"账号服务已启动，监听端口 {self.port}")
+                log_message(f"账号服务已启动，监听端口 {self.port}")
             
             while True:
                 client_socket, addr = server_socket.accept()
-                print(f"接收到来自 {addr} 的连接")
+                log_message(f"接收到来自 {addr} 的连接")
                 
                 # 为每个客户端创建新线程
                 client_thread = threading.Thread(
                     target=self.handle_client, 
-                    args=(client_socket,)
+                    args=(client_socket, addr)
                 )
                 client_thread.daemon = True
                 client_thread.start()
                 
         except KeyboardInterrupt:
-            print("服务器正在关闭...")
+            log_message("服务器正在关闭...")
         except Exception as e:
-            print(f"服务器错误: {e}")
+            log_message(f"服务器错误: {e}")
         finally:
             server_socket.close()
+            log_file.close()
 
 def init_database():
     """初始化数据库"""
@@ -604,15 +671,17 @@ def init_database():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_verification_code ON users(verification_code)')
         
         conn.commit()
-        print(f"数据库初始化成功！数据库文件: {db_path}")
+        log_message(f"数据库初始化成功！数据库文件: {db_path}")
         
     except sqlite3.Error as e:
-        print(f"数据库初始化失败: {e}")
+        log_message(f"数据库初始化失败: {e}")
     finally:
         if conn:
             conn.close()
 
 if __name__ == "__main__":
+    log_message(f"脚本启动，日志文件: {log_filename}")
+    
     # 初始化数据库
     init_database()
     
