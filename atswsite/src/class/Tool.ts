@@ -1,6 +1,18 @@
 // The relative position of this file: src/class/Tool.ts
 export default class Tool {
     public static defaultHeadImgCache = new Map<string,string>();//头像缓存
+    // 常见图片格式扩展名
+    public static imageExtensions = [
+        'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 
+        'ico', 'tiff', 'tif', 'avif', 'heic', 'heif'
+    ];
+        
+    // 常见图片 MIME 类型
+    public static imageMimeTypes = [
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+        'image/bmp', 'image/webp', 'image/svg+xml', 'image/x-icon',
+        'image/tiff', 'image/avif', 'image/heic', 'image/heif'
+    ];
     /**
      * 生成格式为 'YYYY-MM-DD HH:mm:ss:SSS' 的时间字符串
      * @param date 可选，Date对象，默认为当前时间
@@ -273,5 +285,30 @@ export default class Tool {
         const avatar = this.createDefaultHeadImg(username, size);
         this.defaultHeadImgCache.set(cacheKey, avatar);
         return avatar;
+    }
+
+    /**
+     * 检测一个字符串是否是图像的资源链接
+     * @param str 
+     */
+    public static isImgURI(str: string): boolean {
+        if (typeof str !== 'string') return false;
+        try {
+            // 检查是否是 Data URL（base64 图片）
+            if (str.startsWith('data:image/')) {
+                const mimeType = str.split(';')[0].split(':')[1];
+                return this.imageMimeTypes.includes(mimeType);
+            }
+            // 检查是否是 URL
+            const url = new URL(str);
+            const pathname = url.pathname.toLowerCase();
+            const extension = pathname.split('.').pop() as string;
+            
+            return this.imageExtensions.includes(extension);
+        } catch {
+            // 如果不是有效的 URL，检查是否是相对路径
+            const extension = str.split('.').pop() as string;
+            return this.imageExtensions.includes(extension);
+        }
     }
 }

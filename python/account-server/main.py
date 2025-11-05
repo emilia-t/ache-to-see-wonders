@@ -24,7 +24,7 @@ maxcLength = 500 # 记录每个响应内容在日志内的最大长度
 
 # 创建日志文件
 current_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-log_filename = f"{current_time}-log.txt"
+log_filename = f"{current_time}-log.log"
 log_file = open(log_filename, 'w', encoding='utf-8')
 
 def log_message(message):
@@ -99,28 +99,13 @@ class EmailUtils:
         sender_password = special_config._sender_password_
 
         # 激活链接 
-        activation_link = f"{special_config._run_site_}/activate?code={verification_code}&user_id={user_id}"
-        
+        activation_link = f"{special_config._login_site_}/activate?code={verification_code}&user_id={user_id}"
         subject = "ATSW账户激活"
-        body = f"""
-        亲爱的 {name}，
-        
-        感谢您注册我们的网站！
-        
-        请点击以下链接激活您的账户：
-        {activation_link}
-        
-        此链接在5分钟内有效。
-        
-        如果您没有注册此账户，请忽略此邮件。
-        
-        谢谢！
-        ATSW网站团队
-        """
-        
+        # HTML邮件内容 WebsiteAccountActivation.html
+        body = f"""<html><head><meta charset="UTF-8"><style>body{{color:#333;margin:0;padding:20px}} .h{{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:20px;text-align:center;border-radius:8px 8px 0 0}} .b{{display:inline-block;background:#4CAF50;color:#fff;padding:12px 24px;text-decoration:none;border-radius:5px;margin:15px 0}} .f{{border-top:1px solid #ddd;color:#666;font-size:18px}}</style></head><body><div class="h"><h2>🎉 欢迎加入 ATSW！</h2></div><div><p>亲爱的 <strong>{name}</strong>，</p><p>感谢您注册我们的网站！请点击下方按钮激活您的账户：</p><div style="text-align:left"><a href="{activation_link}" class="b">🚀 立即激活账户</a></div><p>或者复制以下链接到浏览器中打开：</p><p style="word-break:break-all;background:#eee;padding:10px;border-radius:4px;font-size:12px">{activation_link}</p><p><strong>⚠️ 重要提示：</strong>此链接在 <strong>5分钟</strong> 内有效。</p><p>如果您没有注册此账户，请忽略此邮件。</p></div><div class="f"><p>谢谢！<br>ATSW网站团队</p></div></body></html>"""
         try:
-            # 创建邮件
-            msg = MIMEText(body, 'plain', 'utf-8')
+            # 创建HTML邮件
+            msg = MIMEText(body, 'html', 'utf-8')
             msg['Subject'] = Header(subject, 'utf-8')
             msg['From'] = sender_email
             msg['To'] = email
@@ -145,6 +130,16 @@ class AccountService:
         self.security = SecurityUtils()
         self.email_utils = EmailUtils()
     
+    def create_html_response(self, title, message, is_success=True, redirect_url=None):
+        """创建HTML响应页面"""
+        icon = "✅" if is_success else "❌"
+        bg_color = "#d4edda" if is_success else "#f8d7da"
+        border_color = "#c3e6cb" if is_success else "#f5c6cb"
+
+        # 激活返回页面 ViewAccountActivationRespone.html
+        html = f"""<html><head><meta charset="UTF-8"><title>{title}</title><style>body{{background:linear-gradient(135deg,#667eea,#764ba2);margin:0;padding:20px;min-height:100vh;display:flex;align-items:center;justify-content:center}} .c{{background:white;padding:30px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.2);text-align:center;width:100%}} .m{{background:{bg_color};border:1px solid {border_color};padding:15px;border-radius:5px;margin:20px 0;color:#155724;font-size:24px}} .i{{font-size:48px;margin-bottom:20px}}</style></head><body><div class="c"><div class="i">{icon}</div><h1>{title}</h1><div class="m">{message}</div></div></body></html>"""
+        return html.encode('utf-8')
+
     def parse_request(self, request_data):
         """解析HTTP请求"""
         lines = request_data.split('\r\n')
@@ -401,40 +396,51 @@ class AccountService:
     
     def handle_activate(self, params):
         """处理激活请求"""
-        response = {"success": False, "message": ""}
         
         try:
             verification_code = params.get('code', '').strip()
             user_id = params.get('user_id', '').strip()
             
             if not verification_code or not user_id:
-                response["message"] = "激活参数不完整"
-                return response
+                return self.create_html_response(
+                    "激活失败", 
+                    "激活参数不完整，请检查链接是否正确。",
+                    is_success=False
+                )
             
             # 查询用户
             user = self.db.execute_query('''
-                SELECT id, verification_code, code_expiry, email_verified 
+                SELECT id, verification_code, code_expiry, email_verified, email
                 FROM users 
                 WHERE id = ? AND verification_code = ?
             ''', (user_id, verification_code))
             
             if not user:
-                response["message"] = "激活链接无效"
-                return response
+                return self.create_html_response(
+                    "激活失败", 
+                    "激活链接无效或已过期，请重新注册。",
+                    is_success=False
+                )
             
             user_data = user[0]
             current_time = int(time.time())
             
             # 检查验证码是否过期
             if user_data[2] < current_time:
-                response["message"] = "激活链接已过期，请重新注册"
-                return response
+                return self.create_html_response(
+                    "激活失败", 
+                    "激活链接已过期，请重新注册。",
+                    is_success=False
+                )
             
             # 检查是否已激活
             if user_data[3]:
-                response["success"] = True
-                response["message"] = "账户已激活，无需重复操作"
-                return response
+                return self.create_html_response(
+                    "账户已激活", 
+                    f"您的账户 {user_data[4]} 已经激活过了，无需重复操作。",
+                    is_success=True,
+                    redirect_url=f"{special_config._main_site_}"
+                )
             
             # 激活账户
             self.db.execute_query('''
@@ -443,13 +449,19 @@ class AccountService:
                 WHERE id = ?
             ''', (user_id,))
             
-            response["success"] = True
-            response["message"] = "账户激活成功！您现在可以登录了"
+            return self.create_html_response(
+                "激活成功", 
+                f"恭喜！您的账户 {user_data[4]} 已成功激活。<br>现在可以登录使用所有功能了。",
+                is_success=True,
+                redirect_url=f"{special_config._main_site_}"
+            )
             
         except Exception as e:
-            response["message"] = f"激活过程中发生错误: {str(e)}"
-        
-        return response
+            return self.create_html_response(
+                "激活失败", 
+                f"激活过程中发生错误。<br>请联系管理员。",
+                is_success=False
+            )
     
     def handle_getuserdata(self, params, cookies):
         """处理获取用户数据请求"""
@@ -548,8 +560,17 @@ class AccountService:
             result, cookie_list = self.handle_login(params, cookies)
             response = self.create_response(result, cookies=cookie_list)
         elif path == '/activate' and method == 'GET':
-            result = self.handle_activate(params)
-            response = self.create_response(result)
+            # 直接返回HTML响应
+            html_content = self.handle_activate(params)
+            # 创建完整的HTTP响应
+            response_lines = [
+                "HTTP/1.1 200 OK",
+                "Content-Type: text/html; charset=utf-8",
+                "Content-Length: " + str(len(html_content)),
+                "",
+                html_content.decode('utf-8')  # 转换为字符串
+            ]
+            response = "\r\n".join(response_lines).encode('utf-8')
         elif path == '/getuserdata' and method == 'POST':
             result = self.handle_getuserdata(params, cookies)
             response = self.create_response(result)

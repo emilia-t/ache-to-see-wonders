@@ -7,7 +7,8 @@ _smtp_server_ = 'smtp.your-email-provider.com' # smtp 服务器地址
 _smtp_port_ = 465 # smtp 端口
 _sender_email_ = 'noreply@yoursite.com' # 发送给用户时用的电子邮箱
 _sender_password_ = 'your_email_password' # 密码
-_run_site_ = 'https://run.site.com' # 网站地址
+_login_site_ = 'https://login.site.com:810' # 登录网站地址
+_main_site_ = 'https://www.site.com'  # 主站地址
 
 # ssl 相关配置
 _ssl_enable_ = False # 是否启用 ssl

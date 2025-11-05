@@ -1,128 +1,132 @@
 <script setup lang="ts">
 // The relative position of this file: src/components/ViewUserLayer.vue
 // 此组件用于各个page的登录用户信息展示和登录界面
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import type ChineseChessUserData from '@/interface/ChineseChessUserData'
-import type UserData from '@/interface/UserData'
-import Tool from '@/class/Tool'
-import { useUserStore } from '@/stores/store'
-import { accountApiService, type LoginCredentials, type RegisterData } from '@/services/api'
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import type ChineseChessUserData from '@/interface/ChineseChessUserData';
+import type UserData from '@/interface/UserData';
+import Tool from '@/class/Tool';
+import { useUserStore } from '@/stores/store';
+import { accountApiService, type LoginCredentials, type RegisterData } from '@/services/api';
 
 // ==================== 接口定义 ====================
 interface Props {
   loading?: boolean  // 是否显示加载状态
   theme?: string     // 界面显示主题(dark and light)
   design?: string    // 界面的样式类型(具体参考html模板)
-}
+};
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   theme: '',
   design: ''
-})
+});
 
 // 事件定义
 const emit = defineEmits<{
   login: [credentials?: any]
   logout: []
   'update:userData': [userData: UserData | ChineseChessUserData | null]
-}>()
+}>();
 
 // ==================== Store 和 状态管理 ====================
-const userStore = useUserStore()
+const userStore = useUserStore();
 
 // ==================== 响应式数据 ====================
 // 设备类型检测
-const isMobile = ref(false)
-const isTablet = ref(false)
+const isMobile = ref(false);
+const isTablet = ref(false);
 
 // 弹窗显示状态
-const showLoginModal = ref(false)           // PC 登录界面
-const showMobileLoginModal = ref(false)     // 移动版 登录界面
-const showRegisterModal = ref(false)        // PC 注册界面
-const showMobileRegisterModal = ref(false)  // 移动版 注册界面
-const showUserDropdown = ref(false)
-const showMobileUserMenu = ref(false)
+const showLoginModal = ref(false);           // PC 登录界面
+const showMobileLoginModal = ref(false);     // 移动版 登录界面
+const showRegisterModal = ref(false);        // PC 注册界面
+const showMobileRegisterModal = ref(false);  // 移动版 注册界面
+const showUserDropdown = ref(false);
+const showMobileUserMenu = ref(false);
 
 // 表单数据
 const loginForm = ref({
   email: '',
   password: ''
-})
+});
 
 const registerForm = ref({
   email: '',
   password: '',
   name: '',
   qq: ''
-})
+});
 
 // 错误信息
-const loginError = ref('')
-const registerError = ref('')
+const loginError = ref('');
+const registerError = ref('');
 
 // ==================== 计算属性 ====================
-const isLoggedIn = computed(() => userStore.isLoggedIn)
-const userData = computed(() => userStore.userData)
+const isLoggedIn = computed(() => userStore.isLoggedIn);
+const userData = computed(() => userStore.userData);
 
 const userHeadImg = computed(() => {
-  if (!userData.value) return ''
+  if (!userData.value) return '';
   // 使用自定义头像
   if ('head_img' in userData.value && userData.value.head_img) {
-    return userData.value.head_img
+    if(Tool.isImgURI(userData.value.head_img)){
+      return userData.value.head_img;
+    }else{
+      return Tool.getDefaultHeadImg(userData.value.name, 100);
+    }
   }
-  return Tool.getDefaultHeadImg(userData.value.name, 100)
-})
+  return Tool.getDefaultHeadImg(userData.value.name, 100);
+});
 
 // ==================== 方法定义 ====================
 // 弹窗管理方法
 const toggleLogin = () => {
   // 平板设备也可以使用移动端界面
   if (isMobile.value || isTablet.value) {
-    showMobileLoginModal.value = !showMobileLoginModal.value
-    showLoginModal.value = false
+    showMobileLoginModal.value = !showMobileLoginModal.value;
+    showLoginModal.value = false;
   } else {
-    showLoginModal.value = !showLoginModal.value
-    showMobileLoginModal.value = false
+    showLoginModal.value = !showLoginModal.value;
+    showMobileLoginModal.value = false;
   }
   // 清空错误信息
-  loginError.value = ''
+  loginError.value = '';
   // 关闭其他弹窗
-  showUserDropdown.value = false
-  showMobileUserMenu.value = false
-}
+  showUserDropdown.value = false;
+  showMobileUserMenu.value = false;
+};
 
 const toggleRegister = () => {
   if (isMobile.value || isTablet.value) {
-    showMobileRegisterModal.value = !showMobileRegisterModal.value
-    showRegisterModal.value = false
+    showMobileRegisterModal.value = !showMobileRegisterModal.value;
+    showRegisterModal.value = false;
   } else {
-    showRegisterModal.value = !showRegisterModal.value
-    showMobileRegisterModal.value = false
+    showRegisterModal.value = !showRegisterModal.value;
+    showMobileRegisterModal.value = false;
   }
   // 清空错误信息
-  registerError.value = ''
-}
+  registerError.value = '';
+};
 
 const toggleUserDropdown = () => {
-  showUserDropdown.value = !showUserDropdown.value
-}
+  showUserDropdown.value = !showUserDropdown.value;
+};
 
 const toggleMobileUserMenu = () => {
-  showMobileUserMenu.value = !showMobileUserMenu.value
-}
+  showMobileUserMenu.value = !showMobileUserMenu.value;
+};
 
 const closeAllModals = () => {
-  showLoginModal.value = false
-  showMobileLoginModal.value = false
-  showRegisterModal.value = false
-  showMobileRegisterModal.value = false
-  showUserDropdown.value = false
-  showMobileUserMenu.value = false
+  showLoginModal.value = false;
+  showMobileLoginModal.value = false;
+  showRegisterModal.value = false;
+  showMobileRegisterModal.value = false;
+  showUserDropdown.value = false;
+  showMobileUserMenu.value = false;
   
   // 清空错误信息
-  loginError.value = ''
-  registerError.value = ''
+  loginError.value = '';
+  registerError.value = '';
 
   // 清空注册表单
   registerForm.value = {
@@ -130,62 +134,62 @@ const closeAllModals = () => {
     password: '',
     name: '',
     qq: ''
-  }
-}
+  };
+};
 
 // 弹窗切换方法
 const switchToRegister = () => {
-  closeAllModals()
-  toggleRegister()
-}
+  closeAllModals();
+  toggleRegister();
+};
 
 const switchToLogin = () => {
-  closeAllModals()
-  toggleLogin()
-}
+  closeAllModals();
+  toggleLogin();
+};
 
 // 认证相关方法
 const handleLogin = async () => {
-  loginError.value = ''
-  userStore.setLoading(true)
+  loginError.value = '';
+  userStore.setLoading(true);
 
   try {
     const credentials: LoginCredentials = {
       email: loginForm.value.email,
       password: loginForm.value.password
-    }
-    const response = await accountApiService.login(credentials)
+    };
+    const response = await accountApiService.login(credentials);
     
     if (response.success) {
       // 保存token和用户ID到localStorage
-      localStorage.setItem('user_token', response.user?.token || '')
-      localStorage.setItem('user_id', response.user?.id?.toString() || '')
+      localStorage.setItem('user_token', response.user?.token || '');
+      localStorage.setItem('user_id', response.user?.id?.toString() || '');
       
       // 更新store
-      userStore.setUser(response.user)
-      userStore.setToken(response.user?.token || '')
+      userStore.setUser(response.user);
+      userStore.setToken(response.user?.token || '');
       
       // 关闭登录弹窗
-      closeAllModals()
+      closeAllModals();
       
       // 清空登录表单
-      loginForm.value = { email: '', password: '' }
+      loginForm.value = { email: '', password: '' };
       
       // 触发事件
-      emit('login', credentials)
+      emit('login', credentials);
     } else {
-      loginError.value = response.message
+      loginError.value = response.message;
     }
   } catch (error) {
-    loginError.value = error instanceof Error ? error.message : '登录失败，请重试'
+    loginError.value = error instanceof Error ? error.message : '登录失败，请重试';
   } finally {
-    userStore.setLoading(false)
+    userStore.setLoading(false);
   }
-}
+};
 
 const handleRegister = async () => {
-  registerError.value = ''
-  userStore.setLoading(true)
+  registerError.value = '';
+  userStore.setLoading(true);
 
   try {
     const registerData: RegisterData = {
@@ -193,92 +197,90 @@ const handleRegister = async () => {
       password: registerForm.value.password,
       name: registerForm.value.name,
       qq: registerForm.value.qq || undefined
-    }
-    const response = await accountApiService.register(registerData)
+    };
+    const response = await accountApiService.register(registerData);
 
     if (response.success) {
       // 注册成功，显示成功消息
-      alert('注册成功！请查看邮箱激活您的账户。')
+      alert('注册成功！请查看邮箱激活您的账户。');
       
       // 关闭注册弹窗，切换到登录
-      closeAllModals()
-      switchToLogin()
+      closeAllModals();
+      switchToLogin();
       
       // 清空注册表单
-      registerForm.value = { email: '', password: '', name: '', qq: '' }
+      registerForm.value = { email: '', password: '', name: '', qq: '' };
     } else {
-      registerError.value = response.message
+      registerError.value = response.message;
     }
   } catch (error) {
-    registerError.value = error instanceof Error ? error.message : '注册失败，请重试'
+    registerError.value = error instanceof Error ? error.message : '注册失败，请重试';
   } finally {
-    userStore.setLoading(false)
+    userStore.setLoading(false);
   }
-}
+};
 
 const handleLogout = () => {
-  userStore.logout()
-  closeAllModals()
-  emit('logout')
-}
+  userStore.logout();
+  closeAllModals();
+  emit('logout');
+};
 
 // 自动登录检查
 const checkAutoLogin = async () => {
-  const authInfo = userStore.restoreAuth()
+  const authInfo = userStore.restoreAuth();
   if (authInfo) {
     try {
-      userStore.setLoading(true)
-      const response = await accountApiService.getUserData(authInfo.userId, authInfo.token)
+      userStore.setLoading(true);
+      const response = await accountApiService.getUserData(authInfo.userId, authInfo.token);
       if (response.success && response.user) {
-        userStore.setUser(response.user)
+        userStore.setUser(response.user);
       } else {
         // token无效，清除本地存储
-        userStore.logout()
+        userStore.logout();
       }
     } catch (error) {
-      console.error('自动登录失败:', error)
-      userStore.logout()
+      console.error('自动登录失败:', error);
+      userStore.logout();
     } finally {
-      userStore.setLoading(false)
+      userStore.setLoading(false);
     }
   }
-}
+};
 
 // 工具方法
 const handleClickOutside = (event: Event) => {
-  const target = event.target as HTMLElement
-  if (!target.closest('.user-avatar') && !target.closest('.user-dropdown') && 
-      !target.closest('.login-modal') && !target.closest('.mobile-user-menu')) {
-    closeAllModals()
+  const target = event.target as HTMLElement;
+  if (!target.closest('.user-avatar') && !target.closest('.user-dropdown') && !target.closest('.login-modal') && !target.closest('.mobile-user-menu')) {
+    closeAllModals();
   }
-}
+};
 
 const detectDeviceType = () => {
-  const userAgent = navigator.userAgent.toLowerCase()
-  const screenWidth = window.innerWidth
+  const userAgent = navigator.userAgent.toLowerCase();
+  const screenWidth = window.innerWidth;
   
   // 移动设备特征检测
-  const isMobileDevice = /mobile|android|iphone|ipad|ipod|blackberry|windows phone|webos/i.test(userAgent)
-  const isTabletDevice = /ipad|tablet|playbook|silk|kindle/i.test(userAgent) || 
-                         (isMobileDevice && screenWidth >= 768 && screenWidth <= 1024)
+  const isMobileDevice = /mobile|android|iphone|ipad|ipod|blackberry|windows phone|webos/i.test(userAgent);
+  const isTabletDevice = /ipad|tablet|playbook|silk|kindle/i.test(userAgent) || (isMobileDevice && screenWidth >= 768 && screenWidth <= 1024);
   
-  isMobile.value = isMobileDevice && !isTabletDevice
-  isTablet.value = isTabletDevice
-}
+  isMobile.value = isMobileDevice && !isTabletDevice;
+  isTablet.value = isTabletDevice;
+};
 
 // ==================== 生命周期 ====================
 onMounted(() => {
-  detectDeviceType()
-  document.addEventListener('click', handleClickOutside)
-  window.addEventListener('resize', detectDeviceType)
+  detectDeviceType();
+  document.addEventListener('click', handleClickOutside);
+  window.addEventListener('resize', detectDeviceType);
   // 检查自动登录
-  checkAutoLogin()
-})
+  checkAutoLogin();
+});
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-  window.removeEventListener('resize', detectDeviceType)
-})
+  document.removeEventListener('click', handleClickOutside);
+  window.removeEventListener('resize', detectDeviceType);
+});
 
 // ==================== 暴露给模板的方法和数据 ====================
 defineExpose({
@@ -286,7 +288,7 @@ defineExpose({
   userHeadImg,
   handleLogin,
   handleLogout
-})
+});
 </script>
 
 <template>
