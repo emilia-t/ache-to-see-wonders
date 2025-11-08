@@ -1,10 +1,5 @@
 // The relative position of this file: src/router/index.ts
 import { createRouter, createWebHistory } from 'vue-router'
-import PageUpdating from '@/components/PageUpdating.vue'
-import PageNeuroSandbox from '@/components/PageNeuroSandbox.vue'
-import PageTestSandbox from '@/components/PageTestSandbox.vue'
-import PageChineseChess from '@/components/PageChineseChess.vue'
-import PageHome from '@/components/PageHome.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -16,27 +11,27 @@ const router = createRouter({
     {
       path: '/home',
       name: 'home',
-      component: PageHome
+      component: () => import('@/components/PageHome.vue')
     },
     {
       path: '/updating',
       name: 'updating',
-      component: PageUpdating
+      component: () => import('@/components/PageUpdating.vue')
     },
     {
       path: '/neuro-sandbox',
       name: 'neuro-sandbox',
-      component: PageNeuroSandbox
+      component: () => import('@/components/PageNeuroSandbox.vue')
     },
     {
       path: '/test-sandbox',
       name: 'test-sandbox',
-      component: PageTestSandbox
+      component: () => import('@/components/PageTestSandbox.vue')
     },
     {
       path: '/chinese-chess',
       name: 'chinese-chess',
-      component: PageChineseChess
+      component: () => import('@/components/PageChineseChess.vue')
     }
   ]
 })

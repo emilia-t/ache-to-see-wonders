@@ -1,0 +1,298 @@
+// SCSS variables are information about icon's compiled state, stored under its original file name
+//
+// .icon-home {
+//   width: $icon-home-width;
+// }
+//
+// The large array-like variables contain all information about a single icon
+// $icon-home: x y offset_x offset_y width height total_width total_height image_path;
+//
+// At the bottom of this section, we provide information about the spritesheet itself
+// $spritesheet: width height image $spritesheet-sprites;
+$atom-name: 'atom';
+$atom-x: 0px;
+$atom-y: 0px;
+$atom-offset-x: 0px;
+$atom-offset-y: 0px;
+$atom-width: 100px;
+$atom-height: 100px;
+$atom-total-width: 300px;
+$atom-total-height: 300px;
+$atom-image: './src/sprite/img/sprite.png';
+$atom: (0px, 0px, 0px, 0px, 100px, 100px, 300px, 300px, './src/sprite/img/sprite.png', 'atom', );
+$blog-name: 'blog';
+$blog-x: 100px;
+$blog-y: 0px;
+$blog-offset-x: -100px;
+$blog-offset-y: 0px;
+$blog-width: 100px;
+$blog-height: 100px;
+$blog-total-width: 300px;
+$blog-total-height: 300px;
+$blog-image: './src/sprite/img/sprite.png';
+$blog: (100px, 0px, -100px, 0px, 100px, 100px, 300px, 300px, './src/sprite/img/sprite.png', 'blog', );
+$daily-name: 'daily';
+$daily-x: 0px;
+$daily-y: 100px;
+$daily-offset-x: 0px;
+$daily-offset-y: -100px;
+$daily-width: 100px;
+$daily-height: 100px;
+$daily-total-width: 300px;
+$daily-total-height: 300px;
+$daily-image: './src/sprite/img/sprite.png';
+$daily: (0px, 100px, 0px, -100px, 100px, 100px, 300px, 300px, './src/sprite/img/sprite.png', 'daily', );
+$gitea-name: 'gitea';
+$gitea-x: 100px;
+$gitea-y: 100px;
+$gitea-offset-x: -100px;
+$gitea-offset-y: -100px;
+$gitea-width: 100px;
+$gitea-height: 100px;
+$gitea-total-width: 300px;
+$gitea-total-height: 300px;
+$gitea-image: './src/sprite/img/sprite.png';
+$gitea: (100px, 100px, -100px, -100px, 100px, 100px, 300px, 300px, './src/sprite/img/sprite.png', 'gitea', );
+$home-name: 'home';
+$home-x: 200px;
+$home-y: 0px;
+$home-offset-x: -200px;
+$home-offset-y: 0px;
+$home-width: 100px;
+$home-height: 100px;
+$home-total-width: 300px;
+$home-total-height: 300px;
+$home-image: './src/sprite/img/sprite.png';
+$home: (200px, 0px, -200px, 0px, 100px, 100px, 300px, 300px, './src/sprite/img/sprite.png', 'home', );
+$map-name: 'map';
+$map-x: 200px;
+$map-y: 100px;
+$map-offset-x: -200px;
+$map-offset-y: -100px;
+$map-width: 100px;
+$map-height: 100px;
+$map-total-width: 300px;
+$map-total-height: 300px;
+$map-image: './src/sprite/img/sprite.png';
+$map: (200px, 100px, -200px, -100px, 100px, 100px, 300px, 300px, './src/sprite/img/sprite.png', 'map', );
+$trial-name: 'trial';
+$trial-x: 0px;
+$trial-y: 200px;
+$trial-offset-x: 0px;
+$trial-offset-y: -200px;
+$trial-width: 100px;
+$trial-height: 100px;
+$trial-total-width: 300px;
+$trial-total-height: 300px;
+$trial-image: './src/sprite/img/sprite.png';
+$trial: (0px, 200px, 0px, -200px, 100px, 100px, 300px, 300px, './src/sprite/img/sprite.png', 'trial', );
+$retina-atom-name: 'retina_atom';
+$retina-atom-x: 0px;
+$retina-atom-y: 0px;
+$retina-atom-offset-x: 0px;
+$retina-atom-offset-y: 0px;
+$retina-atom-width: 200px;
+$retina-atom-height: 200px;
+$retina-atom-total-width: 600px;
+$retina-atom-total-height: 600px;
+$retina-atom-image: './src/sprite/img/sprite-retina.png';
+$retina-atom: (0px, 0px, 0px, 0px, 200px, 200px, 600px, 600px, './src/sprite/img/sprite-retina.png', 'retina_atom', );
+$retina-blog-name: 'retina_blog';
+$retina-blog-x: 200px;
+$retina-blog-y: 0px;
+$retina-blog-offset-x: -200px;
+$retina-blog-offset-y: 0px;
+$retina-blog-width: 200px;
+$retina-blog-height: 200px;
+$retina-blog-total-width: 600px;
+$retina-blog-total-height: 600px;
+$retina-blog-image: './src/sprite/img/sprite-retina.png';
+$retina-blog: (200px, 0px, -200px, 0px, 200px, 200px, 600px, 600px, './src/sprite/img/sprite-retina.png', 'retina_blog', );
+$retina-daily-name: 'retina_daily';
+$retina-daily-x: 0px;
+$retina-daily-y: 200px;
+$retina-daily-offset-x: 0px;
+$retina-daily-offset-y: -200px;
+$retina-daily-width: 200px;
+$retina-daily-height: 200px;
+$retina-daily-total-width: 600px;
+$retina-daily-total-height: 600px;
+$retina-daily-image: './src/sprite/img/sprite-retina.png';
+$retina-daily: (0px, 200px, 0px, -200px, 200px, 200px, 600px, 600px, './src/sprite/img/sprite-retina.png', 'retina_daily', );
+$retina-gitea-name: 'retina_gitea';
+$retina-gitea-x: 200px;
+$retina-gitea-y: 200px;
+$retina-gitea-offset-x: -200px;
+$retina-gitea-offset-y: -200px;
+$retina-gitea-width: 200px;
+$retina-gitea-height: 200px;
+$retina-gitea-total-width: 600px;
+$retina-gitea-total-height: 600px;
+$retina-gitea-image: './src/sprite/img/sprite-retina.png';
+$retina-gitea: (200px, 200px, -200px, -200px, 200px, 200px, 600px, 600px, './src/sprite/img/sprite-retina.png', 'retina_gitea', );
+$retina-home-name: 'retina_home';
+$retina-home-x: 400px;
+$retina-home-y: 0px;
+$retina-home-offset-x: -400px;
+$retina-home-offset-y: 0px;
+$retina-home-width: 200px;
+$retina-home-height: 200px;
+$retina-home-total-width: 600px;
+$retina-home-total-height: 600px;
+$retina-home-image: './src/sprite/img/sprite-retina.png';
+$retina-home: (400px, 0px, -400px, 0px, 200px, 200px, 600px, 600px, './src/sprite/img/sprite-retina.png', 'retina_home', );
+$retina-map-name: 'retina_map';
+$retina-map-x: 400px;
+$retina-map-y: 200px;
+$retina-map-offset-x: -400px;
+$retina-map-offset-y: -200px;
+$retina-map-width: 200px;
+$retina-map-height: 200px;
+$retina-map-total-width: 600px;
+$retina-map-total-height: 600px;
+$retina-map-image: './src/sprite/img/sprite-retina.png';
+$retina-map: (400px, 200px, -400px, -200px, 200px, 200px, 600px, 600px, './src/sprite/img/sprite-retina.png', 'retina_map', );
+$retina-trial-name: 'retina_trial';
+$retina-trial-x: 0px;
+$retina-trial-y: 400px;
+$retina-trial-offset-x: 0px;
+$retina-trial-offset-y: -400px;
+$retina-trial-width: 200px;
+$retina-trial-height: 200px;
+$retina-trial-total-width: 600px;
+$retina-trial-total-height: 600px;
+$retina-trial-image: './src/sprite/img/sprite-retina.png';
+$retina-trial: (0px, 400px, 0px, -400px, 200px, 200px, 600px, 600px, './src/sprite/img/sprite-retina.png', 'retina_trial', );
+$spritesheet-width: 300px;
+$spritesheet-height: 300px;
+$spritesheet-image: './src/sprite/img/sprite.png';
+$spritesheet-sprites: ($atom, $blog, $daily, $gitea, $home, $map, $trial, );
+$spritesheet: (300px, 300px, './src/sprite/img/sprite.png', $spritesheet-sprites, );
+$vi-retina-width: 600px;
+$vi-retina-height: 600px;
+$vi-retina-image: './src/sprite/img/sprite-retina.png';
+$vi-retina-sprites: ($retina-atom, $retina-blog, $retina-daily, $retina-gitea, $retina-home, $retina-map, $retina-trial, );
+$vi-retina: (600px, 600px, './src/sprite/img/sprite-retina.png', $vi-retina-sprites, );
+
+// These "retina group" variables are mappings for the naming and pairing of normal and retina sprites.
+//
+// The list formatted variables are intended for mixins like `retina-sprite` and `retina-sprites`.
+$atom-group-name: 'atom';
+$atom-group: ('atom', $atom, $retina-atom, );
+$blog-group-name: 'blog';
+$blog-group: ('blog', $blog, $retina-blog, );
+$daily-group-name: 'daily';
+$daily-group: ('daily', $daily, $retina-daily, );
+$gitea-group-name: 'gitea';
+$gitea-group: ('gitea', $gitea, $retina-gitea, );
+$home-group-name: 'home';
+$home-group: ('home', $home, $retina-home, );
+$map-group-name: 'map';
+$map-group: ('map', $map, $retina-map, );
+$trial-group-name: 'trial';
+$trial-group: ('trial', $trial, $retina-trial, );
+$retina-groups: ($atom-group, $blog-group, $daily-group, $gitea-group, $home-group, $map-group, $trial-group, );
+
+// The provided mixins are intended to be used with the array-like variables
+//
+// .icon-home {
+//   @include sprite-width($icon-home);
+// }
+//
+// .icon-email {
+//   @include sprite($icon-email);
+// }
+//
+// Example usage in HTML:
+//
+// `display: block` sprite:
+// <div class="icon-home"></div>
+//
+// To change `display` (e.g. `display: inline-block;`), we suggest using a common CSS class:
+//
+// // CSS
+// .icon {
+//   display: inline-block;
+// }
+//
+// // HTML
+// <i class="icon icon-home"></i>
+@mixin sprite-width($sprite) {
+  width: nth($sprite, 5);
+}
+
+@mixin sprite-height($sprite) {
+  height: nth($sprite, 6);
+}
+
+@mixin sprite-position($sprite) {
+  $sprite-offset-x: nth($sprite, 3);
+  $sprite-offset-y: nth($sprite, 4);
+  background-position: $sprite-offset-x  $sprite-offset-y;
+}
+
+@mixin sprite-image($sprite) {
+  $sprite-image: nth($sprite, 9);
+  background-image: url(#{$sprite-image});
+}
+
+@mixin sprite($sprite) {
+  @include sprite-image($sprite);
+  @include sprite-position($sprite);
+  @include sprite-width($sprite);
+  @include sprite-height($sprite);
+}
+
+// The `retina-sprite` mixin sets up rules and a media query for a sprite/retina sprite.
+//   It should be used with a "retina group" variable.
+//
+// The media query is from CSS Tricks: https://css-tricks.com/snippets/css/retina-display-media-query/
+//
+// $icon-home-group: ('icon-home', $icon-home, $icon-home-2x, );
+//
+// .icon-home {
+//   @include retina-sprite($icon-home-group);
+// }
+@mixin sprite-background-size($sprite) {
+  $sprite-total-width: nth($sprite, 7);
+  $sprite-total-height: nth($sprite, 8);
+  background-size: $sprite-total-width $sprite-total-height;
+}
+
+@mixin retina-sprite($retina-group) {
+  $normal-sprite: nth($retina-group, 2);
+  $retina-sprite: nth($retina-group, 3);
+  @include sprite($normal-sprite);
+
+  @media (-webkit-min-device-pixel-ratio: 2),
+         (min-resolution: 192dpi) {
+    @include sprite-image($retina-sprite);
+    @include sprite-background-size($normal-sprite);
+  }
+}
+
+// The `sprites` mixin generates identical output to the CSS template
+//   but can be overridden inside of SCSS
+//
+// @include sprites($spritesheet-sprites);
+@mixin sprites($sprites) {
+  @each $sprite in $sprites {
+    $sprite-name: nth($sprite, 10);
+    .#{$sprite-name} {
+      @include sprite($sprite);
+    }
+  }
+}
+
+// The `retina-sprites` mixin generates a CSS rule and media query for retina groups
+//   This yields the same output as CSS retina template but can be overridden in SCSS
+//
+// @include retina-sprites($retina-groups);
+@mixin retina-sprites($retina-groups) {
+  @each $retina-group in $retina-groups {
+    $sprite-name: nth($retina-group, 1);
+    .#{$sprite-name} {
+      @include retina-sprite($retina-group);
+    }
+  }
+}

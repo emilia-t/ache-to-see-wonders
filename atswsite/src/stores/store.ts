@@ -84,3 +84,79 @@ export const useCounterStore = defineStore('counter', () => {
 
   return { count, doubleCount, increment }
 })
+
+interface HomePageVideoConfig {
+  title: string
+  description: string
+  cover: string
+  video: string
+  targetUrl: string
+  button_name: string
+}
+
+interface WebConfig {
+  annotation?: string
+  version?: string
+  homePageCurrentVideo?: HomePageVideoConfig
+  [key: string]: any
+}
+
+export const useConfigStore = defineStore('config', () => {
+  const config = ref<WebConfig | null>(null)
+  const loading = ref(false)
+  const error = ref<string | null>(null)
+
+  // 默认配置
+  const defaultVideoConfig: HomePageVideoConfig = {
+    title: 'Loding',
+    description: 'Loding',
+    cover: 'Loding',
+    video: 'Loding',
+    targetUrl: '#',
+    button_name: 'Loding'
+  }
+
+  // 计算属性，方便直接访问视频配置
+  const homePageCurrentVideo = computed((): HomePageVideoConfig => {
+    return config.value?.homePageCurrentVideo || defaultVideoConfig
+  })
+
+  // 加载配置
+  async function loadConfig() {
+    if (loading.value) return
+    
+    loading.value = true
+    error.value = null
+    
+    try {
+      // 添加时间戳参数避免缓存
+      const timestamp = new Date().getTime()
+      const response = await fetch(`/webConfig.json?t=${timestamp}`)
+      if (!response.ok) {
+        throw new Error(`配置加载失败: ${response.status}`)
+      }
+      const configData = await response.json() as WebConfig
+      config.value = configData
+      
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '未知错误'
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // 自动加载配置 - 在 store 创建时立即执行
+  loadConfig()
+
+  // 检查配置版本
+  const configVersion = computed(() => config.value?.version || 'unknown')
+
+  return {
+    config,
+    homePageCurrentVideo,
+    loading,  
+    error,
+    configVersion,
+    loadConfig
+  }
+})

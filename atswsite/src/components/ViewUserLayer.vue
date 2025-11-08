@@ -61,6 +61,10 @@ const registerForm = ref({
 const loginError = ref('');
 const registerError = ref('');
 
+// 密码显示状态
+const showLoginPassword = ref(false);
+const showRegisterPassword = ref(false);
+
 // ==================== 计算属性 ====================
 const isLoggedIn = computed(() => userStore.isLoggedIn);
 const userData = computed(() => userStore.userData);
@@ -268,6 +272,15 @@ const detectDeviceType = () => {
   isTablet.value = isTabletDevice;
 };
 
+// 密码显示/隐藏切换方法
+const togglePasswordVisibility = (type: 'login' | 'register') => {
+  if (type === 'login') {
+    showLoginPassword.value = !showLoginPassword.value;
+  } else {
+    showRegisterPassword.value = !showRegisterPassword.value;
+  }
+};
+
 // ==================== 生命周期 ====================
 onMounted(() => {
   detectDeviceType();
@@ -287,7 +300,10 @@ defineExpose({
   isLoggedIn,
   userHeadImg,
   handleLogin,
-  handleLogout
+  handleLogout,
+  togglePasswordVisibility,
+  showLoginPassword,
+  showRegisterPassword
 });
 </script>
 
@@ -410,9 +426,27 @@ defineExpose({
               <label for="email">邮箱</label>
               <input type="email" id="email" autocomplete="autocomplete" v-model="loginForm.email" required placeholder="请输入邮箱" />
             </div>
-            <div class="form-group">
+            <div class="form-group password-group">
               <label for="password">密码</label>
-              <input type="password" id="password" v-model="loginForm.password" required placeholder="请输入密码" />
+              <div class="password-input-container">
+                <input 
+                  :type="showLoginPassword ? 'text' : 'password'" 
+                  id="password" 
+                  v-model="loginForm.password" 
+                  required 
+                  placeholder="请输入密码" 
+                />
+                <button 
+                  type="button" 
+                  class="password-toggle"
+                  @click="togglePasswordVisibility('login')"
+                >
+                  <img 
+                    :src="showLoginPassword ? '/otherImage/eye_close.png' : '/otherImage/eye.png'" 
+                    :alt="showLoginPassword ? '隐藏密码' : '显示密码'" 
+                  />
+                </button>
+              </div>
             </div>
             <!-- 显示服务器的登录错误信息 -->
             <div v-if="loginError" class="error-message">{{ loginError }}</div>
@@ -440,8 +474,26 @@ defineExpose({
             <div class="form-group">
               <input type="email" id="email" autocomplete="autocomplete" v-model="loginForm.email" required placeholder="邮箱" />
             </div>
-            <div class="form-group">
-              <input type="password" id="password" v-model="loginForm.password" required placeholder="密码" />
+            <div class="form-group password-group">
+              <div class="password-input-container">
+                <input 
+                  :type="showLoginPassword ? 'text' : 'password'" 
+                  id="password" 
+                  v-model="loginForm.password" 
+                  required 
+                  placeholder="密码" 
+                />
+                <button 
+                  type="button" 
+                  class="password-toggle"
+                  @click="togglePasswordVisibility('login')"
+                >
+                  <img 
+                    :src="showLoginPassword ? '/otherImage/eye_close.png' : '/otherImage/eye.png'" 
+                    :alt="showLoginPassword ? '隐藏密码' : '显示密码'" 
+                  />
+                </button>
+              </div>
             </div>
             <!-- 显示服务器的登录错误信息 -->
             <div v-if="loginError" class="error-message">{{ loginError }}</div>
@@ -477,15 +529,27 @@ defineExpose({
                 placeholder="请输入邮箱" 
               />
             </div>
-            <div class="form-group">
+            <div class="form-group password-group">
               <label for="reg-password">密码</label>
-              <input 
-                type="password" 
-                id="reg-password" 
-                v-model="registerForm.password" 
-                required 
-                placeholder="请输入密码" 
-              />
+              <div class="password-input-container">
+                <input 
+                  :type="showRegisterPassword ? 'text' : 'password'" 
+                  id="reg-password" 
+                  v-model="registerForm.password" 
+                  required 
+                  placeholder="请输入密码" 
+                />
+                <button 
+                  type="button" 
+                  class="password-toggle"
+                  @click="togglePasswordVisibility('register')"
+                >
+                  <img 
+                    :src="showRegisterPassword ? '/otherImage/eye_close.png' : '/otherImage/eye.png'" 
+                    :alt="showRegisterPassword ? '隐藏密码' : '显示密码'" 
+                  />
+                </button>
+              </div>
             </div>
             <div class="form-group">
               <label for="reg-name">昵称</label>
@@ -538,14 +602,26 @@ defineExpose({
                 placeholder="邮箱" 
               />
             </div>
-            <div class="form-group">
-              <input 
-                type="password" 
-                id="reg-password" 
-                v-model="registerForm.password" 
-                required 
-                placeholder="密码" 
-              />
+            <div class="form-group password-group">
+              <div class="password-input-container">
+                <input 
+                  :type="showRegisterPassword ? 'text' : 'password'" 
+                  id="reg-password" 
+                  v-model="registerForm.password" 
+                  required 
+                  placeholder="密码" 
+                />
+                <button 
+                  type="button" 
+                  class="password-toggle"
+                  @click="togglePasswordVisibility('register')"
+                >
+                  <img 
+                    :src="showRegisterPassword ? '/otherImage/eye_close.png' : '/otherImage/eye.png'" 
+                    :alt="showRegisterPassword ? '隐藏密码' : '显示密码'" 
+                  />
+                </button>
+              </div>
             </div>
             <div class="form-group">
               <input 
@@ -599,7 +675,7 @@ defineExpose({
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background-image: url('/public/default_avatar_1.jpg');
+  background-image: url('/otherImage/default_avatar_1.jpg');
   background-size: cover;
   background-position: center;
   display: flex;
@@ -627,6 +703,51 @@ defineExpose({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 密码输入框样式 */
+.password-group {
+  position: relative;
+}
+
+.password-input-container {
+  position: relative;
+}
+
+.password-input-container input {
+  padding-right: 40px !important;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+}
+
+.password-toggle:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.password-toggle img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.theme-dark .password-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 /* 设计A样式 */
@@ -932,7 +1053,7 @@ defineExpose({
 
 .submit-btn {
   width: 100%;
-  background: linear-gradient(135deg, #58c81c 0%, #58bd5b 100%);
+  background: linear-gradient(135deg, #69d131 0%, #58bd5b 100%);
   color: white;
   box-shadow: 0 4px 12px rgba(154, 154, 154, 0.3);
   border: none;
@@ -946,7 +1067,7 @@ defineExpose({
 }
 .submit-btn:hover {
   transition:0.3s;
-  background: linear-gradient(135deg, #58c81c 0%, #58bd5b 100%);
+  background: linear-gradient(135deg, #69d131 0%, #58bd5b 100%);
   transform: scale(1.02);
   box-shadow: 0 4px 12px rgba(102, 234, 144, 0.3);
 }

@@ -6,7 +6,7 @@
   <div class="view-filing-license-container">
     <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=53062602000121" target="_blank">
         <div class="left-license">
-            <img src="../../public/batb.d0289dc0.png">
+            <img src="/otherImage/batb.d0289dc0.png">
             <p>滇公网安备 53062602000121号&nbsp;&nbsp;</p>
         </div>
     </a>

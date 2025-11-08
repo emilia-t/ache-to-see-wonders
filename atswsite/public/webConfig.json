@@ -1,0 +1,12 @@
+{
+  "annotation":"The relative position of this file: public/webConfig.json",  
+  "version":"1",
+  "homePageCurrentVideo": {
+    "title": "探索奇妙世界",
+    "description": "一段令人惊叹的视觉之旅，带您领略自然与科技的完美融合",
+    "cover": "/image/testCover01.jpg",
+    "video": "/video/testVideo01.mp4",
+    "targetUrl": "https://atsw.top",
+    "button_name": "立即尝试"
+  }
+}
