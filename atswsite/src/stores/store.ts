@@ -94,10 +94,30 @@ interface HomePageVideoConfig {
   button_name: string
 }
 
+interface HomePageTrialCardConfig {
+  key: string
+  title: string
+  description: string
+  cover: string
+  targetUrl: string
+  mode: string
+  online_users: number
+  online_state: boolean
+  visit_count: number
+  heart_count: number
+}
+
+interface HomePageTrialBoxConfig {
+  annotation: string
+  version: string
+  list: HomePageTrialCardConfig[]
+}
+
 interface WebConfig {
   annotation?: string
   version?: string
   homePageCurrentVideo?: HomePageVideoConfig
+  homePageTrialBox?: HomePageTrialBoxConfig
   [key: string]: any
 }
 
@@ -115,10 +135,18 @@ export const useConfigStore = defineStore('config', () => {
     targetUrl: '#',
     button_name: 'Loding'
   }
+  const defaultTrialBoxConfig: HomePageTrialBoxConfig = {
+    annotation: 'Loding',
+    version: 'Loding',
+    list: []
+  }
 
   // 计算属性，方便直接访问视频配置
   const homePageCurrentVideo = computed((): HomePageVideoConfig => {
     return config.value?.homePageCurrentVideo || defaultVideoConfig
+  })
+  const homePageTrialBox = computed((): HomePageTrialBoxConfig => {
+    return config.value?.homePageTrialBox || defaultTrialBoxConfig
   })
 
   // 加载配置
@@ -154,6 +182,7 @@ export const useConfigStore = defineStore('config', () => {
   return {
     config,
     homePageCurrentVideo,
+    homePageTrialBox,
     loading,  
     error,
     configVersion,

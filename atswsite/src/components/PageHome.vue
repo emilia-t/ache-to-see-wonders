@@ -1,86 +1,78 @@
 <script setup lang="ts">
-// The relative position of this file: src/components/PageHome.vue
-import { ref, computed, onMounted, onUnmounted, watch} from 'vue'
-import ViewFilingLicense from '@/components/ViewFilingLicense.vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import ViewBottomLicense from '@/components/ViewBottomLicense.vue'
 import ViewUserLayer from './ViewUserLayer.vue'
 import { useConfigStore } from '@/stores/store';
 
-let loading = true;
-let theme = 'light';
-let design = 'B';
-
+// 响应式数据
+const loading = ref(true);
+const theme = ref('light');
+const design = ref('B');
 const isMobile = ref(false);
 const isTablet = ref(false);
-
-const videoLoaded = ref(false);// 视频相关响应式数据
+const videoLoaded = ref(false);
 const videoPlayer = ref<HTMLVideoElement | null>(null);
+const activeTab = ref('prototype');
 
-const configStore = useConfigStore() // 配置对象
-const currentTitle = computed(() => configStore.homePageCurrentVideo.title)
-const currentDescription = computed(() => configStore.homePageCurrentVideo.description)
-const currentCover = computed(() => configStore.homePageCurrentVideo.cover)
-const currentVideo = computed(() => configStore.homePageCurrentVideo.video)
-const currentTargetUrl = computed(() => configStore.homePageCurrentVideo.targetUrl)
-const currentButtonName = computed(() => configStore.homePageCurrentVideo.button_name)
+// Store 相关
+const configStore = useConfigStore();
 
-// 当配置文件加载后重加载视频
-watch(currentVideo, (newVideoUrl, oldVideoUrl) => {
-  if (newVideoUrl && newVideoUrl !== oldVideoUrl) {
-    reloadVideo();
-  }
-});
+// 计算属性
+const currentTitle = computed(() => configStore.homePageCurrentVideo.title);
+const currentDescription = computed(() => configStore.homePageCurrentVideo.description);
+const currentCover = computed(() => configStore.homePageCurrentVideo.cover);
+const currentVideo = computed(() => configStore.homePageCurrentVideo.video);
+const currentTargetUrl = computed(() => configStore.homePageCurrentVideo.targetUrl);
+const currentButtonName = computed(() => configStore.homePageCurrentVideo.button_name);
+const trialPartBoxList = computed(() => configStore.homePageTrialBox.list);
 
-// 添加重新加载视频的函数
+// 视频控制函数
 const reloadVideo = () => {
   if (videoPlayer.value) {
     videoLoaded.value = false;
-    videoPlayer.value.load(); // 重新加载视频
+    videoPlayer.value.load();
     videoPlayer.value.play().catch(e => {
       console.log('视频自动播放被阻止:', e);
     });
   }
 };
 
-const onVideoLoaded = () => {// 视频加载完成处理
+const onVideoLoaded = () => {
   videoLoaded.value = true;
-  if (videoPlayer.value) {
-    videoPlayer.value.play().catch(e => {
-      console.log('自动播放被阻止:', e);
-    });
-  }
+  tryPlayVideo();
 };
 
-// 添加视频播放尝试函数
 const tryPlayVideo = () => {
   if (videoPlayer.value && videoLoaded.value) {
     videoPlayer.value.play().catch(e => {
       console.log('视频播放失败:', e);
-      // 可以在这里添加用户手动播放的UI提示
     });
   }
 };
 
-const navigateToVideo = () => {// 跳转到视频页面
-  if(currentTargetUrl !== null){
-    if(typeof currentTargetUrl.value == 'string'){
-      window.open(currentTargetUrl.value, '_blank');
-    }
+// 导航函数
+const navigateToVideo = () => {
+  if (currentTargetUrl.value && typeof currentTargetUrl.value === 'string') {
+    window.open(currentTargetUrl.value, '_blank');
   }
 };
 
-const activeTab = ref('prototype')
+const navigateToProject = (url: string) => {
+  if (url) {
+    window.open(url, '_blank');
+  }
+};
 
+// 标签页切换
 const switchTab = (tab: string) => {
-  activeTab.value = tab
-}
+  activeTab.value = tab;
+};
 
-
-// 设备检测函数
+// 设备检测
 const detectDeviceType = () => {
   const userAgent = navigator.userAgent.toLowerCase();
   const screenWidth = window.innerWidth;
 
-  // 移动设备特征检测
   const isMobileDevice = /mobile|android|iphone|ipad|ipod|blackberry|windows phone|webos/i.test(userAgent);
   const isTabletDevice = /ipad|tablet|playbook|silk|kindle/i.test(userAgent) || 
                          (isMobileDevice && screenWidth >= 768 && screenWidth <= 1024);
@@ -89,24 +81,29 @@ const detectDeviceType = () => {
   isTablet.value = isTabletDevice;
 };
 
+// 用户交互处理
+const handleUserInteraction = () => {
+  tryPlayVideo();
+  document.removeEventListener('click', handleUserInteraction);
+  document.removeEventListener('touchstart', handleUserInteraction);
+};
 
+// 监听器
+watch(currentVideo, (newVideoUrl, oldVideoUrl) => {
+  if (newVideoUrl && newVideoUrl !== oldVideoUrl) {
+    reloadVideo();
+  }
+});
+
+// 生命周期
 onMounted(() => {
   detectDeviceType();
   window.addEventListener('resize', detectDeviceType);
-  // 添加用户交互检测以解决自动播放问题
-  const handleUserInteraction = () => {
-    if (videoPlayer.value && !videoLoaded.value) {
-      videoPlayer.value.play().catch(e => {
-        console.log('自动播放被阻止:', e);
-      });
-    }
-    document.removeEventListener('click', handleUserInteraction);
-    document.removeEventListener('touchstart', handleUserInteraction);
-  };
   
   document.addEventListener('click', handleUserInteraction);
   document.addEventListener('touchstart', handleUserInteraction);
 });
+
 onUnmounted(() => {
   window.removeEventListener('resize', detectDeviceType);
   if (videoPlayer.value) {
@@ -240,9 +237,9 @@ onUnmounted(() => {
     </div>
     
     <!-- 具体内容 -->
-    <div class="app-rt">
+    <div class="app-rct">
       <!-- 切换按钮 -->
-      <div class="rt-switch">
+      <div class="rct-switch">
         <div class="switch-container">
           <button 
             class="switch-btn" :class="activeTab == 'prototype' ? 'active':''"
@@ -281,45 +278,94 @@ onUnmounted(() => {
       </div>
       
       <!-- 内容区域 -->
-      <div class="rt-content">
+      <div class="rct-content">
         <!-- 试做型 -->
         <div v-show="activeTab === 'prototype'" class="tab-content">
-          <div class="content-placeholder">
-            <h3>试做型项目</h3>
-            <p>这里将展示各种测试项目</p>
+
+        <div class="rct-placeholder">
+          <!-- 作品卡片盒子 -->
+          <div class="cards-container">
+            <div 
+              v-for="value in trialPartBoxList" 
+              :key="value.key" 
+              class="crd-box"
+              @click="navigateToProject(value.targetUrl)"
+            >
+              <!-- 卡片玻璃态背景 -->
+              <div class="crd-box-glass"></div>
+              
+              <!-- 卡片内容 -->
+              <div class="crd-content">
+                <!-- 图片区域 -->
+                <div class="crd-image-container">
+                  <img 
+                    class="crd-box-image" 
+                    :src="value.cover" 
+                    :alt="value.description"
+                    loading="lazy"
+                  />
+                  <!-- 图片遮罩渐变 -->
+                  <div class="image-overlay"></div>
+                </div>
+                
+                <!-- 内容区域 -->
+                <div class="crd-info">
+                  <h3 class="crd-title">{{ value.title }}</h3>
+                  <!-- 统计信息 -->
+                  <div class="crd-stats">
+                    <div class="stat-item">
+                      <span class="stat-icon">👁️</span>
+                      <span class="stat-value">{{ value.visit_count || 0 }}</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="stat-icon">❤️</span>
+                      <span class="stat-value">{{ value.heart_count || 0 }}</span>
+                    </div>
+                    <div v-if="value.online_state" class="stat-item online">
+                      <span class="stat-icon">🟢</span>
+                      <span class="stat-value">{{ value.online_users || 0 }}在线</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 悬停效果 -->
+                <div class="crd-hover-effect"></div>
+              </div>
+            </div>
           </div>
+        </div>
         </div>
         <!-- 模组 -->
         <div v-show="activeTab === 'module'" class="tab-content">
-          <div class="content-placeholder">
-            <h3>功能模组</h3>
-            <p>这里将展示模组</p>
+          <div class="rct-placeholder">
+            
           </div>
         </div>
         <!-- 日志 -->
         <div v-show="activeTab === 'daily'" class="tab-content">
-          <div class="content-placeholder">
-            <h3>开发日志</h3>
-            <p>这里将记录项目开发过程和更新日志</p>
+          <div class="rct-placeholder">
+            
           </div>
         </div>
       </div>
     </div>
   </div>
-  <ViewFilingLicense/>
+  <ViewBottomLicense/>
 </template>
 
 <style scoped lang="scss">
 /* 导入路径根据实际情况编写 */
 @import '../sprite/style/sprite.scss';
+.page-home-container{
+  overflow-x: hidden;
+}
 .page-head {
   width: 100vw;
   height: 70px;
   background: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 0 0 rgba(255, 255, 255, 0.8) inset;
   position: fixed;
   z-index: 999;
   left: 0;
@@ -331,7 +377,7 @@ onUnmounted(() => {
 
 .head-content {
   width: 100%;
-  max-width: 1200px;
+  max-width: calc(100vw - 200px);
   margin: 0 auto;
   padding: 0 24px;
   display: flex;
@@ -340,7 +386,9 @@ onUnmounted(() => {
   gap: 32px;
 }
 
-/** Logo区域样式 **/
+
+
+/*** Logo区域样式 ***/
 .logo-section {
   display: flex;
   align-items: center;
@@ -400,7 +448,7 @@ onUnmounted(() => {
   cursor: default;
 }
 
-/** 导航链接样式 **/
+/*** 导航链接样式 ***/
 .nav-links {
   display: flex;
   align-items: center;
@@ -440,27 +488,9 @@ onUnmounted(() => {
   box-shadow: 0 2px 8px rgba(81, 155, 233, 0.15);
 }
 
-.nav-link-content img {
-  width: 30px;
-  height: 30px;
-  opacity: 0.7;
-  transition: opacity 0.3s ease;
-}
-
-.nav-link:hover .nav-link-content img,
-.nav-link.active .nav-link-content img {
-  opacity: 1;
-}
-
-/** 用户区域样式 **/
+/*** 用户区域样式 ***/
 .user-section {
   flex-shrink: 0;
-}
-
-.page-content {
-  width: 100vw;
-  height: 67vh;
-  background-color: rgba(255, 255, 255, 1);
 }
 
 /* 响应式设计 */
@@ -468,6 +498,7 @@ onUnmounted(() => {
   .head-content {
     padding: 0 16px;
     gap: 16px;
+    max-width: calc(100vw - 50px);
   }
 
   .logo-text2 {
@@ -483,7 +514,7 @@ onUnmounted(() => {
   }
 
   .nav-links {
-    gap: 4px;
+    gap: 2px;
   }
 }
 
@@ -494,6 +525,8 @@ onUnmounted(() => {
 
   .head-content {
     padding: 0 12px;
+    gap: 0;
+    max-width: 100vw;
   }
 
   .logo {
@@ -504,14 +537,14 @@ onUnmounted(() => {
   .logo-text1 {
     font-size: 18px;
   }
-
-  .page-content {
-    margin-top: 60px;
+  
+  .nav-links {
+    gap: 2px;
   }
 }
 
 
-/** 大屏展示区样式 **/
+/*** 大屏展示区样式 ***/
 .showcase-section {
   width: 100%;
   max-height: 67vh;
@@ -579,11 +612,11 @@ onUnmounted(() => {
   transition: opacity 0.5s ease;
 }
 
-/** 左下角悬浮内容 **/
+/*** 左下角悬浮内容 ***/
 .video-overlay-content {
   position: absolute;
   bottom: 80px;
-  left: 40px;
+  left: 100px;
   z-index: 10;
   color: white;
   max-width: 500px;
@@ -629,11 +662,7 @@ onUnmounted(() => {
   box-shadow: 0 6px 20px rgba(81, 155, 233, 0.4);
 }
 
-.action-button:hover .button-icon {
-  transform: translateX(4px);
-}
-
-/** 渐变过度背景 **/
+/*** 渐变过度背景 ***/
 .gradient-overlay {
  position: absolute;
  bottom: -1px; /* 向下延伸1px */
@@ -727,22 +756,21 @@ onUnmounted(() => {
 }
 
 
-/** 具体内容区域 **/
-.app-rt {
+/*** 具体内容区域 ***/
+.app-rct {
   width: 100vw;
   height: auto;
   background: #fff;
   min-height: 400px;
 }
 
-/** 切换按钮区域 **/
-.rt-switch {
+/*** 切换按钮区域 ***/
+.rct-switch {
   width: 100%;
   height: auto;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   position: sticky;
   top: 70px;
   z-index: 100;
@@ -754,7 +782,7 @@ onUnmounted(() => {
   justify-content: center;
   align-items: center;
   gap: 16px;
-  max-width: 1200px;
+  max-width: calc(100vw - 200px);
   margin: 0 auto;
   padding: 0 24px;
 }
@@ -807,19 +835,6 @@ onUnmounted(() => {
   opacity: 1;
 }
 
-.btn-icon {
-  font-size: 1.8rem;
-  transition: transform 0.3s ease;
-}
-
-.switch-btn:hover .btn-icon {
-  transform: scale(1.1);
-}
-
-.switch-btn.active .btn-icon {
-  transform: scale(1.1);
-}
-
 .btn-text {
   font-size: 0.95rem;
   font-weight: 600;
@@ -839,12 +854,12 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
-/** 内容区域 **/
-.rt-content {
+/*** 内容区域 ***/
+.rct-content {
   width: 100%;
-  max-width: 1200px;
+  max-width: calc(100vw - 200px);
   margin: 0 auto;
-  padding: 40px 0px;
+  padding: 0px 0px 40px 0px;
 }
 
 .tab-content {
@@ -862,27 +877,9 @@ onUnmounted(() => {
   }
 }
 
-.content-placeholder {
+.rct-placeholder {
   text-align: center;
-  padding: 60px 0;
-  background: rgba(81, 155, 233, 0.03);
-  border-radius: 20px;
-  border: 1px dashed rgba(81, 155, 233, 0.2);
-}
-
-.content-placeholder h3 {
-  font-size: 1.8rem;
-  margin-bottom: 16px;
-  background: linear-gradient(135deg, rgb(81, 155, 233), rgb(15, 111, 180));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.content-placeholder p {
-  color: #666;
-  font-size: 1.1rem;
-  opacity: 0.8;
+  padding: 0px 0px 20px 0px;
 }
 
 /* 响应式设计 */
@@ -890,36 +887,34 @@ onUnmounted(() => {
   .switch-container {
     gap: 12px;
     padding: 0 16px;
+    max-width: calc(100vw - 50px);
   }
   
   .switch-btn {
     padding: 12px 16px;
     min-width: 80px;
   }
-  
-  .btn-icon {
-    font-size: 1.5rem;
-  }
-  
+
   .btn-text {
     font-size: 0.85rem;
   }
   
-  .rt-content {
-    padding: 30px 0;
+  .rct-content {
+    padding: 0px 0px 30px 0px;
+    max-width: calc(100vw - 50px);
   }
   
-  .content-placeholder {
+  .rct-placeholder {
     padding: 40px 0;
   }
   
-  .content-placeholder h3 {
-    font-size: 1.5rem;
+  .rct-placeholder h3 {
+    font-size: 1.0rem;
   }
 }
 
 @media (max-width: 480px) {
-  .rt-switch {
+  .rct-switch {
     top: 60px;
     padding: 16px 0;
   }
@@ -927,6 +922,7 @@ onUnmounted(() => {
   .switch-container {
     gap: 8px;
     padding: 0 12px;
+    max-width: 100vw;
   }
   
   .switch-btn {
@@ -935,27 +931,20 @@ onUnmounted(() => {
     border-radius: 12px;
   }
   
-  .btn-icon {
-    font-size: 1.3rem;
-  }
-  
   .btn-text {
     font-size: 0.8rem;
   }
   
-  .rt-content {
-    padding: 24px 0;
+  .rct-content {
+    padding: 0px 0px 24px 0px;
+    max-width: 100vw;
   }
   
-  .content-placeholder {
+  .rct-placeholder {
     padding: 30px 0;
   }
   
-  .content-placeholder h3 {
-    font-size: 1.3rem;
-  }
-  
-  .content-placeholder p {
+  .rct-placeholder h3 {
     font-size: 1rem;
   }
 }
@@ -983,27 +972,27 @@ onUnmounted(() => {
   }
 }
 
-/** sprites icon **/
+/*** sprites icon ***/
 // .png 图片引用
 .icon {
-		@include sprites($spritesheet-sprites);
-	}
+	@include sprites($spritesheet-sprites);
+}
 // @2x.png 图片引用
 .icon_retina {
 	@include retina-sprites($retina_groups);
 }
 // 自定义图标样式
 .icon-wrapper {
-    width: 30px;  /* 图标显示的大小 */
-    height: 30px;
-    display: inline-flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden; /* 隐藏超出部分 */
+  width: 30px;  /* 图标显示的大小 */
+  height: 30px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden; /* 隐藏超出部分 */
 }
 .icon-wrapper .icon {
-    transform: scale(0.3); /* 根据原始图标与显示尺寸的比例调整 */
-    /* 例如图标原始尺寸是60x60，想显示为30x30，则缩放0.5 */
+  transform: scale(0.3); /* 根据原始图标与显示尺寸的比例调整 */
+  /* 例如图标原始尺寸是60x60，想显示为30x30，则缩放0.5 */
 }
 ul.icon{
   padding-inline-start:0px;
@@ -1013,7 +1002,328 @@ ul.icon{
   opacity:0.8; /* 增加透明度 */
 }
 .icon-wrapper .icon.t2{
-    transform: scale(0.4); /* 根据原始图标与显示尺寸的比例调整 */
-    /* 例如图标原始尺寸是60x60，想显示为30x30，则缩放0.5 */
+  transform: scale(0.4); /* 根据原始图标与显示尺寸的比例调整 */
+  /* 例如图标原始尺寸是60x60，想显示为30x30，则缩放0.5 */
+}
+
+/*** 试作型box样式 ***/
+/* 卡片容器 */
+.cards-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 24px;
+  padding: 20px;
+  max-width: calc(100vw - 200px);
+  margin: 0 auto;
+}
+
+/* 作品卡片盒子 */
+.crd-box {
+  position: relative;
+  background: rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* 卡片玻璃态背景 */
+.crd-box-glass {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.25) 0%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 卡片内容 */
+.crd-content {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 图片容器 */
+.crd-image-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 5px;
+}
+
+.crd-box-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s ease;
+  box-shadow:  0 4px 20px rgba(0, 0, 0, 1);
+}
+
+.image-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.6) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* 信息区域 */
+.crd-info {
+  padding: 5px 1px 15px 1px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 3;
+  color: #444;
+}
+
+.crd-title {
+  font-size: 1.1rem;
+  font-weight: 400;
+  margin-bottom: 8px;
+  text-align: left;
+  background: linear-gradient(135deg, #333, #555);
+  -webkit-background-clip: text;
+  background-clip: text;
+  line-height: 1.3;
+  margin-block-start: 0.3em;
+  margin-block-end: 0.3em;
+}
+
+/* 统计信息 */
+.crd-stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: #888;
+  
+  &.online {
+    color: #22c55e;
+    font-weight: 600;
+  }
+}
+
+.stat-icon {
+  font-size: 0.7rem;
+}
+
+.stat-value {
+  font-weight: 600;
+}
+
+/* 悬停效果 */
+.crd-hover-effect {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(81, 155, 233, 0.05) 0%,
+    rgba(15, 111, 180, 0.02) 100%
+  );
+  opacity: 0;
+  transform: scale(0.95);
+  transition: all 0.4s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 响应式设计 - 平板 */
+@media (max-width: 1024px) {
+  .cards-container {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 16px 0px;
+    max-width: calc(100vw - 100px);
+  }
+  
+  .crd-image-container {
+    height: 180px;
+  }
+  
+  .crd-info {
+    padding: 5px 1px 12px 1px;
+  }
+  
+  .crd-title {
+    font-size: 1.1rem;
+  }
+}
+
+/* 响应式设计 - 平板小尺寸 */
+@media (max-width: 768px) {
+  .cards-container {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    padding: 16px 0px;
+    max-width: calc(100vw - 50px);
+  }
+  
+  .crd-image-container {
+    height: 150px;
+  }
+  
+  .crd-info {
+    padding: 5px 1px 10px 1px;
+  }
+  
+  .crd-title {
+    font-size: 1.0rem;
+    margin-bottom: 6px;
+  }
+  
+  .crd-stats {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  
+  .stat-item {
+    font-size: 0.75rem;
+  }
+}
+
+/* 响应式设计 - 手机端 (2列布局) */
+@media (max-width: 480px) {
+  .cards-container {
+    grid-template-columns: repeat(2, 1fr); /* 强制2列布局 */
+    gap: 12px;
+    padding: 12px 0px;
+    max-width: calc(100vw - 30px);
+  }
+  
+  .crd-box {
+    min-height: 260px; /* 确保卡片有最小高度 */
+  }
+  
+  .crd-image-container {
+    height: 140px; /* 减小图片高度以适应2列布局 */
+  }
+  
+  .crd-info {
+    padding: 2px 1px 8px 1px;
+  }
+  
+  .crd-title {
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+    line-height: 1.2;
+    -webkit-line-clamp: 2;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .crd-stats {
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  
+  .stat-item {
+    font-size: 0.7rem;
+    gap: 2px;
+  }
+  
+  .stat-icon {
+    font-size: 0.65rem;
+  }
+  
+  /* 手机端简化悬停效果 */
+  .crd-hover-effect {
+    display: none; /* 手机端移除复杂的悬停效果 */
+  }
+}
+
+/* 响应式设计 - 超小屏幕手机 */
+@media (max-width: 360px) {
+  .cards-container {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+  
+  .crd-image-container {
+    height: 100px;
+  }
+  
+  .crd-info {
+    padding: 2px 1px 6px 1px;
+  }
+  
+  .crd-title {
+    font-size: 0.8rem;
+  }
+  
+  .crd-stats {
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  
+  .stat-item {
+    font-size: 0.65rem;
+  }
+}
+
+/* 响应式设计 - 横屏手机优化 */
+@media (max-width: 480px) and (orientation: landscape) {
+  .cards-container {
+    grid-template-columns: repeat(3, 1fr); /* 横屏时显示3列 */
+    gap: 10px;
+  }
+  
+  .crd-image-container {
+    height: 100px;
+  }
+  
+  .crd-info {
+    padding: 2px 1px 6px 1px;
+  }
+  
+  .crd-title {
+    font-size: 0.75rem;
+  }
+}
+
+/* 空状态 */
+.cards-container:empty::before {
+  content: "暂无项目展示";
+  display: block;
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 1.1rem;
+  grid-column: 1 / -1;
+}
+
+/* 手机端空状态优化 */
+@media (max-width: 480px) {
+  .cards-container:empty::before {
+    padding: 40px 15px;
+    font-size: 1rem;
+  }
 }
 </style>

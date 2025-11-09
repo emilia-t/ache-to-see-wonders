@@ -65,7 +65,7 @@ export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
-    vueDevTools(),
+    // vueDevTools(),
     Spritesmith(
       {
         watch: true,

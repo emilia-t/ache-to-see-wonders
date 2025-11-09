@@ -1,12 +1,30 @@
 {
-  "annotation":"The relative position of this file: public/webConfig.json",  
-  "version":"1",
+  "annotation": "The relative position of this file: ./webConfig.json",  
+  "version": "1",
   "homePageCurrentVideo": {
-    "title": "探索奇妙世界",
-    "description": "一段令人惊叹的视觉之旅，带您领略自然与科技的完美融合",
-    "cover": "/image/testCover01.jpg",
-    "video": "/video/testVideo01.mp4",
-    "targetUrl": "https://atsw.top",
+    "title": "3D象棋",
+    "description": "在线和朋友下象棋，自由的放置棋子~",
+    "cover": "/image/chinese_chess_image_1.jpg",
+    "video": "/video/chinese_chess_video_1.mp4",
+    "targetUrl": "/chinese-chess",
     "button_name": "立即尝试"
+  },
+  "homePageTrialBox": {
+    "annotation": "Some trial project", 
+    "version": "1",
+    "list":[
+      {
+        "key": "cc1",
+        "title": "3D象棋",
+        "description": "在线和朋友下象棋，自由的放置棋子~",
+        "cover": "/cover/chinese_chess_cover.jpg",
+        "targetUrl": "/chinese-chess",
+        "mode": "online_multiplayer",
+        "online_users": 0,
+        "online_state": false,
+        "visit_count": 0,
+        "heart_count": 0
+      }
+    ]
   }
 }

@@ -441,10 +441,11 @@ defineExpose({
                   class="password-toggle"
                   @click="togglePasswordVisibility('login')"
                 >
-                  <img 
-                    :src="showLoginPassword ? '/otherImage/eye_close.png' : '/otherImage/eye.png'" 
-                    :alt="showLoginPassword ? '隐藏密码' : '显示密码'" 
-                  />
+                  <div class="icon-wrapper">
+                    <ul class="icon">
+                      <li :class="showLoginPassword ? 'eye_close' : 'eye'"></li>
+                    </ul>
+                  </div>
                 </button>
               </div>
             </div>
@@ -488,10 +489,11 @@ defineExpose({
                   class="password-toggle"
                   @click="togglePasswordVisibility('login')"
                 >
-                  <img 
-                    :src="showLoginPassword ? '/otherImage/eye_close.png' : '/otherImage/eye.png'" 
-                    :alt="showLoginPassword ? '隐藏密码' : '显示密码'" 
-                  />
+                  <div class="icon-wrapper">
+                    <ul class="icon">
+                      <li :class="showLoginPassword ? 'eye_close' : 'eye'"></li>
+                    </ul>
+                  </div>
                 </button>
               </div>
             </div>
@@ -544,10 +546,11 @@ defineExpose({
                   class="password-toggle"
                   @click="togglePasswordVisibility('register')"
                 >
-                  <img 
-                    :src="showRegisterPassword ? '/otherImage/eye_close.png' : '/otherImage/eye.png'" 
-                    :alt="showRegisterPassword ? '隐藏密码' : '显示密码'" 
-                  />
+                  <div class="icon-wrapper">
+                    <ul class="icon">
+                      <li :class="showRegisterPassword ? 'eye_close' : 'eye'"></li>
+                    </ul>
+                  </div>
                 </button>
               </div>
             </div>
@@ -616,10 +619,11 @@ defineExpose({
                   class="password-toggle"
                   @click="togglePasswordVisibility('register')"
                 >
-                  <img 
-                    :src="showRegisterPassword ? '/otherImage/eye_close.png' : '/otherImage/eye.png'" 
-                    :alt="showRegisterPassword ? '隐藏密码' : '显示密码'" 
-                  />
+                  <div class="icon-wrapper">
+                    <ul class="icon">
+                      <li :class="showRegisterPassword ? 'eye_close' : 'eye'"></li>
+                    </ul>
+                  </div>
                 </button>
               </div>
             </div>
@@ -656,7 +660,9 @@ defineExpose({
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
+/* 导入路径根据实际情况编写 */
+@import '../sprite/style/sprite.scss';
 .view-user-layer-container {
   font-family: 'Microsoft YaHei', sans-serif;
   max-width: 27vw;
@@ -738,12 +744,6 @@ defineExpose({
 
 .password-toggle:hover {
   background-color: rgba(0, 0, 0, 0.05);
-}
-
-.password-toggle img {
-  width: 32px;
-  height: 32px;
-  object-fit: contain;
 }
 
 .theme-dark .password-toggle:hover {
@@ -1249,5 +1249,35 @@ defineExpose({
   opacity: 0.6;
   cursor: not-allowed;
   transform: none !important;
+}
+
+/** sprites icon **/
+// .png 图片引用
+.icon {
+		@include sprites($spritesheet-sprites);
+	}
+// @2x.png 图片引用
+.icon_retina {
+	@include retina-sprites($retina_groups);
+}
+// 自定义图标样式
+.icon-wrapper {
+    width: 30px;  /* 图标显示的大小 */
+    height: 30px;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden; /* 隐藏超出部分 */
+}
+.icon-wrapper .icon {
+    transform: scale(0.3); /* 根据原始图标与显示尺寸的比例调整 */
+    /* 例如图标原始尺寸是60x60，想显示为30x30，则缩放0.5 */
+}
+ul.icon{
+  padding-inline-start:0px;
+  padding-block-end:0px;
+  margin-block-start:0px;
+  margin-block-end:0px;
+  opacity:0.8; /* 增加透明度 */
 }
 </style>
