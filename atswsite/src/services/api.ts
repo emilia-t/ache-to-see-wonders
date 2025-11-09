@@ -80,6 +80,18 @@ class AccountApiService {
     })
   }
 
+  // token自动登录方法
+  async tokenLogin(userId: string, userToken: string): Promise<AccountApiResponse> {
+    const formData = new URLSearchParams()
+    formData.append('user_id', userId)
+    formData.append('user_token', userToken)
+
+    return this.request('/tokenlogin', {
+      method: 'POST',
+      body: formData,
+    })
+  }
+
   async getUserData(userId: string, token: string): Promise<AccountApiResponse> {
     const formData = new URLSearchParams()
     formData.append('user_id', userId)

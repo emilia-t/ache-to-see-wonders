@@ -65,6 +65,9 @@ const registerError = ref('');
 const showLoginPassword = ref(false);
 const showRegisterPassword = ref(false);
 
+// 自动登录状态
+const autoLoginInProgress = ref(false);
+
 // ==================== 计算属性 ====================
 const isLoggedIn = computed(() => userStore.isLoggedIn);
 const userData = computed(() => userStore.userData);
@@ -225,31 +228,53 @@ const handleRegister = async () => {
 };
 
 const handleLogout = () => {
+  // 清除本地存储的认证信息
+  localStorage.removeItem('user_token');
+  localStorage.removeItem('user_id');
+  
   userStore.logout();
   closeAllModals();
   emit('logout');
 };
 
-// 自动登录检查
+// 自动登录检查 - 使用新的tokenLogin方法
 const checkAutoLogin = async () => {
-  const authInfo = userStore.restoreAuth();
-  if (authInfo) {
+  // 从localStorage获取token和user_id
+  const token = localStorage.getItem('user_token');
+  const userId = localStorage.getItem('user_id');
+  
+  // 如果已经有token和user_id，尝试自动登录
+  if (token && userId && !isLoggedIn.value) {
+    autoLoginInProgress.value = true;
+    
     try {
-      userStore.setLoading(true);
-      const response = await accountApiService.getUserData(authInfo.userId, authInfo.token);
+      const response = await accountApiService.tokenLogin(userId, token);
+      
       if (response.success && response.user) {
+        // 自动登录成功，更新用户状态
         userStore.setUser(response.user);
+        userStore.setToken(token);
+        console.log('自动登录成功');
       } else {
-        // token无效，清除本地存储
-        userStore.logout();
+        // 自动登录失败，清除无效的token
+        console.log('自动登录失败:', response.message);
+        handleAutoLoginFailure();
       }
     } catch (error) {
-      console.error('自动登录失败:', error);
-      userStore.logout();
+      console.error('自动登录异常:', error);
+      handleAutoLoginFailure();
     } finally {
-      userStore.setLoading(false);
+      autoLoginInProgress.value = false;
     }
   }
+};
+
+// 自动登录失败处理
+const handleAutoLoginFailure = () => {
+  // 清除无效的认证信息
+  localStorage.removeItem('user_token');
+  localStorage.removeItem('user_id');
+  userStore.logout();
 };
 
 // 工具方法
@@ -303,12 +328,17 @@ defineExpose({
   handleLogout,
   togglePasswordVisibility,
   showLoginPassword,
-  showRegisterPassword
+  showRegisterPassword,
+  checkAutoLogin
 });
 </script>
 
 <template>
   <div class="view-user-layer-container" :class="[`theme-${props.theme}`, `design-${props.design}`]">
+    <!-- 自动登录加载指示器 -->
+    <div v-if="autoLoginInProgress" class="auto-login-loading">
+      自动登录中...
+    </div>
     <!-- 样式 A : 悬浮固定在右上角的卡片样式，会美观的显示用户信息，点击头像会展开登录弹窗 -->
     <div v-if="props.design == 'A'" class="design-a">
       <div class="user-card" :class="{ 'logged-in': isLoggedIn }">
@@ -1279,5 +1309,19 @@ ul.icon{
   margin-block-start:0px;
   margin-block-end:0px;
   opacity:0.8; /* 增加透明度 */
+}
+/*** 自动登录加载样式 ***/
+.auto-login-loading{
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0,1);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.6;
 }
 </style>

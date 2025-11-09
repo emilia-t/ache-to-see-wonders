@@ -21,7 +21,15 @@ class ChineseChessInstruct(instruct.Instruct):
 
     def create_expand_instruct(self,type_: str,class_: str,conveyor_: str,data: Any) -> InstructObject:
         """处理扩展指令"""
-        # 中国象棋特定的扩展指令处理逻辑
-        print(f"处理中国象棋扩展指令")
-        # 这里可以添加游戏开始、走棋、吃子等游戏逻辑
+        
         return InstructObject('expand')
+    
+    @staticmethod
+    def create_get_token_login(user_id: int,user_token: str) -> InstructObject:
+        """创建token登录指令"""
+        return InstructObject("get_token_login", data={"user_id": user_id,"user_token": user_token})
+
+    @staticmethod
+    def create_token_login(status: str = 'no') -> InstructObject:
+        """创建token登录状态指令"""
+        return InstructObject("token_login", data=status)

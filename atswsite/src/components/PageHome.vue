@@ -1232,7 +1232,6 @@ ul.icon{
     font-size: 0.9rem;
     margin-bottom: 4px;
     line-height: 1.2;
-    -webkit-line-clamp: 2;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     overflow: hidden;

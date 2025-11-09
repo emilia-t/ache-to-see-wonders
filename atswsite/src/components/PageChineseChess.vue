@@ -186,7 +186,19 @@ const initInteractionSystem = () => {
  * 指针锁定状态变化处理
  */
 const onPointerLockChange = () => {
+  const wasPointerLocked = isPointerLocked;
   isPointerLocked = document.pointerLockElement === renderer.domElement;
+  
+  // 当指针锁定状态变化时，更新光标样式
+  if (renderer?.domElement) {
+    if (isPointerLocked) {
+      // 锁定时光标隐藏
+      renderer.domElement.style.cursor = 'none';
+    } else {
+      // 解除锁定时光标显示为默认
+      renderer.domElement.style.cursor = 'default';
+    }
+  }
 }
 
 /**
@@ -728,6 +740,7 @@ onUnmounted(() => {
   if (renderer) {// 清理资源
     if (renderer.domElement) {// 移除事件监听器
       renderer.domElement.removeEventListener('click', onClick);
+      renderer.domElement.style.cursor = 'default';
     }
     document.removeEventListener('keydown', onKeyDown);
     document.removeEventListener('keyup', onKeyUp);
@@ -771,7 +784,6 @@ const user_info = null;
   top: 0;
   left: 0;
   overflow: hidden;
-  cursor: none;
 }
 .crosshair{
   position: fixed;
@@ -786,9 +798,11 @@ const user_info = null;
   pointer-events: none;
   z-index: 1000;
 }
+/* 保持全屏状态下的样式不变 */
 .chess-container:fullscreen,
 .chess-container:-webkit-full-screen,
 .chess-container:-moz-full-screen {
+  /* 保留全屏时的光标隐藏 */
   cursor: none;
 }
 </style>

@@ -63,7 +63,6 @@ class ChineseChessServer:
     def init_create_tables(self, cursor):
         """创建数据库表"""
         cursor.execute(sql_statement._server_config_table_)
-        cursor.execute(sql_statement._users_table_)
         cursor.execute(sql_statement._pieces_table_)
         cursor.execute(sql_statement._insert_server_config_)
 
@@ -115,6 +114,7 @@ class ChineseChessServer:
                 'get_server_config': self.handle_get_server_config,
                 'get_user_data': self.handle_get_user_data,
                 'broadcast': self.handle_broadcast,
+                'get_token_login': self.handle_get_token_login,
                 # 可以添加更多指令处理...
             }
 
@@ -137,23 +137,12 @@ class ChineseChessServer:
 
     async def handle_get_login(self, websocket, instruct):
         """处理登录指令"""
-        data = instruct.get('data', {})
-        email = data.get('email', '')
-        password = data.get('password', '')  # 应该是加密后的密码
-        if email == '' or password == '' :
-            return False
-        decrypt_em = tool.Tool.rsa_decrypt(email,server_config._config_privatekey_)
-        decrypt_pd = tool.Tool.rsa_decrypt(password, server_config._config_privatekey_)
-
-        # 验证密码
-        user = self.get_user_login(decrypt_em, decrypt_pd)
-        if user:
-            self.logged_users[websocket] = user['id']
-            self.online_users[user['id']] = websocket
-            await websocket.send(self.instruct.create_login('ok').to_json())
-        else:
-            await websocket.send(self.instruct.create_login('no').to_json())
-
+        pass
+    async def handle_get_token_login(self, websocket, instruct):
+        """处理Token登录指令 走 810 账户服务 验证登录"""
+         
+        pass
+    
     async def handle_get_anonymous_login(self, websocket, instruct):
         """处理匿名登录指令"""
         data = instruct.get('data', {})

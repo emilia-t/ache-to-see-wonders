@@ -319,7 +319,7 @@ class AccountService:
         
         return errors
     
-    def handle_login(self, params, cookies):
+    def handle_login(self, params):
         """处理登录请求"""
         response = {"success": False, "message": "", "user": None}
         
@@ -381,11 +381,12 @@ class AccountService:
                 "name": user_data[3],
                 "qq": user_data[4],
                 "theme_color": user_data[5],
-                "head_img": user_data[6]
+                "head_img": user_data[6],
+                "token": token
             }
             
             response["success"] = True
-            response["message"] = "登录成功"
+            response["message"] = "ok"
             response["user"] = user_data_info
             
             return response, cookie_list
@@ -532,6 +533,78 @@ class AccountService:
         
         return response
     
+    def handle_tokenlogin(self, params, cookies):
+        """处理token自动登录请求"""
+        response = {"success": False, "message": "", "user": None}
+    
+        try:
+            # 从参数或Cookie中获取token和user_id
+            user_id = params.get('user_id', '').strip()
+            token = params.get('user_token', '').strip()
+        
+            # 从Cookie中提取token和user_id（如果参数中没有提供）
+            cookie_dict = {}
+            for cookie in cookies:
+                parts = cookie.split('=')
+                if len(parts) == 2:
+                    cookie_dict[parts[0].strip()] = parts[1].strip()
+            
+            # 优先使用参数中的值，如果没有则使用Cookie中的值
+            if not user_id:
+                user_id = cookie_dict.get('user_id', '')
+            if not token:
+                token = cookie_dict.get('user_token', '')
+            
+            if not user_id or not token:
+                response["message"] = "empty user_id or user_token"
+                return response
+            
+            # 查询用户
+            user = self.db.execute_query('''
+                SELECT id, email, password, name, qq, theme_color, head_img, token, token_expiry, anonymous_user, email_verified
+                FROM users 
+                WHERE id = ? AND token = ?
+            ''', (user_id, token))
+            
+            if not user:
+                response["message"] = "token无效或用户不存在"
+                return response
+            
+            user_data = user[0]
+            current_time = int(time.time())
+            
+            # 检查token是否过期
+            if user_data[8] and user_data[8] < current_time:
+                response["message"] = "token已过期，请重新登录"
+                return response
+            
+            # 检查邮箱是否已验证
+            if not user_data[10]:
+                response["message"] = "账户未激活，请先激活账户"
+                return response
+            
+            # 准备返回的用户数据
+            user_data_info = {
+                "id": user_data[0],
+                "anonymous_user": bool(user_data[9]),
+                "email": user_data[1],
+                "password": "",
+                "name": user_data[3],
+                "qq": user_data[4],
+                "theme_color": user_data[5],
+                "head_img": user_data[6]
+            }
+            
+            response["success"] = True
+            response["message"] = "ok"
+            response["user"] = user_data_info
+            
+            return response
+        
+        except Exception as e:
+            response["message"] = f"自动登录过程中发生错误: {str(e)}"
+            return response, []
+
     def handle_request(self, request_data, addr):
         """处理HTTP请求"""
         method, path, params = self.parse_request(request_data)
@@ -556,8 +629,11 @@ class AccountService:
         if path == '/register' and method == 'POST':
             result = self.handle_register(params)
             response = self.create_response(result)
+        elif path == '/tokenlogin' and method == 'POST':
+            result = self.handle_tokenlogin(params, cookies)
+            response = self.create_response(result)
         elif path == '/login' and method == 'POST':
-            result, cookie_list = self.handle_login(params, cookies)
+            result, cookie_list = self.handle_login(params)
             response = self.create_response(result, cookies=cookie_list)
         elif path == '/activate' and method == 'GET':
             # 直接返回HTML响应

@@ -11,3 +11,4 @@ _config_server_name_        = '中国象棋游戏服务器'
 _config_max_online_         = 100
 _config_publickey_          = RSAKEYPAIR._PUBLICKEY_
 _config_privatekey_         = RSAKEYPAIR._PRIVATEKEY_
+_api_account_server_url_    = 'http://192.168.90.50:810' # 账号服务器地址

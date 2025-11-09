@@ -4,26 +4,13 @@
 
 import server_config
 
-_users_table_ = """CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email VARCHAR(255) UNIQUE NOT NULL,
-                password VARCHAR(255) UNIQUE NOT NULL,
-                name VARCHAR(100) NOT NULL,
-                qq INTEGER,
-                theme_color VARCHAR(50) DEFAULT 'rgba(255,255,255,1)',
-                anonymous_user BOOLEAN DEFAULT FALSE,
-                head_img VARCHAR(255) DEFAULT 'none',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                last_login DATETIME DEFAULT CURRENT_TIMESTAMP,
-            )"""
-
 _server_config_table_ = """CREATE TABLE IF NOT EXISTS server_config (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 version VARCHAR(20) DEFAULT '1.0.0',
                 anonymous_login BOOLEAN DEFAULT TRUE,
                 server_key VARCHAR(100) DEFAULT 'default_key',
-                server_url VARCHAR(255) DEFAULT 'ws://localhost:2424',
-                server_name VARCHAR(100) DEFAULT '中国象棋服务器',
+                server_url VARCHAR(255) DEFAULT 'none',
+                server_name VARCHAR(100) DEFAULT '3D象棋服务器',
                 max_online INTEGER DEFAULT 100,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )"""
