@@ -18,7 +18,6 @@ class SettingsPage(QWidget):
 
     def load_settings(self):
         default_settings = {
-            "backend_port": 8000,
             "frontend_port": 3000,
             "auto_start": False,
             "log_level": "INFO",
@@ -50,22 +49,6 @@ class SettingsPage(QWidget):
         title_label.setFont(QFont("Arial", 16, QFont.Bold))
         title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(title_label)
-
-        # 后端设置组
-        backend_group = QGroupBox("后端设置")
-        backend_layout = QFormLayout()
-
-        self.backend_port = QSpinBox()
-        self.backend_port.setRange(1000, 65535)
-        self.backend_port.setValue(self.settings["backend_port"])
-
-        self.backend_host = QLineEdit()
-        self.backend_host.setText("localhost")
-
-        backend_layout.addRow("端口:", self.backend_port)
-        backend_layout.addRow("主机:", self.backend_host)
-        backend_group.setLayout(backend_layout)
-        layout.addWidget(backend_group)
 
         # 前端设置组
         frontend_group = QGroupBox("前端设置")
@@ -118,7 +101,6 @@ class SettingsPage(QWidget):
 
     def save_settings_handler(self):
         self.settings.update({
-            "backend_port": self.backend_port.value(),
             "frontend_port": self.frontend_port.value(),
             "auto_start": self.auto_start.isChecked(),
             "log_level": self.log_level.currentText(),
@@ -138,7 +120,6 @@ class SettingsPage(QWidget):
             "theme": "light"
         }
 
-        self.backend_port.setValue(default_settings["backend_port"])
         self.frontend_port.setValue(default_settings["frontend_port"])
         self.auto_start.setChecked(default_settings["auto_start"])
         self.log_level.setCurrentText(default_settings["log_level"])

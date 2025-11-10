@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# The relative position of this file: /init_database.py
+# The relative position of this file: /backend/accountServer/init_database.py
 import sqlite3
 import os
 

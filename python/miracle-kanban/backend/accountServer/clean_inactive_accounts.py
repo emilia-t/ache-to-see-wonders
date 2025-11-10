@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# The relative position of this file: /clean_inactive_accounts.py
+# The relative position of this file: /backend/accountServer/clean_inactive_accounts.py
 # 用于手动清理未激活的账户
 
 # 1.试运行（查看哪些账户会被删除） 超过 24 小时未激活的账户

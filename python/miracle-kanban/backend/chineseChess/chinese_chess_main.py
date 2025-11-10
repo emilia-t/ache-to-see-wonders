@@ -13,6 +13,20 @@ import server_config
 import chinese_chess_instruct
 from .. import tool
 import sql_statement
+import datetime
+
+# 创建日志文件
+current_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+log_filename = f"{current_time}-log.log"
+log_file = open(log_filename, 'w', encoding='utf-8')
+
+def log_message(message):
+    """记录日志信息到文件和控制台"""
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    formatted_message = f"[{timestamp}] {message}"
+    print(formatted_message)
+    log_file.write(formatted_message + '\n')
+    log_file.flush()  # 确保立即写入文件
 
 class ChineseChessServer:
     def __init__(self, host='localhost', port=2424, db_path='chess.db'):
@@ -140,7 +154,7 @@ class ChineseChessServer:
         pass
     async def handle_get_token_login(self, websocket, instruct):
         """处理Token登录指令 走 810 账户服务 验证登录"""
-         
+        log_message(instruct)
         pass
     
     async def handle_get_anonymous_login(self, websocket, instruct):

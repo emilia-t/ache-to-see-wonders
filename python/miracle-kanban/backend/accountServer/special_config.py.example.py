@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# The relative position of this file: /special_config.py
+# The relative position of this file: /backend/accountServer/special_config.py
 
 # 电子邮箱相关配置
 _smtp_server_ = 'smtp.your-email-provider.com' # smtp 服务器地址

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# The relative position of this file: /main.py
+# The relative position of this file: /backend/accountServer/account_main.py
 import socket
 import threading
 import json
