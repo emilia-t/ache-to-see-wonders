@@ -9,6 +9,7 @@ import Tool from '@/class/Tool';
 import type LogConfig from '@/interface/LogConfig';
 import type InstructObject from '@/interface/InstructObject';
 import ViewUserLayer from './ViewUserLayer.vue';
+import {CHINESE_3D_CHESS_SERVER_URL} from '@/config/apiConfig.ts';
 
 // ==============================
 // 组件引用
@@ -54,7 +55,7 @@ let transparentMaterial: THREE.MeshLambertMaterial;
 // ==============================
 // 通信相关
 // ==============================
-const ccInstruct = new ChineseChessInstruct("ws://127.0.0.1:2424");
+const ccInstruct = new ChineseChessInstruct(CHINESE_3D_CHESS_SERVER_URL);
 ccInstruct.onLog = (message:string,type:'tip'|'warn'|'error',data?:any):LogConfig=>{
   const logConfig = {
     code:0,
@@ -69,6 +70,13 @@ ccInstruct.onLog = (message:string,type:'tip'|'warn'|'error',data?:any):LogConfi
 };
 ccInstruct.onOpen = (ev: Event):void=>{
   console.log("服务器已连接");
+  const localStorageUserId = localStorage.getItem('user_id');
+  const localStorageUserToken = localStorage.getItem('user_token');
+
+  if(localStorageUserId && localStorageUserToken){// 自动登录
+    ccInstruct.getTokenLogin(Number(localStorageUserId),localStorageUserToken);
+  }
+
 };
 ccInstruct.onClose = (ev: Event):void=>{
   console.log("服务器断开连接",ev);
@@ -79,6 +87,7 @@ ccInstruct.onError = (ev: Event):void=>{
 ccInstruct.onMessage = (instructObj: InstructObject):void=>{
   console.log(instructObj);
 };
+
 // ==============================
 // 工具函数
 // ==============================

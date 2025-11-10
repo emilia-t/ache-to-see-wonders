@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# The relative position of this file: /backend/instruct.py
+# The relative position of this file: /backend/chineseChess/instruct.py
 
 import json
 from datetime import datetime

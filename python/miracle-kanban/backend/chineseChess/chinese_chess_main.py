@@ -11,9 +11,11 @@ import os
 from typing import Dict, Any, Optional
 import server_config
 import chinese_chess_instruct
-from .. import tool
+import tool
 import sql_statement
 import datetime
+import aiohttp  # 添加异步HTTP请求支持
+from urllib.parse import urlencode  # 添加URL编码支持
 
 # 创建日志文件
 current_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
@@ -28,13 +30,51 @@ def log_message(message):
     log_file.write(formatted_message + '\n')
     log_file.flush()  # 确保立即写入文件
 
+class HTTPClient:
+    """HTTP客户端工具类"""
+    
+    @staticmethod
+    async def post_request(url: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """发送POST请求 (application/x-www-form-urlencoded格式)"""
+        try:
+            # 将数据转换为URL编码格式
+            form_data = urlencode(data)
+            
+            log_message(f"发送HTTP POST请求到: {url}")
+            log_message(f"请求数据 (form格式): {form_data}")
+            
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, data=form_data, headers=headers) as response:
+                    response_text = await response.text()
+                    log_message(f"HTTP响应状态: {response.status}")
+                    log_message(f"HTTP响应内容: {response_text}")
+                    
+                    if response.status == 200:
+                        try:
+                            result = await response.json()
+                            log_message(f"HTTP响应解析成功: {result}")
+                            return result
+                        except:
+                            log_message(f"HTTP响应JSON解析失败: {response_text}")
+                            return None
+                    else:
+                        log_message(f"HTTP请求失败: {response.status} - {response_text}")
+                        return None
+        except Exception as e:
+            log_message(f"HTTP请求异常: {e}")
+            return None
+
 class ChineseChessServer:
     def __init__(self, host='localhost', port=2424, db_path='chess.db'):
         self.host = host
         self.port = port
         self.db_path = db_path
         self.connected_clients = {}
-        self.logged_users = {}  # websocket -> user_id
+        self.logged_users = {}  # websocket -> user_data
         self.online_users = {}  # user_id -> websocket
         self.game_rooms =   {}
 
@@ -46,7 +86,7 @@ class ChineseChessServer:
 
     async def start_server(self):
         """启动WebSocket服务器"""
-        print(f"中国象棋服务器启动在 {self.host}:{self.port}")
+        log_message(f"中国象棋服务器启动在 {self.host}:{self.port}")
 
         # 使用新的websockets API
         async with websockets.serve(self.handle_connection, self.host, self.port):
@@ -70,9 +110,9 @@ class ChineseChessServer:
 
             conn.commit()
             conn.close()
-            print("数据库初始化完成")
+            log_message("数据库初始化完成")
         except Exception as e:
-            print(f"数据库初始化失败: {e}")
+            log_message(f"数据库初始化失败: {e}")
 
     def init_create_tables(self, cursor):
         """创建数据库表"""
@@ -90,7 +130,7 @@ class ChineseChessServer:
         self.connected_clients[client_id] = websocket
 
         try:
-            print(f"客户端连接: {client_id}")
+            log_message(f"客户端连接: {client_id}")
 
             # 发送公钥
             await websocket.send(self.instruct.create_publickey(server_config._config_publickey_).to_json())
@@ -99,14 +139,15 @@ class ChineseChessServer:
                 await self.handle_message(websocket, message)
 
         except websockets.exceptions.ConnectionClosed:
-            print(f"客户端断开: {client_id}")
+            log_message(f"客户端断开: {client_id}")
         finally:
             # 清理连接
             if client_id in self.connected_clients:
                 del self.connected_clients[client_id]
             # 清理认证用户
             if websocket in self.logged_users:
-                user_id = self.logged_users[websocket]
+                user_data = self.logged_users[websocket]
+                user_id = user_data.get('id')
                 if user_id in self.online_users:
                     del self.online_users[user_id]
                 del self.logged_users[websocket]
@@ -117,7 +158,7 @@ class ChineseChessServer:
             instruct = json.loads(message)
             instruct_type = instruct.get('type')
 
-            print(f"收到指令: {instruct_type}")
+            log_message(f"收到指令: {instruct_type}")
 
             # 根据指令类型处理
             handlers = {
@@ -150,12 +191,53 @@ class ChineseChessServer:
         await websocket.send(self.instruct.create_publickey(server_config._config_publickey_).to_json())
 
     async def handle_get_login(self, websocket, instruct):
-        """处理登录指令"""
+        """处理登录指令 此服务不支持账号认证登录服务"""
         pass
+
     async def handle_get_token_login(self, websocket, instruct):
-        """处理Token登录指令 走 810 账户服务 验证登录"""
-        log_message(instruct)
-        pass
+        """处理Token登录指令"""
+        log_message(f"处理Token登录请求: {instruct}")
+        
+        data = instruct.get('data', {})
+        user_id = data.get('user_id')
+        user_token = data.get('user_token')
+        
+        # 添加详细日志
+        log_message(f"Token登录参数 - user_id: {user_id}, user_token: {user_token}")
+        
+        if not user_id or not user_token:
+            log_message(f"Token登录失败: user_id或user_token为空 - user_id: {user_id}, user_token: {user_token}")
+            await websocket.send(self.instruct.create_token_login('no').to_json())
+            return
+        
+        # 向账号服务器验证token
+        account_server_url = server_config._api_account_server_url_
+        if not account_server_url:
+            log_message("账号服务器URL未配置")
+            await websocket.send(self.instruct.create_token_login('no').to_json())
+            return
+        
+        # 发送验证请求到账号服务器 (使用form格式)
+        request_data = {
+            'user_id': str(user_id),
+            'user_token': user_token
+        }
+        
+        response = await HTTPClient.post_request(f"{account_server_url}/tokenlogin", request_data)
+        
+        if response and response.get('success'):
+            user_data = response.get('user', {})
+            
+            # 记录用户登录状态
+            self.logged_users[websocket] = user_data
+            self.online_users[user_id] = websocket
+            
+            log_message(f"用户Token登录成功: {user_data.get('name')} (ID: {user_id})")
+            await websocket.send(self.instruct.create_token_login('ok').to_json())
+        else:
+            error_msg = response.get('message', '未知错误') if response else '账号服务器无响应'
+            log_message(f"用户Token登录失败: {error_msg}")
+            await websocket.send(self.instruct.create_token_login('no').to_json())
     
     async def handle_get_anonymous_login(self, websocket, instruct):
         """处理匿名登录指令"""
@@ -166,7 +248,7 @@ class ChineseChessServer:
         # 创建或获取匿名用户
         user = self.get_or_set_anonymous_user(email)
         if user:
-            self.logged_users[websocket] = user['id']
+            self.logged_users[websocket] = user
             self.online_users[user['id']] = websocket
             await websocket.send(self.instruct.create_anonymous_login('ok').to_json())
         else:
@@ -180,11 +262,9 @@ class ChineseChessServer:
     async def handle_get_user_data(self, websocket, instruct):
         """处理获取用户数据指令"""
         if websocket in self.logged_users:
-            user_id = self.logged_users[websocket]
-            user_data = self.get_user_data(user_id)
-            if user_data:
-                await websocket.send(self.instruct.create_user_data(user_data).to_json())
-                return
+            user_data = self.logged_users[websocket]
+            await websocket.send(self.instruct.create_user_data(user_data).to_json())
+            return
 
         # 如果没有用户数据，返回空数据
         empty_user_data = {
@@ -246,7 +326,7 @@ class ChineseChessServer:
                 }
             return None
         except Exception as e:
-            print(f"用户验证错误: {e}")
+            log_message(f"用户验证错误: {e}")
             return None
         finally:
             conn.close()
@@ -299,7 +379,7 @@ class ChineseChessServer:
                     "anonymous_user": True
                 }
         except Exception as e:
-            print(f"创建匿名用户错误: {e}")
+            log_message(f"创建匿名用户错误: {e}")
             return None
         finally:
             conn.close()
@@ -336,7 +416,7 @@ class ChineseChessServer:
                 "max_online": 100
             }
         except Exception as e:
-            print(f"获取服务器配置错误: {e}")
+            log_message(f"获取服务器配置错误: {e}")
             return {
                 "version": "1.0.0",
                 "anonymous_login": True,
@@ -371,7 +451,7 @@ class ChineseChessServer:
                 }
             return None
         except Exception as e:
-            print(f"获取用户数据错误: {e}")
+            log_message(f"获取用户数据错误: {e}")
             return None
         finally:
             conn.close()

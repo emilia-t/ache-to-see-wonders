@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# The relative position of this file: /backend/tool.py
+# The relative position of this file: /backend/chineseChess/tool.py
 
 import datetime
 import re

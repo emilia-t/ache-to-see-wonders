@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 # The relative position of this file: /backend/chineseChess/chinese_chess_instruct.py
 
-from .. import instruct
-from ..instruct import InstructObject
+from instruct import Instruct
+from instruct import InstructObject
 from typing import Any
 
-class ChineseChessInstruct(instruct.Instruct):
+class ChineseChessInstruct(Instruct):
     """中国象棋指令类"""
 
     def __init__(self):
