@@ -105,41 +105,39 @@ class ChineseChessServer:
 
     async def start_server(self):
         """启动WebSocket服务器"""
-        log_message(f"中国象棋服务器启动在 {self.host}:{self.port}")
+        log_message(f"服务器即将启动在: {self.host}:{self.port}")
         
-        # 配置跨域支持
+        # SSL配置
+        ssl_context = None
+        if server_config._config_use_ssl_ and server_config._config_ssl_cert_file_ and server_config._config_ssl_key_file_:
+            try:
+                import ssl
+                ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                ssl_context.load_cert_chain(server_config._config_ssl_cert_file_, server_config._config_ssl_key_file_)
+                log_message(f"已加载SSL证书: {server_config._config_ssl_cert_file_}")
+                log_message(f"已加载SSL密钥: {server_config._config_ssl_key_file_}")
+            except Exception as e:
+                log_message(f"SSL配置失败: {e}")
+                ssl_context = None
+        
+        # 创建服务器，设置跨域支持
         start_server = await websockets.serve(
             self.handle_connection, 
             self.host, 
             self.port,
-            # 添加跨域支持
-            # origins=self.origin_checker,
-            origins=None,
+            origins=server_config._access_control_allow_origin_,  # 使用配置的跨域规则
+            ssl=ssl_context,  # SSL上下文
             ping_interval=20,  # 设置ping间隔
             ping_timeout=20,   # 设置ping超时
             close_timeout=10,  # 设置关闭超时
             max_size=2**20,    # 增加最大消息大小
         )
-        log_message(f"WebSocket服务器已启动，监听 {self.host}:{self.port}")
+        
+        protocol = "WSS" if ssl_context else "WS"
+        log_message(f"服务器已启动在: {self.host}:{self.port} ({protocol})")
+        log_message(f"服务器URL: {server_config._config_server_url_}")
         log_message("等待客户端连接...")
         await asyncio.Future()  # 永久运行
-    
-    def origin_checker(origin):
-        """自定义来源验证函数"""
-        if not origin:
-            return True  # 允许没有Origin头的连接（如非浏览器客户端）
-        
-        # 检查是否来自192.168网段
-        if "192.168." in origin:
-            return True
-        
-        # 也可以添加其他允许的来源
-        allowed_domains = ["localhost", "127.0.0.1"]
-        for domain in allowed_domains:
-            if domain in origin:
-                return True
-        
-        return False
 
     def init_chess_pieces_state(self):
         """初始化棋子状态"""
@@ -182,10 +180,8 @@ class ChineseChessServer:
 
     def init_create_tables(self, cursor):
         """创建数据库表"""
-        cursor.execute(sql_statement._server_config_table_)
         cursor.execute(sql_statement._pieces_table_)
-        cursor.execute(sql_statement._insert_server_config_)
-
+        
     """
     ==============================
     事件与指令处理
@@ -346,18 +342,7 @@ class ChineseChessServer:
     
     async def handle_get_anonymous_login(self, websocket, instruct):
         """处理匿名登录指令"""
-        data = instruct.get('data', {})
-        email = data.get('email', '')
-        if email == '':
-            return
-        # 创建或获取匿名用户
-        user = self.get_or_set_anonymous_user(email)
-        if user:
-            self.logged_users[websocket] = user
-            self.online_users[user['id']] = websocket
-            await websocket.send(self.instruct.create_anonymous_login('ok').to_json())
-        else:
-            await websocket.send(self.instruct.create_anonymous_login('no').to_json())
+        pass
 
     async def handle_get_server_config(self, websocket, instruct):
         """处理获取服务器配置指令"""
@@ -557,101 +542,33 @@ class ChineseChessServer:
 
     def get_or_set_anonymous_user(self, email: str) -> Optional[Dict[str, Any]]:
         """获取或创建匿名用户"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-
-            # 查找用户
-            cursor.execute(
-                sql_statement._select_user__email_,
-                (email,)
-            )
-            user = cursor.fetchone()
-
-            if user:
-                # 更新最后登录时间
-                cursor.execute(
-                    sql_statement._update_user_last_login__id_,
-                    (user[0],)
-                )
-                conn.commit()
-
-                return {
-                    "id": user[0],
-                    "email": user[1],
-                    "name": user[2],
-                    "qq": user[3],
-                    "theme_color": user[4],
-                    "anonymous_user": bool(user[5])
-                }
-            else:
-                # 创建新匿名用户 名称是随机数 0 - 10000
-                name = f"匿名用户{secrets.randbelow(10000)}"
-                cursor.execute(
-                    sql_statement._insert_anonymous_user_,
-                    (email, name)
-                )
-                user_id = cursor.lastrowid
-                conn.commit()
-
-                return {
-                    "id": user_id,
-                    "email": email,
-                    "name": name,
-                    "qq": 0,
-                    "theme_color": tool.Tool.create_random_rgba(),
-                    "anonymous_user": True
-                }
-        except Exception as e:
-            log_message(f"创建匿名用户错误: {e}")
-            return None
-        finally:
-            conn.close()
+        pass
 
     def get_server_config(self) -> Dict[str, Any]:
-        """获取服务器配置"""
+        """ 获取服务器配置 """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-
-            cursor.execute(sql_statement._select_server_config_)
-            config = cursor.fetchone()
-
-            if config:
-                online_number = len(self.logged_users)
-                return {
-                    "version": config[0],
-                    "anonymous_login": bool(config[1]),
-                    "key": config[2],
-                    "url": config[3],
-                    "name": config[4],
-                    "online_number": online_number,
-                    "max_online": config[5]
-                }
-
-            # 返回默认配置
+            online_number = len(self.logged_users)
             return {
-                "version": "1.0.0",
-                "anonymous_login": True,
-                "key": "cc1",
-                "url": f"ws://{self.host}:{self.port}",
-                "name": "中国象棋服务器",
-                "online_number": len(self.logged_users),
-                "max_online": 100
+                "version": server_config._config_version_,
+                "anonymous_login": server_config._config_anonymous_login_,
+                "key": server_config._config_server_key_,
+                "url": server_config._config_server_url_,
+                "name": server_config._config_server_name_,
+                "online_number": online_number,
+                "max_online": server_config._config_max_online_
             }
         except Exception as e:
             log_message(f"获取服务器配置错误: {e}")
+            # 返回默认配置
             return {
                 "version": "1.0.0",
-                "anonymous_login": True,
+                "anonymous_login": False,
                 "key": "cc1",
                 "url": f"ws://{self.host}:{self.port}",
                 "name": "中国象棋服务器",
-                "online_number": len(self.logged_users),
+                "online_number": online_number,
                 "max_online": 100
             }
-        finally:
-            conn.close()
 
     def get_user_data(self, user_id: int) -> Optional[Dict[str, Any]]:
         """获取用户数据"""

@@ -99,7 +99,7 @@ class EmailUtils:
         sender_password = special_config._sender_password_
 
         # 激活链接 
-        activation_link = f"{special_config._login_site_}/activate?code={verification_code}&user_id={user_id}"
+        activation_link = f"{special_config._server_url_}/activate?code={verification_code}&user_id={user_id}"
         subject = "ATSW账户激活"
         # HTML邮件内容 WebsiteAccountActivation.html
         body = f"""<html><head><meta charset="UTF-8"><style>body{{color:#333;margin:0;padding:20px}} .h{{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:20px;text-align:center;border-radius:8px 8px 0 0}} .b{{display:inline-block;background:#4CAF50;color:#fff;padding:12px 24px;text-decoration:none;border-radius:5px;margin:15px 0}} .f{{border-top:1px solid #ddd;color:#666;font-size:18px}}</style></head><body><div class="h"><h2>🎉 欢迎加入 ATSW！</h2></div><div><p>亲爱的 <strong>{name}</strong>，</p><p>感谢您注册我们的网站！请点击下方按钮激活您的账户：</p><div style="text-align:left"><a href="{activation_link}" class="b">🚀 立即激活账户</a></div><p>或者复制以下链接到浏览器中打开：</p><p style="word-break:break-all;background:#eee;padding:10px;border-radius:4px;font-size:12px">{activation_link}</p><p><strong>⚠️ 重要提示：</strong>此链接在 <strong>5分钟</strong> 内有效。</p><p>如果您没有注册此账户，请忽略此邮件。</p></div><div class="f"><p>谢谢！<br>ATSW网站团队</p></div></body></html>"""
@@ -130,7 +130,7 @@ class AccountService:
         self.security = SecurityUtils()
         self.email_utils = EmailUtils()
     
-    def create_html_response(self, title, message, is_success=True, redirect_url=None):
+    def create_html_response(self, title, message, is_success=True):
         """创建HTML响应页面"""
         icon = "✅" if is_success else "❌"
         bg_color = "#d4edda" if is_success else "#f8d7da"
@@ -190,7 +190,7 @@ class AccountService:
         response += f"Content-Type: {content_type}\r\n"
         
         # 添加CORS头允许跨域访问api
-        response += "Access-Control-Allow-Origin: *\r\n"
+        response += f"Access-Control-Allow-Origin: {special_config._access_control_allow_origin_}\r\n"
         response += "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
         response += "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
         
@@ -439,8 +439,7 @@ class AccountService:
                 return self.create_html_response(
                     "账户已激活", 
                     f"您的账户 {user_data[4]} 已经激活过了，无需重复操作。",
-                    is_success=True,
-                    redirect_url=f"{special_config._main_site_}"
+                    is_success=True
                 )
             
             # 激活账户
@@ -453,8 +452,7 @@ class AccountService:
             return self.create_html_response(
                 "激活成功", 
                 f"恭喜！您的账户 {user_data[4]} 已成功激活。<br>现在可以登录使用所有功能了。",
-                is_success=True,
-                redirect_url=f"{special_config._main_site_}"
+                is_success=True
             )
             
         except Exception as e:
@@ -706,12 +704,12 @@ class AccountServer:
                     
                     # 包装socket
                     server_socket = context.wrap_socket(server_socket, server_side=True)
-                    log_message(f"账号服务已启动（SSL加密），监听端口 {self.port}")
+                    log_message(f"账号服务器已启动（SSL加密），监听端口 {self.host}:{self.port}")
                 except Exception as e:
                     log_message(f"SSL配置失败: {e}")
-                    log_message(f"账号服务已启动（无SSL），监听端口 {self.port}")
+                    log_message(f"账号服务器已启动（无SSL），监听端口 {self.host}:{self.port}")
             else:
-                log_message(f"账号服务已启动，监听端口 {self.port}")
+                log_message(f"账号服务器已启动（无SSL），监听端口 {self.host}:{self.port}")
             
             while True:
                 client_socket, addr = server_socket.accept()
@@ -777,7 +775,7 @@ def init_database():
             conn.close()
 
 if __name__ == "__main__":
-    log_message(f"脚本启动，日志文件: {log_filename}")
+    log_message(f"账号服务器即将启动，日志文件: {log_filename}")
     
     # 初始化数据库
     init_database()
