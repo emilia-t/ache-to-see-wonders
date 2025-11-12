@@ -3,6 +3,12 @@ import type InstructObject from '@/interface/InstructObject';
 import Instruct from './Instruct';
 import Tool from './Tool';
 
+type Coord3D = {
+  x: number;
+  y: number;
+  z: number;
+};
+
 export default class ChineseChessInstruct extends Instruct {
     /*
      * 构造器
@@ -19,21 +25,51 @@ export default class ChineseChessInstruct extends Instruct {
     // ==============================
     // 发送指令的方法
     // ==============================
-    public getTokenLogin(userId: number, token: string): void {
-        this.send(ChineseChessInstruct._getTokenLogin_(userId, token));
+    public broadcastPickUpChess(conveyor: string, pieceName: string, position: Coord3D): void {
+        this.send(ChineseChessInstruct._broadcastPickUpChess_(conveyor, pieceName, position));
+    }
+    public broadcastPickDownChess(conveyor: string, pieceName: string, position: Coord3D): void {
+        this.send(ChineseChessInstruct._broadcastPickDownChess_(conveyor, pieceName, position));
+    }
+    public broadcastMovingChess(conveyor: string, pieceName: string, trajectory: Coord3D[]): void {
+        this.send(ChineseChessInstruct._broadcastMovingChess_(conveyor, pieceName, trajectory));
     }
     // ==============================
     // 创建指令对象的静态方法
     // ==============================
-    public static _getTokenLogin_(userId: number, token: string): InstructObject {
+    public static _broadcastPickUpChess_(conveyor: string, pieceName: string, position: Coord3D): InstructObject {
         return {
-            type: 'get_token_login',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: {
-                user_id: userId,
-                user_token: token
+            "type": "broadcast",
+            "class": "pick_up_chess",
+            "conveyor": conveyor,
+            "time": Tool.getFormatTime(),
+            "data": {
+                "piece_name": pieceName,
+                "position": position
+            }
+        };
+    }
+    public static _broadcastPickDownChess_(conveyor: string, pieceName: string, position: Coord3D): InstructObject {
+        return {
+            "type": "broadcast",
+            "class": "pick_down_chess",
+            "conveyor": conveyor,
+            "time": Tool.getFormatTime(),
+            "data": {
+                "piece_name": pieceName,
+                "position": position
+            }
+        };
+    }
+    public static _broadcastMovingChess_(conveyor: string, pieceName: string, trajectory: Coord3D[]): InstructObject {
+        return {
+            "type": "broadcast",
+            "class": "moving_chess",
+            "conveyor": conveyor,
+            "time": Tool.getFormatTime(),
+            "data": {
+                "piece_name": pieceName,
+                "trajectory": trajectory
             }
         };
     }

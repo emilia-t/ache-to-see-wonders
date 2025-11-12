@@ -8,14 +8,15 @@ import json
 import sqlite3
 import secrets
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import server_config
 import chinese_chess_instruct
 import tool
 import sql_statement
 import datetime
-import aiohttp  # 添加异步HTTP请求支持
-from urllib.parse import urlencode  # 添加URL编码支持
+import aiohttp
+from urllib.parse import urlencode
+from websockets.exceptions import ConnectionClosed
 
 # 创建日志文件
 current_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
@@ -68,15 +69,33 @@ class HTTPClient:
             log_message(f"HTTP请求异常: {e}")
             return None
 
+class ChessPieceState:
+    """棋子状态类"""
+    
+    def __init__(self, piece_name: str):
+        self.piece_name = piece_name
+        self.position = {"x": 0, "y": 0, "z": 0}
+        self.is_picked = False
+        self.picked_by = None  # 拾起者的用户ID
+        self.picked_by_ws = None  # 拾起者的WebSocket连接
+        self.last_update_time = datetime.datetime.now()
+
 class ChineseChessServer:
-    def __init__(self, host='localhost', port=2424, db_path='chess.db'):
+    def __init__(self, host='0.0.0.0', port=2424, db_path='chess.db'):
         self.host = host
         self.port = port
         self.db_path = db_path
         self.connected_clients = {}
         self.logged_users = {}  # websocket -> user_data
         self.online_users = {}  # user_id -> websocket
-        self.game_rooms =   {}
+        self.game_rooms = {}
+
+        # 棋子状态管理
+        self.chess_pieces_state = {}  # piece_name -> ChessPieceState
+        self.init_chess_pieces_state()
+
+        # 移动轨迹定时器
+        self.moving_timers = {}  # piece_name -> asyncio.Task
 
         # 初始化数据库
         self.init_database()
@@ -87,10 +106,57 @@ class ChineseChessServer:
     async def start_server(self):
         """启动WebSocket服务器"""
         log_message(f"中国象棋服务器启动在 {self.host}:{self.port}")
+        
+        # 配置跨域支持
+        start_server = await websockets.serve(
+            self.handle_connection, 
+            self.host, 
+            self.port,
+            # 添加跨域支持
+            # origins=self.origin_checker,
+            origins=None,
+            ping_interval=20,  # 设置ping间隔
+            ping_timeout=20,   # 设置ping超时
+            close_timeout=10,  # 设置关闭超时
+            max_size=2**20,    # 增加最大消息大小
+        )
+        log_message(f"WebSocket服务器已启动，监听 {self.host}:{self.port}")
+        log_message("等待客户端连接...")
+        await asyncio.Future()  # 永久运行
+    
+    def origin_checker(origin):
+        """自定义来源验证函数"""
+        if not origin:
+            return True  # 允许没有Origin头的连接（如非浏览器客户端）
+        
+        # 检查是否来自192.168网段
+        if "192.168." in origin:
+            return True
+        
+        # 也可以添加其他允许的来源
+        allowed_domains = ["localhost", "127.0.0.1"]
+        for domain in allowed_domains:
+            if domain in origin:
+                return True
+        
+        return False
 
-        # 使用新的websockets API
-        async with websockets.serve(self.handle_connection, self.host, self.port):
-            await asyncio.Future()  # 永久运行
+    def init_chess_pieces_state(self):
+        """初始化棋子状态"""
+        # 初始化所有棋子的状态
+        piece_names = [
+            "Black_00_chariot_left", "Black_01_horse_left", "Black_02_elephant_left", "Black_03_advisor_left", 
+            "Black_04_general", "Black_05_advisor_right", "Black_06_elephant_right", "Black_07_horse_right",
+            "Black_08_chariot_right", "Black_09_cannon_left", "Black_10_cannon_right", "Black_11_soldier_1",
+            "Black_12_soldier_2", "Black_13_soldier_3", "Black_14_soldier_4", "Black_15_soldier_5",
+            "Red_16_soldier_1", "Red_17_soldier_2", "Red_18_soldier_3", "Red_19_soldier_4",
+            "Red_20_soldier_5", "Red_21_cannon_left", "Red_22_cannon_right", "Red_23_chariot_left",
+            "Red_24_horse_left", "Red_25_elephant_left", "Red_26_advisor_left", "Red_27_general", 
+            "Red_28_advisor_right", "Red_29_elephant_right", "Red_30_horse_right", "Red_31_chariot_right"
+        ]
+        
+        for piece_name in piece_names:
+            self.chess_pieces_state[piece_name] = ChessPieceState(piece_name)
 
     def init_database(self):
         """初始化数据库表"""
@@ -125,32 +191,68 @@ class ChineseChessServer:
     事件与指令处理
     ==============================
     """
+    
     async def handle_connection(self, websocket):
+        """处理WebSocket连接"""
         client_id = id(websocket)
         self.connected_clients[client_id] = websocket
+        
+        # 获取客户端信息
+        try:
+            remote_address = websocket.remote_address
+            client_info = f"{remote_address[0]}:{remote_address[1]}" if remote_address else "unknown"
+        except:
+            client_info = "unknown"
+            
+        log_message(f"客户端连接: {client_id} from {client_info}")
 
         try:
-            log_message(f"客户端连接: {client_id}")
-
             # 发送公钥
             await websocket.send(self.instruct.create_publickey(server_config._config_publickey_).to_json())
+            log_message(f"已向客户端 {client_id} 发送公钥")
 
+            # 处理消息
             async for message in websocket:
                 await self.handle_message(websocket, message)
 
-        except websockets.exceptions.ConnectionClosed:
-            log_message(f"客户端断开: {client_id}")
+        except ConnectionClosed as e:
+            log_message(f"客户端连接关闭: {client_id} - {e}")
+        except Exception as e:
+            log_message(f"处理客户端 {client_id} 时发生错误: {e}")
         finally:
             # 清理连接
             if client_id in self.connected_clients:
                 del self.connected_clients[client_id]
-            # 清理认证用户
+                log_message(f"已清理客户端 {client_id} 的连接")
+            
+            # 清理用户状态和释放棋子
             if websocket in self.logged_users:
                 user_data = self.logged_users[websocket]
                 user_id = user_data.get('id')
+                
+                # 释放该用户拾起的所有棋子
+                await self.release_pieces_by_user(websocket, user_id)
+                
                 if user_id in self.online_users:
                     del self.online_users[user_id]
                 del self.logged_users[websocket]
+                log_message(f"已清理客户端 {client_id} 的用户状态")
+    
+    async def release_pieces_by_user(self, websocket, user_id):
+        """释放用户拾起的所有棋子"""
+        for piece_name, piece_state in self.chess_pieces_state.items():
+            if piece_state.is_picked and piece_state.picked_by == user_id:
+                # 重置棋子状态
+                piece_state.is_picked = False
+                piece_state.picked_by = None
+                piece_state.picked_by_ws = None
+                
+                # 停止移动轨迹定时器
+                if piece_name in self.moving_timers:
+                    self.moving_timers[piece_name].cancel()
+                    del self.moving_timers[piece_name]
+                
+                log_message(f"用户断开连接，自动释放棋子 {piece_name}")
 
     async def handle_message(self, websocket, message):
         """处理客户端消息"""
@@ -170,7 +272,10 @@ class ChineseChessServer:
                 'get_user_data': self.handle_get_user_data,
                 'broadcast': self.handle_broadcast,
                 'get_token_login': self.handle_get_token_login,
-                # 可以添加更多指令处理...
+                
+                'pick_up_chess': self.handle_pick_up_chess,
+                'pick_down_chess': self.handle_pick_down_chess,
+                'moving_chess': self.handle_moving_chess,
             }
 
             handler = handlers.get(instruct_type)
@@ -289,6 +394,125 @@ class ChineseChessServer:
     async def handle_unknown_instruct(self, websocket, instruct):
         """处理未知指令"""
         return False
+    async def handle_pick_up_chess(self, websocket, instruct):
+        """处理拾起棋子指令"""
+        if websocket not in self.logged_users:
+            return
+
+        data = instruct.get('data', {})
+        piece_name = data.get('piece_name')
+        position = data.get('position', {})
+
+        if not piece_name or piece_name not in self.chess_pieces_state:
+            return
+
+        piece_state = self.chess_pieces_state[piece_name]
+        user_data = self.logged_users[websocket]
+
+        # 检查棋子是否已被其他玩家拾起
+        if piece_state.is_picked:
+            log_message(f"棋子 {piece_name} 已被其他玩家拾起，无法重复拾起")
+            return
+
+        # 更新棋子状态
+        piece_state.is_picked = True
+        piece_state.picked_by = user_data.get('id')
+        piece_state.picked_by_ws = websocket
+        piece_state.position = position
+        piece_state.last_update_time = datetime.datetime.now()
+
+        log_message(f"玩家 {user_data.get('name')} 拾起棋子 {piece_name}")
+
+        # 广播拾起棋子指令给所有玩家
+        conveyor = f"{user_data.get('name')}&{user_data.get('email')}"
+        broadcast_instruct = self.instruct.create_broadcast_pick_up_chess(
+            conveyor, piece_name, position
+        )
+        await self.broadcast_to_all(broadcast_instruct, exclude_websocket=websocket)
+
+    async def handle_pick_down_chess(self, websocket, instruct):
+        """处理放置棋子指令"""
+        if websocket not in self.logged_users:
+            return
+
+        data = instruct.get('data', {})
+        piece_name = data.get('piece_name')
+        position = data.get('position', {})
+
+        if not piece_name or piece_name not in self.chess_pieces_state:
+            return
+
+        piece_state = self.chess_pieces_state[piece_name]
+        user_data = self.logged_users[websocket]
+
+        # 检查棋子是否是该玩家拾起的
+        if not piece_state.is_picked or piece_state.picked_by != user_data.get('id'):
+            log_message(f"玩家 {user_data.get('name')} 试图放置不属于自己的棋子 {piece_name}")
+            return
+
+        # 更新棋子状态
+        piece_state.is_picked = False
+        piece_state.picked_by = None
+        piece_state.picked_by_ws = None
+        piece_state.position = position
+        piece_state.last_update_time = datetime.datetime.now()
+
+        # 停止移动轨迹定时器
+        if piece_name in self.moving_timers:
+            self.moving_timers[piece_name].cancel()
+            del self.moving_timers[piece_name]
+
+        log_message(f"玩家 {user_data.get('name')} 放置棋子 {piece_name}")
+
+        # 广播放置棋子指令给所有玩家
+        conveyor = f"{user_data.get('name')}&{user_data.get('email')}"
+        broadcast_instruct = self.instruct.create_broadcast_pick_down_chess(
+            conveyor, piece_name, position
+        )
+        await self.broadcast_to_all(broadcast_instruct, exclude_websocket=websocket)
+
+    async def handle_moving_chess(self, websocket, instruct):
+        """处理移动中棋子指令"""
+        if websocket not in self.logged_users:
+            return
+
+        data = instruct.get('data', {})
+        piece_name = data.get('piece_name')
+        trajectory = data.get('trajectory', [])
+
+        if not piece_name or piece_name not in self.chess_pieces_state:
+            return
+
+        piece_state = self.chess_pieces_state[piece_name]
+        user_data = self.logged_users[websocket]
+
+        # 检查棋子是否是该玩家拾起的
+        if not piece_state.is_picked or piece_state.picked_by != user_data.get('id'):
+            return
+
+        # 更新棋子位置
+        if trajectory:
+            latest_position = trajectory[-1]
+            piece_state.position = latest_position
+            piece_state.last_update_time = datetime.datetime.now()
+
+        # 广播移动中棋子指令给所有玩家
+        conveyor = f"{user_data.get('name')}&{user_data.get('email')}"
+        broadcast_instruct = self.instruct.create_broadcast_moving_chess(
+            conveyor, piece_name, trajectory
+        )
+        await self.broadcast_to_all(broadcast_instruct, exclude_websocket=websocket)
+    
+    async def broadcast_to_all(self, instruct_object, exclude_websocket=None):
+        """广播消息给所有连接的用户"""
+        for client_id, client_ws in self.connected_clients.items():
+            if client_ws != exclude_websocket:
+                try:
+                    await client_ws.send(instruct_object.to_json())
+                except:
+                    # 如果发送失败，可能是连接已断开
+                    pass
+    
 
     """
     ==============================
@@ -458,5 +682,5 @@ class ChineseChessServer:
 
 
 if __name__ == '__main__':
-    server = ChineseChessServer()
+    server = ChineseChessServer(host=server_config._config_host_,port=server_config._config_port_)
     asyncio.run(server.start_server())

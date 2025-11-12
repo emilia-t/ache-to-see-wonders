@@ -171,3 +171,13 @@ class Instruct(ABC):
     def create_user_data(user_data: Dict[str, Any]) -> InstructObject:
         """创建用户数据指令"""
         return InstructObject("user_data", data=user_data)
+    
+    @staticmethod
+    def create_get_token_login(user_id: int,user_token: str) -> InstructObject:
+        """创建令牌登录指令"""
+        return InstructObject("get_token_login", data={"user_id": user_id,"user_token":user_token})
+
+    @staticmethod
+    def create_token_login(status: str = 'no') -> InstructObject:
+        """创建令牌登录状态指令"""
+        return InstructObject("token_login", data=status)

@@ -4,7 +4,12 @@
 
 from instruct import Instruct
 from instruct import InstructObject
-from typing import Any
+from typing import Any, Dict, List, TypedDict
+
+class Coord3D(TypedDict):
+    x: float
+    y: float
+    z: float
 
 class ChineseChessInstruct(Instruct):
     """中国象棋指令类"""
@@ -12,24 +17,40 @@ class ChineseChessInstruct(Instruct):
     def __init__(self):
         super().__init__()
 
-    def create_broadcast_instruct(self,class_: str, conveyor_: str,data: Any) -> InstructObject:
+    def create_broadcast_instruct(self, class_: str, conveyor_: str, data: Any) -> InstructObject:
         """处理广播指令"""
         # 中国象棋特定的广播指令处理逻辑
-        print(f"处理中国象棋广播指令")
-        # 这里可以添加游戏房间广播、棋局状态广播等逻辑
-        return InstructObject('broadcast')
+        print(f"处理中国象棋广播指令: {class_}")
+        return InstructObject('broadcast', class_=class_, conveyor=conveyor_, data=data)
 
-    def create_expand_instruct(self,type_: str,class_: str,conveyor_: str,data: Any) -> InstructObject:
+    def create_expand_instruct(self, type_: str, class_: str, conveyor_: str, data: Any) -> InstructObject:
         """处理扩展指令"""
-        
-        return InstructObject('expand')
-    
-    @staticmethod
-    def create_get_token_login(user_id: int,user_token: str) -> InstructObject:
-        """创建token登录指令"""
-        return InstructObject("get_token_login", data={"user_id": user_id,"user_token": user_token})
+        return InstructObject(type_, class_=class_, conveyor=conveyor_, data=data)
+
+    # ==============================
+    # 棋子状态管理相关指令
+    # ==============================
 
     @staticmethod
-    def create_token_login(status: str = 'no') -> InstructObject:
-        """创建token登录状态指令"""
-        return InstructObject("token_login", data=status)
+    def create_broadcast_pick_up_chess(conveyor: str, piece_name: str, position: Coord3D) -> InstructObject:
+        """创建广播拾起棋子指令"""
+        return InstructObject("broadcast", class_="pick_up_chess", conveyor=conveyor, data={
+            "piece_name": piece_name,
+            "position": position
+        })
+
+    @staticmethod
+    def create_broadcast_pick_down_chess(conveyor: str, piece_name: str, position: Coord3D) -> InstructObject:
+        """创建广播放置棋子指令"""
+        return InstructObject("broadcast", class_="pick_down_chess", conveyor=conveyor, data={
+            "piece_name": piece_name,
+            "position": position
+        })
+
+    @staticmethod
+    def create_broadcast_moving_chess(conveyor: str, piece_name: str, trajectory: List[Coord3D]) -> InstructObject:
+        """创建广播移动中棋子指令"""
+        return InstructObject("broadcast", class_="moving_chess", conveyor=conveyor, data={
+            "piece_name": piece_name,
+            "trajectory": trajectory
+        })

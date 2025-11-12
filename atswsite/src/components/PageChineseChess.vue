@@ -11,6 +11,11 @@ import type InstructObject from '@/interface/InstructObject';
 import ViewUserLayer from './ViewUserLayer.vue';
 import {CHINESE_3D_CHESS_SERVER_URL} from '@/config/apiConfig.ts';
 
+type Coord3D = {
+  x: number;
+  y: number;
+  z: number;
+};
 // ==============================
 // 组件引用
 // ==============================
@@ -53,6 +58,28 @@ let originalMaterial: THREE.Material | THREE.Material[] | null = null;
 let transparentMaterial: THREE.MeshLambertMaterial;
 
 // ==============================
+// 棋子状态管理
+// ==============================
+const chessPiecesState = ref<{ [key: string]: { 
+  isPicked: boolean; 
+  pickedBy: string; 
+  position: { x: number; y: number; z: number };
+  lastUpdate: number;
+} }>({});
+
+// ==============================
+// 棋子材质管理
+// ==============================
+const pieceOriginalMaterials = new Map<string, THREE.Material | THREE.Material[]>(); // 保存棋子原始材质
+
+// ==============================
+// 棋子移动轨迹
+// ==============================
+let moveTrajectory: Coord3D[] = [];
+let lastMoveBroadcastTime = 0;
+const MOVE_BROADCAST_INTERVAL = 20; // 20ms = 0.02秒
+
+// ==============================
 // 通信相关
 // ==============================
 const ccInstruct = new ChineseChessInstruct(CHINESE_3D_CHESS_SERVER_URL);
@@ -86,7 +113,121 @@ ccInstruct.onError = (ev: Event):void=>{
 };
 ccInstruct.onMessage = (instructObj: InstructObject):void=>{
   console.log(instructObj);
+  handleServerInstruct(instructObj);
 };
+
+/**
+ * 处理服务器指令
+ */
+const handleServerInstruct = (instructObj: InstructObject) => {
+  const { type, class: class_, conveyor, data } = instructObj;
+  
+  if (type === 'broadcast') {
+    switch (class_) {
+      case 'pick_up_chess':
+        handleBroadcastPickUpChess(conveyor, data);
+        break;
+      case 'pick_down_chess':
+        handleBroadcastPickDownChess(conveyor, data);
+        break;
+      case 'moving_chess':
+        handleBroadcastMovingChess(conveyor, data);
+        break;
+    }
+  }
+};
+
+/**
+ * 处理广播的拾起棋子指令
+ */
+const handleBroadcastPickUpChess = (conveyor: string, data: any) => {
+  const { piece_name, position } = data;
+  
+  // 更新棋子状态
+  chessPiecesState.value[piece_name] = {
+    isPicked: true,
+    pickedBy: conveyor,
+    position: position,
+    lastUpdate: Date.now()
+  };
+  
+  // 在场景中更新棋子状态
+  const piece = chessPieces?.getObjectByName(piece_name);
+  if (piece) {
+    setPieceAsPickedByOther(piece);
+  }
+  
+  console.log(`玩家 ${conveyor} 拾起了棋子 ${piece_name}`);
+};
+
+/**
+ * 处理广播的放置棋子指令
+ */
+const handleBroadcastPickDownChess = (conveyor: string, data: any) => {
+  const { piece_name, position } = data;
+  
+  // 更新棋子状态
+  chessPiecesState.value[piece_name] = {
+    isPicked: false,
+    pickedBy: '',
+    position: position,
+    lastUpdate: Date.now()
+  };
+  
+  // 在场景中更新棋子状态和位置
+  const piece = chessPieces?.getObjectByName(piece_name);
+  if (piece) {
+    restorePieceState(piece); // 这会恢复原始材质
+    piece.position.set(position.x, position.y, position.z);
+  }
+  
+  console.log(`玩家 ${conveyor} 放置了棋子 ${piece_name}`);
+};
+
+/**
+ * 处理广播的移动中棋子指令
+ */
+const handleBroadcastMovingChess = (conveyor: string, data: any) => {
+  const { piece_name, trajectory } = data;
+  
+  if (trajectory && trajectory.length > 0) {
+    const latestPosition = trajectory[trajectory.length - 1];
+    
+    // 更新棋子状态
+    chessPiecesState.value[piece_name] = {
+      isPicked: true,
+      pickedBy: conveyor,
+      position: latestPosition,
+      lastUpdate: Date.now()
+    };
+    
+    // 在场景中更新棋子位置
+    const piece = chessPieces?.getObjectByName(piece_name);
+    if (piece && piece !== pickedPiece) { // 不更新自己正在操作的棋子
+      piece.position.set(latestPosition.x, latestPosition.y, latestPosition.z);
+    }
+  }
+};
+
+/**
+ * 设置棋子为被其他玩家拾起状态
+ */
+const setPieceAsPickedByOther = (piece: THREE.Object3D) => {
+  const highlightMaterial = new THREE.MeshLambertMaterial({
+    color: 0xffff00,
+    transparent: true,
+    opacity: 0.6
+  });
+  materialSetObject(piece, highlightMaterial);
+};
+
+/**
+ * 恢复棋子状态
+ */
+const restorePieceState = (piece: THREE.Object3D) => {
+  materialRestorePieceOriginal(piece);
+};
+
 
 // ==============================
 // 工具函数
@@ -120,14 +261,14 @@ const applyPieceOffset = (position: THREE.Vector3, pieceName: string) => {
 /**
  * 设置对象及其子对象的材质
  */
-const setObjectMaterial = (object: THREE.Object3D, material: THREE.Material) => {
+const materialSetObject = (object: THREE.Object3D, material: THREE.Material) => {
   if (object instanceof THREE.Mesh) {
-    originalMaterial = object.material;
+    //originalMaterial = object.material;// 只在拾起时保存原始材质，不在这里保存
     object.material = material;
   } else {
     object.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        originalMaterial = child.material;
+        //originalMaterial = child.material;// 只在拾起时保存原始材质，不在这里保存
         child.material = material;
       }
     });
@@ -137,13 +278,50 @@ const setObjectMaterial = (object: THREE.Object3D, material: THREE.Material) => 
 /**
  * 恢复对象的原始材质
  */
-const restoreObjectMaterial = (object: THREE.Object3D) => {
-  if (object instanceof THREE.Mesh && originalMaterial) {
-    object.material = originalMaterial as THREE.Material;
+const materialRestoreObject = (object: THREE.Object3D) => {
+  materialRestorePieceOriginal(object);
+};
+
+/**
+ * 保存棋子的原始材质
+ */
+const materialSavePieceOriginal = (piece: THREE.Object3D) => {
+  if (!piece.name) return;
+  
+  if (piece instanceof THREE.Mesh) {
+    pieceOriginalMaterials.set(piece.name, piece.material);
   } else {
-    object.traverse((child) => {
-      if (child instanceof THREE.Mesh && originalMaterial) {
-        child.material = originalMaterial as THREE.Material;
+    // 对于组对象，收集所有子网格的材质
+    const materials: THREE.Material[] = [];
+    piece.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        materials.push(child.material);
+      }
+    });
+    if (materials.length > 0) {
+      pieceOriginalMaterials.set(piece.name, materials);
+    }
+  }
+};
+
+/**
+ * 恢复棋子的原始材质
+ */
+const materialRestorePieceOriginal = (piece: THREE.Object3D) => {
+  if (!piece.name) return;
+  
+  const originalMaterial = pieceOriginalMaterials.get(piece.name);
+  if (!originalMaterial) return;
+  
+  if (piece instanceof THREE.Mesh && !Array.isArray(originalMaterial)) {
+    piece.material = originalMaterial;
+  } else if (Array.isArray(originalMaterial)) {
+    // 对于组对象，恢复所有子网格的材质
+    let materialIndex = 0;
+    piece.traverse((child) => {
+      if (child instanceof THREE.Mesh && materialIndex < originalMaterial.length) {
+        child.material = originalMaterial[materialIndex];
+        materialIndex++;
       }
     });
   }
@@ -171,9 +349,10 @@ const initScene = () => {
  */
 const initInteractionSystem = () => {
   raycaster = new THREE.Raycaster();// 初始化射线投射器
-  transparentMaterial = new THREE.MeshLambertMaterial({// 创建透明材质用于拿起状态
+  transparentMaterial = new THREE.MeshLambertMaterial({
     transparent: true,
-    opacity: sceneConfig.pieceInteraction.transparency
+    opacity: sceneConfig.pieceInteraction.transparency,
+    color: 0xffffff // 确保透明材质也有基础颜色
   });
   if (renderer.domElement) {// 添加鼠标键盘事件监听
     renderer.domElement.addEventListener('click', onClick);
@@ -281,16 +460,35 @@ const onKeyUp = (event: KeyboardEvent) => {
 const tryPickPiece = () => {
   if (isPicking || !chessPieces) return;
   
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);// 从屏幕中心发射射线（第一人称视角）
-  const intersects = raycaster.intersectObjects(chessPieces.children, true);// 与棋子的交点
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const intersects = raycaster.intersectObjects(chessPieces.children, true);
   
   if (intersects.length > 0) {
     let piece = intersects[0].object;
-    while (piece.parent && piece.parent !== chessPieces && piece.parent !== scene) {// 向上查找父对象，直到找到棋子组中的直接子对象
+    while (piece.parent && piece.parent !== chessPieces && piece.parent !== scene) {
       piece = piece.parent;
     }
     if (chessPieces.children.includes(piece)) {
+      // 检查棋子是否已被其他玩家拾起
+      const pieceState = chessPiecesState.value[piece.name];
+      if (pieceState && pieceState.isPicked && pieceState.pickedBy) {
+        console.log(`棋子 ${piece.name} 已被玩家 ${pieceState.pickedBy} 拾起，无法操作`);
+        return;
+      }
+      
       pickUpPiece(piece);
+      
+      // 发送拾起棋子指令到服务器
+      const position = {
+        x: piece.position.x,
+        y: piece.position.y,
+        z: piece.position.z
+      };
+      ccInstruct.broadcastPickUpChess('',piece.name, position);
+      
+      // 初始化移动轨迹
+      moveTrajectory = [position];
+      lastMoveBroadcastTime = Date.now();
     }
   }
 }
@@ -301,7 +499,7 @@ const tryPickPiece = () => {
 const pickUpPiece = (piece: THREE.Object3D) => {
   isPicking = true;
   pickedPiece = piece;
-  setObjectMaterial(piece, transparentMaterial);
+  materialSetObject(piece, transparentMaterial);
 }
 
 /**
@@ -310,11 +508,11 @@ const pickUpPiece = (piece: THREE.Object3D) => {
 const placePiece = () => {
   if (!pickedPiece) return;
   
-  const pieceName = pickedPiece.name as keyof typeof sceneConfig.piecesOffset;
+  const pieceName = pickedPiece.name;
   if (!pieceName) return;
   
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);// 从屏幕中心发射射线检测放置位置
-  const intersectableObjects = scene.children.filter(createIntersectableFilter(pickedPiece));// 检测与场景中物体的交点（排除棋子自身）
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const intersectableObjects = scene.children.filter(createIntersectableFilter(pickedPiece));
   const intersects = raycaster.intersectObjects(intersectableObjects, true);
   
   if (intersects.length === 0) return;
@@ -323,7 +521,20 @@ const placePiece = () => {
   const adjustedPosition = applyPieceOffset(targetPosition, pieceName);
   pickedPiece.position.copy(adjustedPosition);
   
-  restoreObjectMaterial(pickedPiece);
+  // 恢复原始材质
+  materialRestoreObject(pickedPiece);
+  
+  // 发送放置棋子指令到服务器
+  const position = {
+    x: pickedPiece.position.x,
+    y: pickedPiece.position.y,
+    z: pickedPiece.position.z
+  };
+  ccInstruct.broadcastPickDownChess('', pieceName, position);
+  
+  // 清理移动轨迹
+  moveTrajectory = [];
+  
   resetPickingState();
 }
 
@@ -343,34 +554,57 @@ const resetPickingState = () => {
 const updatePieceFollowing = () => {
   if (!isPicking || !pickedPiece) return;
   
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);// 从屏幕中心发射射线（视野中心线）
-  const intersectableObjects = scene.children.filter(createIntersectableFilter(pickedPiece));// 检测与场景中物体的交点（排除棋子自身和辅助对象）
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const intersectableObjects = scene.children.filter(createIntersectableFilter(pickedPiece));
   const intersects = raycaster.intersectObjects(intersectableObjects, true);
   
   let targetPosition: THREE.Vector3;
   
   if (intersects.length > 0) {
-    const intersect = intersects[0];// 找到第一个有效的交点
+    const intersect = intersects[0];
     targetPosition = intersect.point.clone();
     
-    const bbox = new THREE.Box3().setFromObject(pickedPiece);// 计算棋子底部偏移
+    const bbox = new THREE.Box3().setFromObject(pickedPiece);
     const bottomOffset = bbox.min.y;
     targetPosition.y -= bottomOffset;
     
-    const pieceName = pickedPiece.name as keyof typeof sceneConfig.piecesOffset;// 应用水平偏移修正
+    const pieceName = pickedPiece.name as keyof typeof sceneConfig.piecesOffset;
     if (sceneConfig.piecesOffset[pieceName]) {
       targetPosition.x -= sceneConfig.piecesOffset[pieceName].x;
       targetPosition.z -= sceneConfig.piecesOffset[pieceName].z;
     }
     
-    targetPosition.y += 0.001;// 稍微抬起来一点避免穿模
+    targetPosition.y += 0.001;
   } 
-  else {// 默认悬浮位置
+  else {
     const direction = new THREE.Vector3();
     camera.getWorldDirection(direction);
     targetPosition = camera.position.clone().add(direction.multiplyScalar(0.1));
   }
-  pickedPiece.position.lerp(targetPosition, sceneConfig.pieceInteraction.followSpeed);// 平滑移动到目标位置
+  
+  pickedPiece.position.lerp(targetPosition, sceneConfig.pieceInteraction.followSpeed);
+  
+  // 记录移动轨迹并定期发送
+  const currentTime = Date.now();
+  if (currentTime - lastMoveBroadcastTime >= MOVE_BROADCAST_INTERVAL) {
+    const currentPosition = {
+      x: pickedPiece.position.x,
+      y: pickedPiece.position.y,
+      z: pickedPiece.position.z
+    };
+    
+    moveTrajectory.push(currentPosition);
+    
+    // 限制轨迹长度，避免数据过大
+    if (moveTrajectory.length > 10) {
+      moveTrajectory = moveTrajectory.slice(-10);
+    }
+    
+    // 发送移动中棋子指令
+    ccInstruct.broadcastMovingChess('',pickedPiece.name, moveTrajectory);
+    
+    lastMoveBroadcastTime = currentTime;
+  }
 }
 
 /**
@@ -682,6 +916,10 @@ const createChessPieces = () => {
           }
         });
         piece.name = pieceConfig.name;
+        
+        // 保存棋子的原始材质
+        materialSavePieceOriginal(piece);
+        
         // 计算棋子尺寸（只在第一个棋子时计算）
         if (index === 0) {
           const pieceBbox = new THREE.Box3().setFromObject(piece);
@@ -762,14 +1000,21 @@ onUnmounted(() => {
     scene.clear();
   }
 });
-const user_info = null;
 </script>
 <template>
   <div class="pageBox">
     <div ref="sceneRef" class="chess-container"></div>
     <div class="crosshair"></div>
-    <div class="consoleBorad"></div>
-    <view-user-layer :user-info="user_info" theme="light" design="C"/>
+    <div class="consoleBorad">
+      <!-- 显示棋子状态信息 -->
+      <div class="chess-status" v-if="Object.keys(chessPiecesState).length > 0">
+        <div v-for="(state, pieceName) in chessPiecesState" :key="pieceName" 
+             class="status-item" :class="{ 'picked': state.isPicked }">
+          {{ pieceName }}: {{ state.isPicked ? `被 ${state.pickedBy} 拾起` : '空闲' }}
+        </div>
+      </div>
+    </div>
+    <view-user-layer theme="light" design="C"/>
   </div>
 </template>
 <style scoped>

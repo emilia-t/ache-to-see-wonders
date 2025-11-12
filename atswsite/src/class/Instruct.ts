@@ -70,6 +70,9 @@ export default abstract class Instruct {
             case 'user_data':
                 this.handleUserData(instructObj);
                 break;
+            case 'token_login':
+                this.handleTokenLogin(instructObj);
+                break;
             default:
                 this.handleExpandInstruct(instructObj);
         }
@@ -126,6 +129,9 @@ export default abstract class Instruct {
         if (typeof instruct.data === 'object' && instruct.data !== null) {
             this.userData = instruct.data as UserData;
         }
+    }
+    private handleTokenLogin (instruct: InstructObject) : void {
+        instruct.data === 'ok' ? this.setterIsLogin(true) : this.setterIsLogin(false);
     }
     /**
      * 指令初始解析
@@ -206,11 +212,27 @@ export default abstract class Instruct {
             return false;
         }
     }
-    public getAnonymousLogin(email: string): void {
-        this.send(Instruct._getAnonymousLogin_(email));
+    public getAnonymousLogin(email: string): boolean {
+        const trimE = email.trim();
+        if(trimE === ''){
+            return false;
+        }
+        else{
+            this.send(Instruct._getAnonymousLogin_(trimE));
+            return true;
+        }
     }
     public getUserData(): void {
         this.send(Instruct._getUserData_());
+    }
+    public getTokenLogin(userId: number, userToken: string): boolean {
+        if (userId === 0 || userToken === '') {
+            return false;
+        }
+        else{
+            this.send(Instruct._getTokenLogin_(userId, userToken));
+            return true;
+        }
     }
     // ==============================
     // 创建指令对象的静态方法
@@ -326,6 +348,20 @@ export default abstract class Instruct {
             conveyor: '',
             time: Tool.getFormatTime(),
             data: userData
+        };
+    }
+    public static _getTokenLogin_(userId: number, userToken: string): InstructObject {
+        const floorD = Math.floor(userId);
+        const trimT = userToken.trim();
+        return {
+            type: 'get_token_login',
+            class: '',
+            conveyor: '',
+            time: Tool.getFormatTime(),
+            data: {
+                user_id: floorD,
+                user_token: trimT
+            }
         };
     }
 

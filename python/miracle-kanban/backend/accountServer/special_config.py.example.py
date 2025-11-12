@@ -2,6 +2,10 @@
 # -*- coding: utf-8 -*-
 # The relative position of this file: /backend/accountServer/special_config.py
 
+# 地址和端口配置
+_config_host_ = '0.0.0.0'
+_config_port_ = 810
+
 # 电子邮箱相关配置
 _smtp_server_ = 'smtp.your-email-provider.com' # smtp 服务器地址
 _smtp_port_ = 465 # smtp 端口

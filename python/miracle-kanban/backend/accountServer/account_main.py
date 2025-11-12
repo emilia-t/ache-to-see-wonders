@@ -783,5 +783,5 @@ if __name__ == "__main__":
     init_database()
     
     # 启动服务器
-    server = AccountServer()
+    server = AccountServer(host=special_config._config_host_,port=special_config._config_port_)
     server.start()
