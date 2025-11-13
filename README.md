@@ -42,7 +42,7 @@
 
 ## 📄 许可证
 
-本项目代码仅供学习和测试使用，具体授权信息请联系项目作者。
+MIT license
 
 ---
 
@@ -96,7 +96,7 @@ While this repository might not see many visitors, we still need to make an impo
 
 ## 📄 License
 
-The code in this project is for learning and testing purposes only. For specific authorization information, please contact the project author.
+MIT license
 
 ---
 
