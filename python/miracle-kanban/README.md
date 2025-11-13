@@ -39,7 +39,8 @@ source kanban_env/bin/activate
 ```bash
 (kanban_env) cd backend
 (kanban_env) cd chineseChess
-(kanban_env) vim server_config.py
+(kanban_env) cp configure.py.example.py configure.py
+(kanban_env) vim configure.py
 ```
 
 2.chinese chess server RSA key pair
@@ -56,8 +57,8 @@ source kanban_env/bin/activate
 ```bash
 (kanban_env) cd backend
 (kanban_env) cd accountServer
-(kanban_env) cp special_config.py.example.py special_config.py
-(kanban_env) vim special_config.py
+(kanban_env) cp configure.py.example.py configure.py
+(kanban_env) vim configure.py
 ```
 
 ### Run the program

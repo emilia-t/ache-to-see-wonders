@@ -43,8 +43,7 @@ draft_4.psd
 draft_5.psd
 
 RSAKEYPAIR.py
-special_config.py
-server_config.py
+configure.py
 apiConfig.ts
 testVideo01.mp4
 testVideo02.mp4

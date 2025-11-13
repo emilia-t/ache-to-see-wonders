@@ -14,7 +14,7 @@ import hashlib
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
-import special_config
+import configure
 import ssl
 import datetime
 import sys
@@ -93,13 +93,13 @@ class EmailUtils:
     def send_verification_email(email, name, verification_code, user_id):
         """发送验证邮件"""
         # 邮件配置 
-        smtp_server = special_config._smtp_server_
-        smtp_port = special_config._smtp_port_
-        sender_email = special_config._sender_email_
-        sender_password = special_config._sender_password_
+        smtp_server = configure._smtp_server_
+        smtp_port = configure._smtp_port_
+        sender_email = configure._sender_email_
+        sender_password = configure._sender_password_
 
         # 激活链接 
-        activation_link = f"{special_config._server_url_}/activate?code={verification_code}&user_id={user_id}"
+        activation_link = f"{configure._server_url_}/activate?code={verification_code}&user_id={user_id}"
         subject = "ATSW账户激活"
         # HTML邮件内容 WebsiteAccountActivation.html
         body = f"""<html><head><meta charset="UTF-8"><style>body{{color:#333;margin:0;padding:20px}} .h{{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:20px;text-align:center;border-radius:8px 8px 0 0}} .b{{display:inline-block;background:#4CAF50;color:#fff;padding:12px 24px;text-decoration:none;border-radius:5px;margin:15px 0}} .f{{border-top:1px solid #ddd;color:#666;font-size:18px}}</style></head><body><div class="h"><h2>🎉 欢迎加入 ATSW！</h2></div><div><p>亲爱的 <strong>{name}</strong>，</p><p>感谢您注册我们的网站！请点击下方按钮激活您的账户：</p><div style="text-align:left"><a href="{activation_link}" class="b">🚀 立即激活账户</a></div><p>或者复制以下链接到浏览器中打开：</p><p style="word-break:break-all;background:#eee;padding:10px;border-radius:4px;font-size:12px">{activation_link}</p><p><strong>⚠️ 重要提示：</strong>此链接在 <strong>5分钟</strong> 内有效。</p><p>如果您没有注册此账户，请忽略此邮件。</p></div><div class="f"><p>谢谢！<br>ATSW网站团队</p></div></body></html>"""
@@ -190,7 +190,7 @@ class AccountService:
         response += f"Content-Type: {content_type}\r\n"
         
         # 添加CORS头允许跨域访问api
-        response += f"Access-Control-Allow-Origin: {special_config._access_control_allow_origin_}\r\n"
+        response += f"Access-Control-Allow-Origin: {configure._access_control_allow_origin_}\r\n"
         response += "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
         response += "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
         
@@ -663,9 +663,9 @@ class AccountServer:
         self.host = host
         self.port = port
         self.account_service = AccountService()
-        self.ssl_enabled = special_config._ssl_enable_
-        self.ssl_crt_file = special_config._ssl_crt_file_
-        self.ssl_key_file = special_config._ssl_key_file_
+        self.ssl_enabled = configure._ssl_enable_
+        self.ssl_crt_file = configure._ssl_crt_file_
+        self.ssl_key_file = configure._ssl_key_file_
     
     def handle_client(self, client_socket, addr):
         """处理客户端连接"""
@@ -781,5 +781,5 @@ if __name__ == "__main__":
     init_database()
     
     # 启动服务器
-    server = AccountServer(host=special_config._config_host_,port=special_config._config_port_)
+    server = AccountServer(host=configure._config_host_,port=configure._config_port_)
     server.start()

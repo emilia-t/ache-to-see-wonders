@@ -9,7 +9,7 @@ import sqlite3
 import secrets
 import os
 from typing import Dict, Any, Optional, List
-import server_config
+import configure
 import chinese_chess_instruct
 import tool
 import sql_statement
@@ -109,13 +109,13 @@ class ChineseChessServer:
         
         # SSL配置
         ssl_context = None
-        if server_config._config_use_ssl_ and server_config._config_ssl_cert_file_ and server_config._config_ssl_key_file_:
+        if configure._config_use_ssl_ and configure._config_ssl_cert_file_ and configure._config_ssl_key_file_:
             try:
                 import ssl
                 ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-                ssl_context.load_cert_chain(server_config._config_ssl_cert_file_, server_config._config_ssl_key_file_)
-                log_message(f"已加载SSL证书: {server_config._config_ssl_cert_file_}")
-                log_message(f"已加载SSL密钥: {server_config._config_ssl_key_file_}")
+                ssl_context.load_cert_chain(configure._config_ssl_cert_file_, configure._config_ssl_key_file_)
+                log_message(f"已加载SSL证书: {configure._config_ssl_cert_file_}")
+                log_message(f"已加载SSL密钥: {configure._config_ssl_key_file_}")
             except Exception as e:
                 log_message(f"SSL配置失败: {e}")
                 ssl_context = None
@@ -125,7 +125,7 @@ class ChineseChessServer:
             self.handle_connection, 
             self.host, 
             self.port,
-            origins=server_config._access_control_allow_origin_,  # 使用配置的跨域规则
+            origins=configure._access_control_allow_origin_,  # 使用配置的跨域规则
             ssl=ssl_context,  # SSL上下文
             ping_interval=20,  # 设置ping间隔
             ping_timeout=20,   # 设置ping超时
@@ -135,7 +135,7 @@ class ChineseChessServer:
         
         protocol = "WSS" if ssl_context else "WS"
         log_message(f"服务器已启动在: {self.host}:{self.port} ({protocol})")
-        log_message(f"服务器URL: {server_config._config_server_url_}")
+        log_message(f"服务器URL: {configure._config_server_url_}")
         log_message("等待客户端连接...")
         await asyncio.Future()  # 永久运行
 
@@ -204,7 +204,7 @@ class ChineseChessServer:
 
         try:
             # 发送公钥
-            await websocket.send(self.instruct.create_publickey(server_config._config_publickey_).to_json())
+            await websocket.send(self.instruct.create_publickey(configure._config_publickey_).to_json())
             log_message(f"已向客户端 {client_id} 发送公钥")
 
             # 处理消息
@@ -289,7 +289,7 @@ class ChineseChessServer:
 
     async def handle_get_publickey(self, websocket, instruct):
         """处理获取公钥指令"""
-        await websocket.send(self.instruct.create_publickey(server_config._config_publickey_).to_json())
+        await websocket.send(self.instruct.create_publickey(configure._config_publickey_).to_json())
 
     async def handle_get_login(self, websocket, instruct):
         """处理登录指令 此服务不支持账号认证登录服务"""
@@ -312,7 +312,7 @@ class ChineseChessServer:
             return
         
         # 向账号服务器验证token
-        account_server_url = server_config._api_account_server_url_
+        account_server_url = configure._api_account_server_url_
         if not account_server_url:
             log_message("账号服务器URL未配置")
             await websocket.send(self.instruct.create_token_login('no').to_json())
@@ -549,13 +549,13 @@ class ChineseChessServer:
         try:
             online_number = len(self.logged_users)
             return {
-                "version": server_config._config_version_,
-                "anonymous_login": server_config._config_anonymous_login_,
-                "key": server_config._config_server_key_,
-                "url": server_config._config_server_url_,
-                "name": server_config._config_server_name_,
+                "version": configure._config_version_,
+                "anonymous_login": configure._config_anonymous_login_,
+                "key": configure._config_server_key_,
+                "url": configure._config_server_url_,
+                "name": configure._config_server_name_,
                 "online_number": online_number,
-                "max_online": server_config._config_max_online_
+                "max_online": configure._config_max_online_
             }
         except Exception as e:
             log_message(f"获取服务器配置错误: {e}")
@@ -599,5 +599,5 @@ class ChineseChessServer:
 
 
 if __name__ == '__main__':
-    server = ChineseChessServer(host=server_config._config_host_,port=server_config._config_port_)
+    server = ChineseChessServer(host=configure._config_host_,port=configure._config_port_)
     asyncio.run(server.start_server())
