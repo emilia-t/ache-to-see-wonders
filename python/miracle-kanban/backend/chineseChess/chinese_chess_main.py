@@ -6,9 +6,8 @@ import asyncio
 import websockets
 import json
 import sqlite3
-import secrets
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 import configure
 import chinese_chess_instruct
 import tool
@@ -30,6 +29,41 @@ def log_message(message):
     print(formatted_message)
     log_file.write(formatted_message + '\n')
     log_file.flush()  # 确保立即写入文件
+
+# 从storage.json加载初始值
+def load_storage():
+    """从storage.json初始值"""
+    try:
+        with open('./storage.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            visit_count = data.get('visit_count', 0)
+            heart_count = data.get('heart_count', 0)
+            log_message(f"从storage.json加载数据: visit_count={visit_count}, heart_count={heart_count}")
+            return visit_count, heart_count
+    except FileNotFoundError:
+        log_message("storage.json文件不存在，使用默认值")
+        return 0, 0
+    except Exception as e:
+        log_message(f"加载storage.json失败: {e}，使用默认值")
+        return 0, 0
+
+def save_storage(visit_count, heart_count):
+    """保存初始值到storage.json"""
+    try:
+        data = {
+            "storage": "storage",
+            "name": "chinese_chess",
+            "visit_count": visit_count,
+            "heart_count": heart_count
+        }
+        with open('./storage.json', 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        log_message(f"已保存数据到storage.json: visit_count={visit_count}, heart_count={heart_count}")
+    except Exception as e:
+        log_message(f"保存storage.json失败: {e}")
+
+# 初始化计数
+visit_count, heart_count = load_storage()
 
 class HTTPClient:
     """HTTP客户端工具类"""
@@ -90,6 +124,14 @@ class ChineseChessServer:
         self.online_users = {}  # user_id -> websocket
         self.game_rooms = {}
 
+        # 全局计数器
+        global visit_count, heart_count
+        self.visit_count = visit_count
+        self.heart_count = heart_count
+        
+        # 记录每个会话是否已经发送过heart_3指令
+        self.heart_sent_sessions = set()  # 存储websocket对象
+
         # 棋子状态管理
         self.chess_pieces_state = {}  # piece_name -> ChessPieceState
         self.init_chess_pieces_state()
@@ -100,8 +142,19 @@ class ChineseChessServer:
         # 初始化数据库
         self.init_database()
 
-        #指令
+        # 指令
         self.instruct = chinese_chess_instruct.ChineseChessInstruct()
+
+
+    async def auto_save_task(self):
+        """自动保存任务，每2分钟保存一次"""
+        while True:
+            await asyncio.sleep(120)  # 2分钟
+            await self.save_current_counts()
+
+    async def save_current_counts(self):
+        """保存当前计数到文件"""
+        save_storage(self.visit_count, self.heart_count)
 
     async def start_server(self):
         """启动WebSocket服务器"""
@@ -137,6 +190,10 @@ class ChineseChessServer:
         log_message(f"服务器已启动在: {self.host}:{self.port} ({protocol})")
         log_message(f"服务器URL: {configure._config_server_url_}")
         log_message("等待客户端连接...")
+
+        # 启动自动保存任务
+        asyncio.create_task(self.auto_save_task())
+
         await asyncio.Future()  # 永久运行
 
     def init_chess_pieces_state(self):
@@ -193,6 +250,9 @@ class ChineseChessServer:
         client_id = id(websocket)
         self.connected_clients[client_id] = websocket
         
+        # 增加访问计数
+        self.visit_count += 1
+        
         # 获取客户端信息
         try:
             remote_address = websocket.remote_address
@@ -233,6 +293,10 @@ class ChineseChessServer:
                     del self.online_users[user_id]
                 del self.logged_users[websocket]
                 log_message(f"已清理客户端 {client_id} 的用户状态")
+            
+            # 清理heart_3发送记录
+            if websocket in self.heart_sent_sessions:
+                self.heart_sent_sessions.remove(websocket)
     
     async def release_pieces_by_user(self, websocket, user_id):
         """释放用户拾起的所有棋子"""
@@ -272,6 +336,7 @@ class ChineseChessServer:
                 'pick_up_chess': self.handle_pick_up_chess,
                 'pick_down_chess': self.handle_pick_down_chess,
                 'moving_chess': self.handle_moving_chess,
+                'heart_3': self.handle_heart_3
             }
 
             handler = handlers.get(instruct_type)
@@ -282,6 +347,32 @@ class ChineseChessServer:
 
         except json.JSONDecodeError:
             pass
+
+    async def handle_heart_3(self, websocket, instruct):
+        """处理heart_3指令"""
+        # 检查用户是否已登录
+        if websocket not in self.logged_users:
+            # log_message("未登录用户尝试发送heart_3指令")
+            return
+        
+        # 检查该会话是否已经发送过heart_3
+        if websocket in self.heart_sent_sessions:
+            # log_message(f"用户 {self.logged_users[websocket].get('name')} 重复发送heart_3指令，已忽略")
+            return
+        
+        # 增加heart_count
+        self.heart_count += 1
+        self.heart_sent_sessions.add(websocket)
+        
+        user_data = self.logged_users[websocket]
+        log_message(f"用户 {user_data.get('name')} 发送heart_3指令，heart_count增加到: {self.heart_count}")
+        
+        # 立即保存到文件
+        await self.save_current_counts()
+        
+        # 发送heart_tk感谢指令
+        thank_you_instruct = self.instruct.create_heart_tk()
+        await websocket.send(thank_you_instruct.to_json())
 
     async def handle_ping(self, websocket, instruct):
         """处理ping指令"""
@@ -339,7 +430,7 @@ class ChineseChessServer:
             error_msg = response.get('message', '未知错误') if response else '账号服务器无响应'
             log_message(f"用户Token登录失败: {error_msg}")
             await websocket.send(self.instruct.create_token_login('no').to_json())
-    
+
     async def handle_get_anonymous_login(self, websocket, instruct):
         """处理匿名登录指令"""
         pass
@@ -379,6 +470,7 @@ class ChineseChessServer:
     async def handle_unknown_instruct(self, websocket, instruct):
         """处理未知指令"""
         return False
+
     async def handle_pick_up_chess(self, websocket, instruct):
         """处理拾起棋子指令"""
         if websocket not in self.logged_users:
@@ -498,7 +590,6 @@ class ChineseChessServer:
                     # 如果发送失败，可能是连接已断开
                     pass
     
-
     """
     ==============================
     数据库操作相关

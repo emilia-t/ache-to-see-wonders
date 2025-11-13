@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import ViewBottomLicense from '@/components/ViewBottomLicense.vue'
 import ViewUserLayer from './ViewUserLayer.vue'
-import { useConfigStore } from '@/stores/store';
+import { useConfigStore } from '@/stores/store'
 
 // 响应式数据
 const loading = ref(true);
@@ -40,6 +40,7 @@ const reloadVideo = () => {
 const onVideoLoaded = () => {
   videoLoaded.value = true;
   tryPlayVideo();
+  setupSeamlessLoop(); // 添加无缝循环设置
 };
 
 const tryPlayVideo = () => {
@@ -48,6 +49,32 @@ const tryPlayVideo = () => {
       console.log('视频播放失败:', e);
     });
   }
+};
+
+const setupSeamlessLoop = () => {
+  if (!videoPlayer.value) return;
+  
+  const video = videoPlayer.value;
+  
+  // 移除默认的 loop 属性，改用 JavaScript 控制
+  video.loop = false;
+  
+  video.addEventListener('timeupdate', () => {
+    // 当视频接近结束时（提前 0.1 秒），立即重置到开头并播放
+    if (video.currentTime > video.duration - 0.1) {
+      video.currentTime = 0;
+      video.play().catch(e => {
+        console.log('循环播放失败:', e);
+      });
+    }
+  });
+  video.addEventListener('ended', () => {
+    // 备用方案：如果 timeupdate 没有捕获到，用 ended 事件
+    video.currentTime = 0;
+    video.play().catch(e => {
+      console.log('循环播放失败:', e);
+    });
+  });
 };
 
 // 导航函数
@@ -206,7 +233,7 @@ onUnmounted(() => {
           class="showcase-video"
           :poster="currentCover"
           muted
-          loop
+          
           playsinline
           preload="auto"
           @loadeddata="onVideoLoaded"

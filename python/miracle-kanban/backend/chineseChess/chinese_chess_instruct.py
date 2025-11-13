@@ -28,8 +28,17 @@ class ChineseChessInstruct(Instruct):
         return InstructObject(type_, class_=class_, conveyor=conveyor_, data=data)
 
     # ==============================
-    # 棋子状态管理相关指令
+    # 自定义指令
     # ==============================
+    @staticmethod
+    def create_heart_3() -> InstructObject:
+        """创建heart_3指令"""
+        return InstructObject("heart_3")
+
+    @staticmethod
+    def create_heart_tk() -> InstructObject:
+        """创建heart_tk感谢指令"""
+        return InstructObject("heart_tk")
 
     @staticmethod
     def create_broadcast_pick_up_chess(conveyor: str, piece_name: str, position: Coord3D) -> InstructObject:

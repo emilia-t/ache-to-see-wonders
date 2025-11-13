@@ -10,6 +10,7 @@ import type LogConfig from '@/interface/LogConfig';
 import type InstructObject from '@/interface/InstructObject';
 import ViewUserLayer from './ViewUserLayer.vue';
 import {CHINESE_CHESS_SERVER_URL} from '@/config/apiConfig.ts';
+import ViewHeart from '@/components/ViewHeart.vue'
 
 type Coord3D = {
   x: number;
@@ -79,6 +80,25 @@ let moveTrajectory: Coord3D[] = [];
 let lastMoveBroadcastTime = 0;
 const MOVE_BROADCAST_INTERVAL = 20; // 20ms = 0.02秒
 
+// 创建对子组件的引用
+const heartRef = ref<InstanceType<typeof ViewHeart> | null>(null)
+const heartStatusText = ref('')
+
+// 调用子组件暴露的方法
+const like_yes = () => {
+  if (heartRef.value) {
+    heartRef.value.setLiked(true);
+    heartStatusText.value = '已点赞';
+  }
+}
+
+/**
+ * 处理点赞事件
+ */
+const handleHeart3=()=>{
+  ccInstruct.heart3();
+};
+
 // ==============================
 // 通信相关
 // ==============================
@@ -121,7 +141,7 @@ ccInstruct.onMessage = (instructObj: InstructObject):void=>{
  */
 const handleServerInstruct = (instructObj: InstructObject) => {
   const { type, class: class_, conveyor, data } = instructObj;
-  
+
   if (type === 'broadcast') {
     switch (class_) {
       case 'pick_up_chess':
@@ -134,6 +154,9 @@ const handleServerInstruct = (instructObj: InstructObject) => {
         handleBroadcastMovingChess(conveyor, data);
         break;
     }
+  }
+  else if(type === 'heart_tk'){
+    like_yes();
   }
 };
 
@@ -1015,6 +1038,7 @@ onUnmounted(() => {
       </div>
     </div>
     <view-user-layer theme="light" design="C"/>
+    <ViewHeart @like-change="handleHeart3" ref="heartRef" label="Like" />
   </div>
 </template>
 <style scoped>

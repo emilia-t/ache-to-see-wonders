@@ -25,6 +25,12 @@ export default class ChineseChessInstruct extends Instruct {
     // ==============================
     // 发送指令的方法
     // ==============================
+    public heart3(): void {
+        this.send(ChineseChessInstruct._heart3_());
+    }
+    public heartTk(): void {
+        this.send(ChineseChessInstruct._heartTk_());
+    }
     public broadcastPickUpChess(conveyor: string, pieceName: string, position: Coord3D): void {
         this.send(ChineseChessInstruct._broadcastPickUpChess_(conveyor, pieceName, position));
     }
@@ -37,6 +43,24 @@ export default class ChineseChessInstruct extends Instruct {
     // ==============================
     // 创建指令对象的静态方法
     // ==============================
+    public static _heart3_(): InstructObject {
+        return {
+            "type": "heart_3",
+            "class": "",
+            "conveyor": "",
+            "time": Tool.getFormatTime(),
+            "data": ""
+        };
+    }
+    public static _heartTk_(): InstructObject {
+        return {
+            "type": "heart_tk",
+            "class": "",
+            "conveyor": "",
+            "time": Tool.getFormatTime(),
+            "data": ""
+        };
+    }
     public static _broadcastPickUpChess_(conveyor: string, pieceName: string, position: Coord3D): InstructObject {
         return {
             "type": "broadcast",
