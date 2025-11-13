@@ -1,6 +1,6 @@
 # atswsite
 
-## 配置api(必要的配置):
+## 配置接口(必要的配置) | Configure API (necessary configuration):
 
 ```bash
 cd src/config
@@ -9,7 +9,7 @@ vim apiConfig.ts
 
 ```
 
-## 配置web json(可选的配置):
+## 配置网站数据(可选的配置) | Configure website data (optional configuration):
 
 ```bash
 cd public
@@ -17,14 +17,14 @@ vim webConfig.json
 
 ```
 
-## 运行web:
+## 在开发环境运行 | Run in the development environment:
 
 ```bash
 npm run dev
 
 ```
 
-## 导出web：
+## 导出网站 | Export web：
 
 请在 src/config/apiConfig.ts 中修改各种服务器 api 接口地址
 Please modify various server API interface addresses in src/config/apiConfig.ts
@@ -38,7 +38,7 @@ npm run build
 
 ```
 
-## 已知的问题:
+## 已知的问题 | Known issues:
 
 如果你使用的是 Windows 下的 IIS 部署网站,请在网站的 MIME类型 中添加 .gltf model/gltf-binary 以支持传输3D模型文件
 If you are using IIS deployment website under Windows, please add .gltf model/gltf binary in the website's MIME type to support transferring 3D model files
