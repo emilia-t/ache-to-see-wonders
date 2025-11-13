@@ -9,7 +9,7 @@ import Tool from '@/class/Tool';
 import type LogConfig from '@/interface/LogConfig';
 import type InstructObject from '@/interface/InstructObject';
 import ViewUserLayer from './ViewUserLayer.vue';
-import {CHINESE_3D_CHESS_SERVER_URL} from '@/config/apiConfig.ts';
+import {CHINESE_CHESS_SERVER_URL} from '@/config/apiConfig.ts';
 
 type Coord3D = {
   x: number;
@@ -82,7 +82,7 @@ const MOVE_BROADCAST_INTERVAL = 20; // 20ms = 0.02秒
 // ==============================
 // 通信相关
 // ==============================
-const ccInstruct = new ChineseChessInstruct(CHINESE_3D_CHESS_SERVER_URL);
+const ccInstruct = new ChineseChessInstruct(CHINESE_CHESS_SERVER_URL);
 ccInstruct.onLog = (message:string,type:'tip'|'warn'|'error',data?:any):LogConfig=>{
   const logConfig = {
     code:0,

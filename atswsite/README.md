@@ -1,5 +1,22 @@
 # atswsite
 
+## 配置api(必要的配置):
+
+```bash
+cd src/config
+cp apiConfig.ts.example.ts apiConfig.ts
+vim apiConfig.ts
+
+```
+
+## 配置web json(可选的配置):
+
+```bash
+cd public
+vim webConfig.json
+
+```
+
 ## 运行web:
 
 ```bash
