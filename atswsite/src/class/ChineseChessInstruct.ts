@@ -25,6 +25,12 @@ export default class ChineseChessInstruct extends Instruct {
     // ==============================
     // 发送指令的方法
     // ==============================
+    public getStorageJson(): void{
+        this.send(ChineseChessInstruct._getStorageJson_());
+    }
+    public storageJson(json:string): void{
+        this.send(ChineseChessInstruct._storageJson_(json));
+    }
     public heart3(): void {
         this.send(ChineseChessInstruct._heart3_());
     }
@@ -43,6 +49,24 @@ export default class ChineseChessInstruct extends Instruct {
     // ==============================
     // 创建指令对象的静态方法
     // ==============================
+    public static _getStorageJson_(): InstructObject {
+        return {
+            "type": "get_storage_json",
+            "class": "",
+            "conveyor": "",
+            "time": Tool.getFormatTime(),
+            "data": ""
+        };
+    }
+    public static _storageJson_(json:string): InstructObject {
+        return {
+            "type": "storage_json",
+            "class": "",
+            "conveyor": "",
+            "time": Tool.getFormatTime(),
+            "data": json
+        };
+    }
     public static _heart3_(): InstructObject {
         return {
             "type": "heart_3",

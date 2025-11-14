@@ -3,6 +3,9 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import ViewBottomLicense from '@/components/ViewBottomLicense.vue'
 import ViewUserLayer from './ViewUserLayer.vue'
 import { useConfigStore } from '@/stores/store'
+import { CHINESE_CHESS_SERVER_URL } from '@/config/apiConfig'
+import ChineseChessInstruct from '@/class/ChineseChessInstruct'
+import  type InstructObject from '@/interface/InstructObject'
 
 // 响应式数据
 const loading = ref(true);
@@ -25,6 +28,54 @@ const currentVideo = computed(() => configStore.homePageCurrentVideo.video);
 const currentTargetUrl = computed(() => configStore.homePageCurrentVideo.targetUrl);
 const currentButtonName = computed(() => configStore.homePageCurrentVideo.button_name);
 const trialPartBoxList = computed(() => configStore.homePageTrialBox.list);
+
+watch(trialPartBoxList, (newVlue, oldValue) => {
+  if (newVlue.length!==oldValue.length) {
+    for(let i=0;i<newVlue.length;i++){
+      let key = newVlue[i].key;
+      switch (key){
+        case "cc1":{
+          const ws = new ChineseChessInstruct(CHINESE_CHESS_SERVER_URL);
+          ws.onOpen = (ev: Event):void => {
+            newVlue[i].online_state=true;
+            ws.getStorageJson();// 获取3d象棋的storage.json
+          };
+          ws.onMessage = (instructObj: InstructObject):void=>{
+            const { type, class: class_, conveyor, data } = instructObj;
+            if(type !== 'storage_json'){
+              return;
+            }
+            try{
+              let storageObj = JSON.parse(data);
+              if(typeof storageObj === 'object' && storageObj!==null){
+                if(storageObj.hasOwnProperty('visit_count')){
+                  let visitCount = storageObj['visit_count'];
+                  if(typeof visitCount === 'number'){
+                    newVlue[i].visit_count = visitCount;
+                  }
+                }
+                if(storageObj.hasOwnProperty('heart_count')){
+                  let heartCount = storageObj['heart_count'];
+                  if(typeof heartCount === 'number'){
+                    newVlue[i].heart_count = heartCount;
+                  }
+                }
+              }
+              ws.manualClose();
+            }
+            catch (e){
+              ws.manualClose();
+            }
+          };
+          break;
+        }
+        default:{
+          break;
+        }
+      }
+    }
+  }
+});
 
 // 视频控制函数
 const reloadVideo = () => {

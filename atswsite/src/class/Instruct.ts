@@ -450,4 +450,7 @@ export default abstract class Instruct {
             this.pingInterval = null;
         }
     }
+    public manualClose(): void{
+        this.socket?.close();
+    }
 }

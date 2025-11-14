@@ -31,6 +31,16 @@ class ChineseChessInstruct(Instruct):
     # 自定义指令
     # ==============================
     @staticmethod
+    def create_get_storage_json() -> InstructObject:
+        """创建get_storage_json指令"""
+        return InstructObject("get_storage_json")
+    
+    @staticmethod
+    def create_storage_json(json:str) -> InstructObject:
+        """创建storage_json指令"""
+        return InstructObject("storage_json",data=json)
+
+    @staticmethod
     def create_heart_3() -> InstructObject:
         """创建heart_3指令"""
         return InstructObject("heart_3")

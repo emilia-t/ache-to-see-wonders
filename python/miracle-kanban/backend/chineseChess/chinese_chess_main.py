@@ -43,9 +43,27 @@ def load_storage():
     except FileNotFoundError:
         log_message("storage.json文件不存在，使用默认值")
         return 0, 0
+    except PermissionError:
+        print(f"没有权限读取文件 ./storage.json")
+        return 0, 0
     except Exception as e:
         log_message(f"加载storage.json失败: {e}，使用默认值")
         return 0, 0
+
+def load_storage_source():
+    """从storage.json加载源返回json字符串"""
+    try:
+        with open('./storage.json', 'r', encoding='utf-8') as f:
+            return f.read()  # 读取文件内容并返回
+    except FileNotFoundError:
+        print(f"错误：文件 ./storage.json 不存在")
+        return ""
+    except PermissionError:
+        print(f"错误：没有权限读取文件 ./storage.json")
+        return ""
+    except Exception as e:
+        print(f"读取文件时发生错误：{e}")
+        return ""
 
 def save_storage(visit_count, heart_count):
     """保存初始值到storage.json"""
@@ -250,8 +268,8 @@ class ChineseChessServer:
         client_id = id(websocket)
         self.connected_clients[client_id] = websocket
         
-        # 增加访问计数
-        self.visit_count += 1
+        websocket.get_instruct_count = 0 # 为每个会话添加指令计数属性
+        websocket.visit_counted = False  # 标记是否已经计入来访计数
         
         # 获取客户端信息
         try:
@@ -263,9 +281,9 @@ class ChineseChessServer:
         log_message(f"客户端连接: {client_id} from {client_info}")
 
         try:
-            # 发送公钥
-            await websocket.send(self.instruct.create_publickey(configure._config_publickey_).to_json())
-            log_message(f"已向客户端 {client_id} 发送公钥")
+            # 发送公钥(为避免无效连接不再主动发送)
+            # await websocket.send(self.instruct.create_publickey(configure._config_publickey_).to_json())
+            # log_message(f"已向客户端 {client_id} 发送公钥")
 
             # 处理消息
             async for message in websocket:
@@ -320,6 +338,14 @@ class ChineseChessServer:
             instruct = json.loads(message)
             instruct_type = instruct.get('type')
 
+            # 增加指令计数（排除ping指令）
+            if hasattr(websocket, 'get_instruct_count') and instruct_type != 'ping':
+                websocket.get_instruct_count += 1
+                # 检查是否应该增加访问计数
+                if (not hasattr(websocket, 'visit_counted') or not websocket.visit_counted) and websocket.get_instruct_count >= 3:
+                    self.visit_count += 1
+                    websocket.visit_counted = True
+
             log_message(f"收到指令: {instruct_type}")
 
             # 根据指令类型处理
@@ -333,6 +359,7 @@ class ChineseChessServer:
                 'broadcast': self.handle_broadcast,
                 'get_token_login': self.handle_get_token_login,
                 
+                'get_storage_json': self.handle_get_storage_json,
                 'pick_up_chess': self.handle_pick_up_chess,
                 'pick_down_chess': self.handle_pick_down_chess,
                 'moving_chess': self.handle_moving_chess,
@@ -347,6 +374,9 @@ class ChineseChessServer:
 
         except json.JSONDecodeError:
             pass
+
+    async def handle_get_storage_json(self, websocket, instruct):
+        await websocket.send(self.instruct.create_storage_json(load_storage_source()).to_json())
 
     async def handle_heart_3(self, websocket, instruct):
         """处理heart_3指令"""

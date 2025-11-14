@@ -117,10 +117,12 @@ ccInstruct.onLog = (message:string,type:'tip'|'warn'|'error',data?:any):LogConfi
 };
 ccInstruct.onOpen = (ev: Event):void=>{
   console.log("服务器已连接");
+  // 获取公钥
+  ccInstruct.getPublickey();
+  // 自动登录
   const localStorageUserId = localStorage.getItem('user_id');
   const localStorageUserToken = localStorage.getItem('user_token');
-
-  if(localStorageUserId && localStorageUserToken){// 自动登录
+  if(localStorageUserId && localStorageUserToken){
     ccInstruct.getTokenLogin(Number(localStorageUserId),localStorageUserToken);
   }
 
