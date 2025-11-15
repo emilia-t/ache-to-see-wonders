@@ -5,7 +5,8 @@ import ViewUserLayer from './ViewUserLayer.vue'
 import { useConfigStore } from '@/stores/store'
 import { CHINESE_CHESS_SERVER_URL } from '@/config/apiConfig'
 import ChineseChessInstruct from '@/class/ChineseChessInstruct'
-import  type InstructObject from '@/interface/InstructObject'
+import type InstructObject from '@/interface/InstructObject'
+import ViewBackOld from './ViewBackOld.vue' 
 
 // 响应式数据
 const loading = ref(true);
@@ -429,6 +430,7 @@ onUnmounted(() => {
     </div>
   </div>
   <ViewBottomLicense/>
+  <ViewBackOld/>
 </template>
 
 <style scoped lang="scss">

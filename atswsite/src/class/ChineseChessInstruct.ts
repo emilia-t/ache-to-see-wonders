@@ -46,6 +46,8 @@ export default class ChineseChessInstruct extends Instruct {
     public broadcastMovingChess(conveyor: string, pieceName: string, trajectory: Coord3D[]): void {
         this.send(ChineseChessInstruct._broadcastMovingChess_(conveyor, pieceName, trajectory));
     }
+    
+
     // ==============================
     // 创建指令对象的静态方法
     // ==============================
