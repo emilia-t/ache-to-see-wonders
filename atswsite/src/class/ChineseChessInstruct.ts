@@ -46,11 +46,61 @@ export default class ChineseChessInstruct extends Instruct {
     public broadcastMovingChess(conveyor: string, pieceName: string, trajectory: Coord3D[]): void {
         this.send(ChineseChessInstruct._broadcastMovingChess_(conveyor, pieceName, trajectory));
     }
-    
-
+    public getSyncChessPieces(): void {
+        this.send(ChineseChessInstruct._getSyncChessPieces_());
+    }
+    public syncChessPieces(pieces: Array<{
+        piece_name: string;
+        position: Coord3D;
+        is_picked: boolean;
+        picked_by: string;
+    }>): void {
+        this.send(ChineseChessInstruct._syncChessPieces_(pieces));
+    }
+    public broadcastResetAllChessPieces(conveyor: string):void{
+        this.send(ChineseChessInstruct._broadcastResetAllChessPieces_(conveyor))
+    }
     // ==============================
     // 创建指令对象的静态方法
     // ==============================
+
+    public static _broadcastResetAllChessPieces_(conveyor: string): InstructObject {
+        return {
+            "type": "broadcast",
+            "class": "reset_all_chess_pieces",
+            "conveyor": conveyor,
+            "time": Tool.getFormatTime(),
+            "data": {}
+        };
+    }
+
+    public static _getSyncChessPieces_(): InstructObject {
+        return {
+            "type": "get_sync_chess_pieces",
+            "class": "",
+            "conveyor": "",
+            "time": Tool.getFormatTime(),
+            "data": ""
+        };
+    }
+
+    public static _syncChessPieces_(pieces: Array<{
+        piece_name: string;
+        position: Coord3D;
+        is_picked: boolean;
+        picked_by: string;
+    }>): InstructObject {
+        return {
+            "type": "sync_chess_pieces",
+            "class": "",
+            "conveyor": "",
+            "time": Tool.getFormatTime(),
+            "data": {
+                "pieces": pieces
+            }
+        };
+    }
+
     public static _getStorageJson_(): InstructObject {
         return {
             "type": "get_storage_json",

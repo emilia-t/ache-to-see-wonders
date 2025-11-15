@@ -375,10 +375,8 @@ class ChineseChessServer:
                 'get_token_login': self.handle_get_token_login,
                 
                 'get_storage_json': self.handle_get_storage_json,
-                'pick_up_chess': self.handle_pick_up_chess,
-                'pick_down_chess': self.handle_pick_down_chess,
-                'moving_chess': self.handle_moving_chess,
-                'heart_3': self.handle_heart_3
+                'heart_3': self.handle_heart_3,
+                'get_sync_chess_pieces': self.handle_get_sync_chess_pieces 
             }
 
             handler = handlers.get(instruct_type)
@@ -390,8 +388,60 @@ class ChineseChessServer:
         except json.JSONDecodeError:
             pass
 
+    async def handle_get_sync_chess_pieces(self, websocket, instruct):
+        """处理获取棋子同步状态指令"""
+        if websocket not in self.logged_users:
+            return
+        
+        # 构建所有棋子的当前状态数据
+        pieces_data = []
+        for piece_name, piece_state in self.chess_pieces_state.items():
+            piece_data = {
+                "piece_name": piece_name,
+                "position": piece_state.position,
+                "is_picked": piece_state.is_picked,
+                "picked_by": piece_state.picked_by or ""
+            }
+            pieces_data.append(piece_data)
+        
+        # 发送同步指令给请求的客户端
+        sync_instruct = self.instruct.create_sync_chess_pieces(
+            pieces_data
+        )
+        await websocket.send(sync_instruct.to_json())
+        
+        user_data = self.logged_users[websocket]
+        log_message(f"向用户 {user_data.get('name')} 发送棋子同步数据，共 {len(pieces_data)} 个棋子")
+    
     async def handle_get_storage_json(self, websocket, instruct):
         await websocket.send(self.instruct.create_storage_json(load_storage_source()).to_json())
+
+    async def handle_reset_all_chess_pieces(self, websocket, instruct):
+        """处理重置所有棋子指令"""
+        
+        user_data = self.logged_users[websocket]
+        log_message(f"用户 {user_data.get('name')} 请求重置所有棋子")
+        
+        # 重置所有棋子状态
+        for piece_name, piece_state in self.chess_pieces_state.items():
+            # 重置位置为0
+            piece_state.position = {"x": 0, "y": 0, "z": 0}
+            piece_state.is_picked = False
+            piece_state.picked_by = None
+            piece_state.picked_by_ws = None
+            piece_state.last_update_time = datetime.datetime.now()
+            
+            # 停止移动轨迹定时器
+            if piece_name in self.moving_timers:
+                self.moving_timers[piece_name].cancel()
+                del self.moving_timers[piece_name]
+        
+        log_message("所有棋子状态已重置")
+        
+        # 广播重置指令给所有玩家（包括发送者）
+        conveyor = f"{user_data.get('name')}&{user_data.get('email')}"
+        reset_instruct = self.instruct.create_broadcast_reset_all_chess_pieces(conveyor)
+        await self.broadcast_to_all(reset_instruct)
 
     async def handle_heart_3(self, websocket, instruct):
         """处理heart_3指令"""
@@ -508,13 +558,24 @@ class ChineseChessServer:
 
     async def handle_broadcast(self, websocket, instruct):
         """处理广播指令"""
-        # 广播消息给所有连接的用户
-        for client_id, client_ws in self.connected_clients.items():
-            if client_ws != websocket:  # 不发送给发送者自己
-                try:
-                    await client_ws.send(json.dumps(instruct))
-                except:
-                    pass
+        # 检查用户是否已登录
+        if websocket not in self.logged_users:
+            return
+        
+        class_ = instruct.get('class')
+        
+        # 根据广播类型进行不同的处理
+        if class_ == "pick_up_chess":
+            await self.handle_pick_up_chess(websocket, instruct)
+        elif class_ == "pick_down_chess":
+            await self.handle_pick_down_chess(websocket, instruct)
+        elif class_ == "moving_chess":
+            await self.handle_moving_chess(websocket, instruct)
+        elif class_ == "reset_all_chess_pieces":
+            await self.handle_reset_all_chess_pieces(websocket, instruct)
+        else:
+            # 对于其他类型的广播，直接转发
+            await self.broadcast_to_all(instruct, exclude_websocket=websocket)
 
     async def handle_unknown_instruct(self, websocket, instruct):
         """处理未知指令"""

@@ -31,6 +31,23 @@ class ChineseChessInstruct(Instruct):
     # 自定义指令
     # ==============================
     @staticmethod
+    def create_broadcast_reset_all_chess_pieces(conveyor: str) -> InstructObject:
+        """创建广播重置所有棋子指令"""
+        return InstructObject("broadcast", instruct_class="reset_all_chess_pieces", conveyor=conveyor)
+
+    @staticmethod
+    def create_sync_chess_pieces(pieces_data: List[Dict[str, Any]]) -> InstructObject:
+        """创建广播同步棋子状态指令"""
+        return InstructObject("sync_chess_pieces", data={
+            "pieces": pieces_data
+        })
+
+    @staticmethod
+    def create_get_sync_chess_pieces() -> InstructObject:
+        """创建获取棋子同步状态指令"""
+        return InstructObject("get_sync_chess_pieces")
+    
+    @staticmethod
     def create_get_storage_json() -> InstructObject:
         """创建get_storage_json指令"""
         return InstructObject("get_storage_json")
@@ -53,7 +70,7 @@ class ChineseChessInstruct(Instruct):
     @staticmethod
     def create_broadcast_pick_up_chess(conveyor: str, piece_name: str, position: Coord3D) -> InstructObject:
         """创建广播拾起棋子指令"""
-        return InstructObject("broadcast", class_="pick_up_chess", conveyor=conveyor, data={
+        return InstructObject("broadcast", instruct_class="pick_up_chess", conveyor=conveyor, data={
             "piece_name": piece_name,
             "position": position
         })
@@ -61,7 +78,7 @@ class ChineseChessInstruct(Instruct):
     @staticmethod
     def create_broadcast_pick_down_chess(conveyor: str, piece_name: str, position: Coord3D) -> InstructObject:
         """创建广播放置棋子指令"""
-        return InstructObject("broadcast", class_="pick_down_chess", conveyor=conveyor, data={
+        return InstructObject("broadcast", instruct_class="pick_down_chess", conveyor=conveyor, data={
             "piece_name": piece_name,
             "position": position
         })
@@ -69,7 +86,7 @@ class ChineseChessInstruct(Instruct):
     @staticmethod
     def create_broadcast_moving_chess(conveyor: str, piece_name: str, trajectory: List[Coord3D]) -> InstructObject:
         """创建广播移动中棋子指令"""
-        return InstructObject("broadcast", class_="moving_chess", conveyor=conveyor, data={
+        return InstructObject("broadcast", instruct_class="moving_chess", conveyor=conveyor, data={
             "piece_name": piece_name,
             "trajectory": trajectory
         })

@@ -80,6 +80,47 @@ let moveTrajectory: Coord3D[] = [];
 let lastMoveBroadcastTime = 0;
 const MOVE_BROADCAST_INTERVAL = 20; // 20ms = 0.02秒
 
+// ==============================
+// 重置棋子功能
+// ==============================
+const resetAllChessPieces = () => {
+  ccInstruct.broadcastResetAllChessPieces("");
+  console.log("发送重置所有棋子请求");
+};
+/**
+ * 处理广播的重置所有棋子指令
+ */
+const handleBroadcastResetAllChessPieces = (conveyor: string, data: any) => {
+  console.log(`玩家 ${conveyor} 重置了所有棋子`);
+  
+  // 重置所有棋子状态
+  Object.keys(chessPiecesState.value).forEach(pieceName => {
+    chessPiecesState.value[pieceName] = {
+      isPicked: false,
+      pickedBy: '',
+      position: { x: 0, y: 0, z: 0 },
+      lastUpdate: Date.now()
+    };
+    
+    // 在场景中重置棋子位置和状态
+    const piece = chessPieces?.getObjectByName(pieceName);
+    if (piece) {
+      // 重置位置
+      piece.position.set(0, 0, 0);
+      
+      // 恢复原始材质
+      restorePieceState(piece);
+    }
+  });
+  
+  // 如果当前正在拾起棋子，也重置拾起状态
+  if (isPicking && pickedPiece) {
+    resetPickingState();
+  }
+  
+  console.log("所有棋子已重置到初始位置");
+};
+
 // 创建对子组件的引用
 const heartRef = ref<InstanceType<typeof ViewHeart> | null>(null)
 const heartStatusText = ref('')
@@ -112,7 +153,6 @@ ccInstruct.onLog = (message:string,type:'tip'|'warn'|'error',data?:any):LogConfi
     type:type,
     data:data
   }
-  console.log(logConfig);
   return logConfig;
 };
 ccInstruct.onOpen = (ev: Event):void=>{
@@ -124,8 +164,11 @@ ccInstruct.onOpen = (ev: Event):void=>{
   const localStorageUserToken = localStorage.getItem('user_token');
   if(localStorageUserId && localStorageUserToken){
     ccInstruct.getTokenLogin(Number(localStorageUserId),localStorageUserToken);
+    // 登录成功后请求棋子状态同步
+    setTimeout(() => {
+      ccInstruct.getSyncChessPieces();
+    }, 1000);
   }
-
 };
 ccInstruct.onClose = (ev: Event):void=>{
   console.log("服务器断开连接",ev);
@@ -134,7 +177,6 @@ ccInstruct.onError = (ev: Event):void=>{
   console.log("服务器连接失败",ev);
 };
 ccInstruct.onMessage = (instructObj: InstructObject):void=>{
-  console.log(instructObj);
   handleServerInstruct(instructObj);
 };
 
@@ -155,11 +197,58 @@ const handleServerInstruct = (instructObj: InstructObject) => {
       case 'moving_chess':
         handleBroadcastMovingChess(conveyor, data);
         break;
+      case 'reset_all_chess_pieces':
+        handleBroadcastResetAllChessPieces(conveyor, data);
+        break;
     }
+  }
+  else if(type === 'sync_chess_pieces'){
+    handleSyncChessPieces(data);
   }
   else if(type === 'heart_tk'){
     like_yes();
   }
+};
+
+/**
+ * 处理同步棋子状态指令
+ */
+const handleSyncChessPieces = (data: any) => {
+  const { pieces } = data;
+  
+  if (!pieces || !Array.isArray(pieces)) {
+    console.error('同步棋子数据格式错误');
+    return;
+  }
+  
+  // 更新所有棋子状态
+  pieces.forEach(pieceData => {
+    const { piece_name, position, is_picked, picked_by } = pieceData;
+    
+    // 更新棋子状态管理
+    chessPiecesState.value[piece_name] = {
+      isPicked: is_picked,
+      pickedBy: picked_by,
+      position: position,
+      lastUpdate: Date.now()
+    };
+    
+    // 在场景中更新棋子位置和状态
+    const piece = chessPieces?.getObjectByName(piece_name);
+    if (piece) {
+      // 更新位置
+      piece.position.set(position.x, position.y, position.z);
+      
+      // 更新状态显示
+      if (is_picked && picked_by) {
+        setPieceAsPickedByOther(piece);
+      } else {
+        restorePieceState(piece);
+      }
+    }
+  });
+  
+  console.log('棋子状态同步完成');
 };
 
 /**
@@ -964,7 +1053,7 @@ const createChessPieces = () => {
         const pieceName = pieceConfig.name as keyof typeof sceneConfig.piecesOffset;
         if (sceneConfig.piecesOffset[pieceName]) {
           sceneConfig.piecesOffset[pieceName].x = pos_xyz.x;
-          sceneConfig.piecesOffset[pieceName].y = pos_xyz.y;
+          sceneConfig.piecesOffset[pieceName].y = pos_xyz.y - (sceneConfig.altitude.S_chess_pieces_height/2);
           sceneConfig.piecesOffset[pieceName].z = pos_xyz.z;
         }
         chessPieces.add(piece);
@@ -1030,6 +1119,12 @@ onUnmounted(() => {
   <div class="pageBox">
     <div ref="sceneRef" class="chess-container"></div>
     <div class="crosshair"></div>
+    <!-- 重置棋子按钮 -->
+    <div class="reset-button-container">
+      <button class="reset-button" @click="resetAllChessPieces" title="重置所有棋子到初始位置">
+        重置棋子
+      </button>
+    </div>
     <div class="consoleBorad">
       <!-- 显示棋子状态信息 -->
       <div class="chess-status" v-if="Object.keys(chessPiecesState).length > 0">
@@ -1084,5 +1179,59 @@ onUnmounted(() => {
 .chess-container:-moz-full-screen {
   /* 保留全屏时的光标隐藏 */
   cursor: none;
+}
+
+/* 重置棋子按钮 */
+.reset-button-container {
+  position: fixed;
+  bottom: 80px; /* 在控制台上方 */
+  left: 20px;
+  z-index: 1000;
+}
+
+.reset-button {
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+  transition: all 0.3s ease;
+  min-width: 100px;
+}
+
+.reset-button:hover {
+  background: linear-gradient(135deg, #ff5252, #e53935);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
+}
+
+.reset-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+}
+
+.reset-button:disabled {
+  background: #cccccc;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .reset-button-container {
+    bottom: 70px;
+    left: 10px;
+  }
+  
+  .reset-button {
+    padding: 8px 12px;
+    font-size: 12px;
+    min-width: 80px;
+  }
 }
 </style>
