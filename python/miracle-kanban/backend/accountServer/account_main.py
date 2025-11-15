@@ -250,8 +250,10 @@ class AccountService:
             email = params.get('email', '').strip().lower()
             password = params.get('password', '')
             name = params.get('name', '').strip()
-            qq = params.get('qq', '0').strip()
-            
+            qq = params.get('qq', None)
+            if qq != None:
+                qq = qq.strip()
+
             # 验证数据
             errors = self.validate_registration_data(email, password, name, qq)
             if errors:

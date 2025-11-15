@@ -61,6 +61,12 @@ watch(trialPartBoxList, (newVlue, oldValue) => {
                     newVlue[i].heart_count = heartCount;
                   }
                 }
+                if(storageObj.hasOwnProperty('online_count')){
+                  let onlineCount = storageObj['online_count'];
+                  if(typeof onlineCount === 'number'){
+                    newVlue[i].online_count = onlineCount;
+                  }
+                }
               }
               ws.manualClose();
             }
@@ -402,7 +408,7 @@ onUnmounted(() => {
                     </div>
                     <div v-if="value.online_state" class="stat-item online">
                       <span class="stat-icon">🟢</span>
-                      <span class="stat-value">{{ value.online_users || 0 }}在线</span>
+                      <span class="stat-value">{{ value.online_count || 0 }}在线</span>
                     </div>
                   </div>
                 </div>

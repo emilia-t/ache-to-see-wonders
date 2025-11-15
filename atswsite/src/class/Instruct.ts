@@ -442,7 +442,7 @@ export default abstract class Instruct {
                 this.lastPing = Tool.getTimestamp();
                 this.ping();
             }
-        }, 5000);
+        }, 50000);
     }
     private pingIntervalStop(): void {
         if (this.pingInterval) {

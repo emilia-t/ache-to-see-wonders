@@ -55,7 +55,7 @@ elif _config_environment_ == 'production':
         _config_server_url_         = 'ws://example.com:2424'
     
     _api_account_server_url_        = 'https://example.com:810' # 生产环境账号服务器地址
-    _access_control_allow_origin_   = re.compile(r"^https?://([a-zA-Z0-9-]+\.)*example\.com(:\d+)?$") # 生产环境跨域配置
+    _access_control_allow_origin_   = ['https://www.example.com','https://*.example.com'] # 生产环境跨域配置
 
 else:
     # 默认配置

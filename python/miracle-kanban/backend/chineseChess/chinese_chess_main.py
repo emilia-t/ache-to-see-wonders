@@ -38,8 +38,9 @@ def load_storage():
             data = json.load(f)
             visit_count = data.get('visit_count', 0)
             heart_count = data.get('heart_count', 0)
+            online_count = 0
             log_message(f"从storage.json加载数据: visit_count={visit_count}, heart_count={heart_count}")
-            return visit_count, heart_count
+            return visit_count, heart_count , online_count
     except FileNotFoundError:
         log_message("storage.json文件不存在，使用默认值")
         return 0, 0
@@ -65,23 +66,31 @@ def load_storage_source():
         print(f"读取文件时发生错误：{e}")
         return ""
 
-def save_storage(visit_count, heart_count):
+def save_storage(visit_count, heart_count, online_count):
     """保存初始值到storage.json"""
+    if visit_count < 0:
+        visit_count=0
+    if heart_count < 0:
+        heart_count=0
+    if online_count < 0:
+        online_count=0
     try:
         data = {
             "storage": "storage",
             "name": "chinese_chess",
+            "key": "cc1",
             "visit_count": visit_count,
-            "heart_count": heart_count
+            "heart_count": heart_count,
+            "online_count": online_count
         }
         with open('./storage.json', 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-        log_message(f"已保存数据到storage.json: visit_count={visit_count}, heart_count={heart_count}")
+        log_message(f"已保存数据到storage.json: visit_count={visit_count}, heart_count={heart_count}, online_count={online_count}")
     except Exception as e:
         log_message(f"保存storage.json失败: {e}")
 
 # 初始化计数
-visit_count, heart_count = load_storage()
+visit_count, heart_count , online_count = load_storage()
 
 class HTTPClient:
     """HTTP客户端工具类"""
@@ -146,6 +155,7 @@ class ChineseChessServer:
         global visit_count, heart_count
         self.visit_count = visit_count
         self.heart_count = heart_count
+        self.online_count = online_count
         
         # 记录每个会话是否已经发送过heart_3指令
         self.heart_sent_sessions = set()  # 存储websocket对象
@@ -172,7 +182,7 @@ class ChineseChessServer:
 
     async def save_current_counts(self):
         """保存当前计数到文件"""
-        save_storage(self.visit_count, self.heart_count)
+        save_storage(self.visit_count, self.heart_count, self.online_count)
 
     async def start_server(self):
         """启动WebSocket服务器"""
@@ -196,7 +206,7 @@ class ChineseChessServer:
             self.handle_connection, 
             self.host, 
             self.port,
-            origins=configure._access_control_allow_origin_,  # 使用配置的跨域规则
+            origins=configure._access_control_allow_origin_ if configure._access_control_allow_origin_ else None,  # 使用配置的跨域规则
             ssl=ssl_context,  # SSL上下文
             ping_interval=20,  # 设置ping间隔
             ping_timeout=20,   # 设置ping超时
@@ -294,6 +304,11 @@ class ChineseChessServer:
         except Exception as e:
             log_message(f"处理客户端 {client_id} 时发生错误: {e}")
         finally:
+            # 更新在线登录人数
+            if hasattr(websocket, 'isLogged') and websocket.isLogged:
+                self.online_count -= 1
+                await self.save_current_counts()
+
             # 清理连接
             if client_id in self.connected_clients:
                 del self.connected_clients[client_id]
@@ -315,7 +330,7 @@ class ChineseChessServer:
             # 清理heart_3发送记录
             if websocket in self.heart_sent_sessions:
                 self.heart_sent_sessions.remove(websocket)
-    
+
     async def release_pieces_by_user(self, websocket, user_id):
         """释放用户拾起的所有棋子"""
         for piece_name, piece_state in self.chess_pieces_state.items():
@@ -453,7 +468,11 @@ class ChineseChessServer:
             # 记录用户登录状态
             self.logged_users[websocket] = user_data
             self.online_users[user_id] = websocket
-            
+
+            # 为websocket添加isLogged属性
+            websocket.isLogged = True
+            self.online_count += 1
+            await self.save_current_counts()
             log_message(f"用户Token登录成功: {user_data.get('name')} (ID: {user_id})")
             await websocket.send(self.instruct.create_token_login('ok').to_json())
         else:

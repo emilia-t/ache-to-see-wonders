@@ -91,7 +91,7 @@ interface HomePageTrialCardConfig {
   cover: string
   targetUrl: string
   mode: string
-  online_users: number
+  online_count: number
   online_state: boolean
   visit_count: number
   heart_count: number

@@ -20,7 +20,7 @@
         "cover": "/cover/chinese_chess_cover.jpg",
         "targetUrl": "/chinese-chess",
         "mode": "online_multiplayer",
-        "online_users": 0,
+        "online_count": 0,
         "online_state": false,
         "visit_count": 0,
         "heart_count": 0
