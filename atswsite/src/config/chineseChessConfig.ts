@@ -16,6 +16,12 @@ export const sceneConfig = {
     scale: 1,
     position: { x: 0, y: 0, z: 0 }
   },
+  // 花岗岩石板模型配置
+  S_granite_slate: {
+    modelPath: '/gltf/game_scene/build/S_granite_slate/S_granite_slate.gltf',
+    scale: 1,
+    position: { x: 0, y: 0, z: 0 }
+  },
   // 棋盘模型配置
   S_chess_board: {
     modelPath: '/gltf/game_scene/build/S_chess_board/S_chess_board.gltf',

@@ -132,7 +132,7 @@ onUnmounted(() => {
     position: fixed;
     left: 20px;
     top: 20px;
-    z-index: 99999;
+    z-index: 500;
 }
 
 /* 登录提示样式 */
@@ -193,7 +193,6 @@ onUnmounted(() => {
         position: fixed;
         left: 10px;
         top: 10px;
-        z-index: 99999;
     }
 }
 .like-button {

@@ -11,6 +11,8 @@ import type InstructObject from '@/interface/InstructObject';
 import ViewUserLayer from './ViewUserLayer.vue';
 import {CHINESE_CHESS_SERVER_URL} from '@/config/apiConfig.ts';
 import ViewHeart from '@/components/ViewHeart.vue'
+import PartCc1Loading from './PartCc1Loading.vue';
+import PartCc1Start from './PartCc1Start.vue';
 
 type Coord3D = {
   x: number;
@@ -30,6 +32,7 @@ let camera: THREE.PerspectiveCamera;
 let renderer: THREE.WebGLRenderer;
 let directionalLight: THREE.DirectionalLight;
 let coffeeTable: THREE.Group; // 咖啡桌模型组
+let gGraniteSlate: THREE.Group; // 咖啡桌模型组
 let chessBoard: THREE.Group; // 棋盘模型组
 let chessPieces: THREE.Group; // 棋子模型组
 let panoramaCube: THREE.Mesh; // 全景立方体
@@ -80,65 +83,23 @@ let moveTrajectory: Coord3D[] = [];
 let lastMoveBroadcastTime = 0;
 const MOVE_BROADCAST_INTERVAL = 20; // 20ms = 0.02秒
 
+
+
 // ==============================
-// 重置棋子功能
+// 加载状态管理
 // ==============================
-const resetAllChessPieces = () => {
-  ccInstruct.broadcastResetAllChessPieces("");
-  console.log("发送重置所有棋子请求");
-};
-/**
- * 处理广播的重置所有棋子指令
- */
-const handleBroadcastResetAllChessPieces = (conveyor: string, data: any) => {
-  console.log(`玩家 ${conveyor} 重置了所有棋子`);
-  
-  // 重置所有棋子状态
-  Object.keys(chessPiecesState.value).forEach(pieceName => {
-    chessPiecesState.value[pieceName] = {
-      isPicked: false,
-      pickedBy: '',
-      position: { x: 0, y: 0, z: 0 },
-      lastUpdate: Date.now()
-    };
-    
-    // 在场景中重置棋子位置和状态
-    const piece = chessPieces?.getObjectByName(pieceName);
-    if (piece) {
-      // 重置位置
-      piece.position.set(0, 0, 0);
-      
-      // 恢复原始材质
-      restorePieceState(piece);
-    }
-  });
-  
-  // 如果当前正在拾起棋子，也重置拾起状态
-  if (isPicking && pickedPiece) {
-    resetPickingState();
-  }
-  
-  console.log("所有棋子已重置到初始位置");
-};
+const loadingState = ref({
+  isLoading: true,
+  progress: 0,
+  statusText: '正在初始化场景...',
+  loadedResources: 0,
+  totalResources: 0
+});
+
 
 // 创建对子组件的引用
 const heartRef = ref<InstanceType<typeof ViewHeart> | null>(null)
 const heartStatusText = ref('')
-
-// 调用子组件暴露的方法
-const like_yes = () => {
-  if (heartRef.value) {
-    heartRef.value.setLiked(true);
-    heartStatusText.value = '已点赞';
-  }
-}
-
-/**
- * 处理点赞事件
- */
-const handleHeart3=()=>{
-  ccInstruct.heart3();
-};
 
 // ==============================
 // 通信相关
@@ -206,8 +167,59 @@ const handleServerInstruct = (instructObj: InstructObject) => {
     handleSyncChessPieces(data);
   }
   else if(type === 'heart_tk'){
-    like_yes();
+    handleHeartTk();
   }
+};
+
+/**
+ * 服务器返回点赞事件处理
+ */
+const handleHeartTk = () => {
+  if (heartRef.value) {
+    heartRef.value.setLiked(true);
+    heartStatusText.value = '已点赞';
+  }
+}
+
+/**
+ * 处理点赞事件
+ */
+const handleHeart3=()=>{
+  ccInstruct.heart3();
+};
+
+/**
+ * 处理广播的重置所有棋子指令
+ */
+const handleBroadcastResetAllChessPieces = (conveyor: string, data: any) => {
+  console.log(`玩家 ${conveyor} 重置了所有棋子`);
+  
+  // 重置所有棋子状态
+  Object.keys(chessPiecesState.value).forEach(pieceName => {
+    chessPiecesState.value[pieceName] = {
+      isPicked: false,
+      pickedBy: '',
+      position: { x: 0, y: 0, z: 0 },
+      lastUpdate: Date.now()
+    };
+    
+    // 在场景中重置棋子位置和状态
+    const piece = chessPieces?.getObjectByName(pieceName);
+    if (piece) {
+      // 重置位置
+      piece.position.set(0, 0, 0);
+      
+      // 恢复原始材质
+      restorePieceState(piece);
+    }
+  });
+  
+  // 如果当前正在拾起棋子，也重置拾起状态
+  if (isPicking && pickedPiece) {
+    resetPickingState();
+  }
+  
+  console.log("所有棋子已重置到初始位置");
 };
 
 /**
@@ -320,6 +332,51 @@ const handleBroadcastMovingChess = (conveyor: string, data: any) => {
     if (piece && piece !== pickedPiece) { // 不更新自己正在操作的棋子
       piece.position.set(latestPosition.x, latestPosition.y, latestPosition.z);
     }
+  }
+};
+
+/**
+ * 处理加载完成事件
+ */
+const handleLoadingComplete = () => {
+  console.log('资源加载完毕加载界面已隐藏');
+};
+
+/**
+ * 重置棋子功能
+ */
+const resetAllChessPieces = () => {
+  ccInstruct.broadcastResetAllChessPieces("");
+};
+
+/** 
+ *  计算总资源数量
+ */
+const calculateTotalResources = () => {
+  // 全景图6个面 + 花岗岩石板 + 棋盘 + 棋子数量
+  const total = 6 + 1 + 1 + piecesConfig.length;
+  loadingState.value.totalResources = total;
+  return total;
+};
+
+/**
+ * 更新加载进度
+ */
+const updateLoadingProgress = (increment = 1, status = '') => {
+  loadingState.value.loadedResources += increment;
+  const progress = (loadingState.value.loadedResources / loadingState.value.totalResources) * 100;
+  loadingState.value.progress = Math.min(100, progress);
+  
+  if (status) {
+    loadingState.value.statusText = status;
+  }
+  
+  // 检查是否所有资源都加载完成
+  if (loadingState.value.loadedResources >= loadingState.value.totalResources) {
+    setTimeout(() => {
+      loadingState.value.isLoading = false;
+      loadingState.value.statusText = '场景加载完成！';
+    }, 500);
   }
 };
 
@@ -453,9 +510,11 @@ const initScene = () => {
   createPanoramaCube();// 全景图
   createHelpers();// 辅助对象
   createGround();// 地面
-  createCoffeeTable();// 咖啡桌
+  //createCoffeeTable();// 咖啡桌
+  createGraniteSlate();
   createChessBoard();// 棋盘
   createChessPieces();// 棋子
+  calculateTotalResources();
 }
 
 /**
@@ -896,8 +955,8 @@ const createGround = () => {
  */
 const createPanoramaCube = () => {
   const cubeSize = sceneConfig.panorama.size;
-  const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);// 创建立方体几何体
-  const sides = [// 定义六个面的顺序（Three.js默认顺序）
+  const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+  const sides = [
     { path: sceneConfig.panorama.texturePaths.right, name: 'right' },
     { path: sceneConfig.panorama.texturePaths.left, name: 'left' },
     { path: sceneConfig.panorama.texturePaths.top, name: 'top' },
@@ -905,32 +964,71 @@ const createPanoramaCube = () => {
     { path: sceneConfig.panorama.texturePaths.front, name: 'front' },
     { path: sceneConfig.panorama.texturePaths.back, name: 'back' }
   ];
-  const textureLoader = new THREE.TextureLoader();// 创建纹理加载器
-  const materials = sides.map((side, index) => {// 为每个面创建材质
-    try {
-      const texture = textureLoader.load(side.path);// 设置纹理参数
-      texture.wrapS = THREE.ClampToEdgeWrapping;
-      texture.wrapT = THREE.ClampToEdgeWrapping;
-      
-      return new THREE.MeshBasicMaterial({
-        map: texture,
-        side: THREE.BackSide,
-        transparent: false
-      });
-    } catch (error) {
-      console.error(`全景纹理加载失败: ${side.path}`, error);
-      const fallbackColor = sceneConfig.color.fallBackPanorama[index];
-      return new THREE.MeshBasicMaterial({
-        color: fallbackColor,
-        side: THREE.BackSide,// 重要：设置图片为内在面
-        transparent: false
-      });
-    }
+  
+  const textureLoader = new THREE.TextureLoader();
+  let loadedTextures = 0;
+  const totalTextures = sides.length;
+  
+  const materials = sides.map((side, index) => {
+    return new Promise<THREE.Material>((resolve) => {
+      try {
+        const texture = textureLoader.load(
+          side.path,
+          () => {
+            // 纹理加载成功
+            loadedTextures++;
+            updateLoadingProgress(1, `加载全景纹理... (${loadedTextures}/${totalTextures})`);
+            texture.wrapS = THREE.ClampToEdgeWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
+            
+            const material = new THREE.MeshBasicMaterial({
+              map: texture,
+              side: THREE.BackSide,
+              transparent: false
+            });
+            resolve(material);
+          },
+          undefined,
+          (error) => {
+            // 纹理加载失败，使用回退颜色
+            console.error(`全景纹理加载失败: ${side.path}`, error);
+            loadedTextures++;
+            updateLoadingProgress(1, `加载全景纹理... (${loadedTextures}/${totalTextures})`);
+            
+            const fallbackColor = sceneConfig.color.fallBackPanorama[index];
+            const material = new THREE.MeshBasicMaterial({
+              color: fallbackColor,
+              side: THREE.BackSide,
+              transparent: false
+            });
+            resolve(material);
+          }
+        );
+      } catch (error) {
+        // 加载异常处理
+        console.error(`全景纹理加载异常: ${side.path}`, error);
+        loadedTextures++;
+        updateLoadingProgress(1, `加载全景纹理... (${loadedTextures}/${totalTextures})`);
+        
+        const fallbackColor = sceneConfig.color.fallBackPanorama[index];
+        const material = new THREE.MeshBasicMaterial({
+          color: fallbackColor,
+          side: THREE.BackSide,
+          transparent: false
+        });
+        resolve(material);
+      }
+    });
   });
-  panoramaCube = new THREE.Mesh(geometry, materials);// 创建立方体网格
-  panoramaCube.name = 'panorama-cube';
-  scene.add(panoramaCube);
-}
+
+  // 等待所有材质加载完成
+  Promise.all(materials).then((loadedMaterials) => {
+    panoramaCube = new THREE.Mesh(geometry, loadedMaterials);
+    panoramaCube.name = 'panorama-cube';
+    scene.add(panoramaCube);
+    console.log('全景图加载完成');
+  });
+};
 
 /**
  * 创建/加载外部模型
@@ -948,6 +1046,9 @@ const createModel = (
   onLoad?: (group: THREE.Group) => void
 ) => {
   const loader = new GLTFLoader();
+  
+  updateLoadingProgress(0, `加载${name}模型...`);
+  
   loader.load(
     modelPath,
     (gltf) => {
@@ -961,19 +1062,30 @@ const createModel = (
           child.name = name;
         }
       });
+      
       // 计算模型高度
       const bbox = new THREE.Box3().setFromObject(model);
       const altitudeKey = name === 'table' ? 'S_table' : 'S_chess_board';
       sceneConfig.altitude[altitudeKey] = bbox.max.y;
+      
       onLoad?.(model);
       scene.add(model);
+      
+      // 更新加载进度
+      updateLoadingProgress(1, `${name}模型加载完成`);
     },
-    undefined,
+    (progress) => {
+      // 加载进度更新
+      const percent = (progress.loaded / progress.total) * 100;
+      loadingState.value.statusText = `加载${name}模型... ${Math.round(percent)}%`;
+    },
     (error) => {
       console.error(`${name}模型加载失败:`, error);
+      // 即使加载失败也要更新进度
+      updateLoadingProgress(1, `${name}模型加载失败，使用默认设置`);
     }
   );
-}
+};
 
 /**
  * 加载咖啡桌模型
@@ -985,6 +1097,19 @@ const createCoffeeTable = () => {
     sceneConfig.S_table.scale,
     'table',
     (model) => { coffeeTable = model; }
+  );
+}
+
+/**
+ * 加载花岗岩石板模型
+ */
+const createGraniteSlate = () => {
+  createModel(
+    sceneConfig.S_granite_slate.modelPath,
+    sceneConfig.S_granite_slate.position,
+    sceneConfig.S_granite_slate.scale,
+    'slate',
+    (model) => { gGraniteSlate = model; }
   );
 }
 
@@ -1008,7 +1133,13 @@ const createChessPieces = () => {
   const loader = new GLTFLoader();
   chessPieces = new THREE.Group();
   chessPieces.name = 'chess-pieces-group';
+  
+  let loadedPieces = 0;
+  const totalPieces = piecesConfig.length;
+  
   piecesConfig.forEach((pieceConfig, index) => {
+    updateLoadingProgress(0, `加载棋子模型... (${loadedPieces}/${totalPieces})`);
+    
     loader.load(
       pieceConfig.modelPath,
       (gltf) => {
@@ -1044,6 +1175,7 @@ const createChessPieces = () => {
           sceneConfig.altitude.S_chess_pieces_max_plus = 
             sceneConfig.altitude.S_chess_pieces_max - sceneConfig.altitude.S_chess_pieces_height;
         }
+        
         // 记录棋子偏移
         const pos_xyz = {
           x: piece.children[0].position.x,
@@ -1056,16 +1188,21 @@ const createChessPieces = () => {
           sceneConfig.piecesOffset[pieceName].y = pos_xyz.y - (sceneConfig.altitude.S_chess_pieces_height/2);
           sceneConfig.piecesOffset[pieceName].z = pos_xyz.z;
         }
+        
         chessPieces.add(piece);
+        loadedPieces++;
+        updateLoadingProgress(1, `加载棋子模型... (${loadedPieces}/${totalPieces})`);
       },
       undefined,
       (error) => {
         console.error(`棋子模型加载失败: ${pieceConfig.modelPath}`, error);
+        loadedPieces++;
+        updateLoadingProgress(1, `加载棋子模型... (${loadedPieces}/${totalPieces})`);
       }
     );
   });
   scene.add(chessPieces);
-}
+};
 
 /**
  * 动画循环
@@ -1125,32 +1262,13 @@ onUnmounted(() => {
         重置棋子
       </button>
     </div>
-    <div class="consoleBorad">
-      <!-- 显示棋子状态信息 -->
-      <div class="chess-status" v-if="Object.keys(chessPiecesState).length > 0">
-        <div v-for="(state, pieceName) in chessPiecesState" :key="pieceName" 
-             class="status-item" :class="{ 'picked': state.isPicked }">
-          {{ pieceName }}: {{ state.isPicked ? `被 ${state.pickedBy} 拾起` : '空闲' }}
-        </div>
-      </div>
-    </div>
     <view-user-layer theme="light" design="C"/>
     <ViewHeart @like-change="handleHeart3" ref="heartRef" label="Like" />
+    <PartCc1Start/>
+    <PartCc1Loading :loading-state="loadingState" @loading-complete="handleLoadingComplete"/>
   </div>
 </template>
 <style scoped>
-.pageBox{
-  width: 100vw;
-  height: 100vh;
-}
-.consoleBorad{
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100vw;
-  height: 60px;
-  z-index: 999;
-}
 .chess-container {
   width: 100vw;
   height: 100vh;
@@ -1160,6 +1278,12 @@ onUnmounted(() => {
   left: 0;
   overflow: hidden;
 }
+
+.pageBox{
+  width: 100vw;
+  height: 100vh;
+}
+
 .crosshair{
   position: fixed;
   top: 50%;
@@ -1171,7 +1295,7 @@ onUnmounted(() => {
   border-radius: 50%;
   background-color: transparent;
   pointer-events: none;
-  z-index: 1000;
+  z-index: 100;
 }
 /* 保持全屏状态下的样式不变 */
 .chess-container:fullscreen,
@@ -1186,7 +1310,7 @@ onUnmounted(() => {
   position: fixed;
   bottom: 80px; /* 在控制台上方 */
   left: 20px;
-  z-index: 1000;
+  z-index: 100;
 }
 
 .reset-button {
