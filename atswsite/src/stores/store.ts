@@ -179,3 +179,89 @@ export const useConfigStore = defineStore('config', () => {
     loadConfig
   }
 })
+
+// 游戏设置接口
+export interface CC1GameSetting {
+  soundVolume: number;
+  musicVolume: number;
+  mouseSensitivity: number;
+  moveSensitivity: number;
+  fov: number;
+  graphicsQuality: 'low' | 'medium' | 'high';
+} 
+
+// 游戏设置 store
+export const useGameSettingStore = defineStore('gameSetting', () => {
+  // 默认游戏设置
+  const defaultGameSettings: CC1GameSetting = {
+    soundVolume: 80,
+    musicVolume: 60,
+    mouseSensitivity: 75,
+    moveSensitivity: 75,
+    fov: 70,
+    graphicsQuality: 'high',
+  };
+
+  // 游戏设置
+  const gameSettings = ref<CC1GameSetting>({ ...defaultGameSettings });
+
+  // 保存设置到本地存储
+  const saveSettingsToLocalStorage = () => {
+    try {
+      localStorage.setItem('cc1_gameSetting', JSON.stringify(gameSettings.value));
+      console.log('游戏设置已保存到本地存储');
+    } catch (error) {
+      console.error('保存设置到本地存储失败:', error);
+    }
+  };
+
+  // 从本地存储加载设置
+  const loadSettingsFromLocalStorage = () => {
+    try {
+      const savedSettings = localStorage.getItem('cc1_gameSetting');
+      if (savedSettings) {
+        const parsedSettings = JSON.parse(savedSettings);
+        
+        // 验证并合并设置，确保所有必需的属性都存在
+        gameSettings.value = {
+          ...defaultGameSettings,
+          ...parsedSettings,
+          // 确保 graphicsQuality 是有效的值
+          graphicsQuality: ['low', 'medium', 'high'].includes(parsedSettings.graphicsQuality) 
+            ? parsedSettings.graphicsQuality 
+            : defaultGameSettings.graphicsQuality
+        };
+        
+        console.log('游戏设置已从本地存储加载');
+      }
+    } catch (error) {
+      console.error('从本地存储加载设置失败:', error);
+      // 加载失败时使用默认设置
+      gameSettings.value = { ...defaultGameSettings };
+    }
+  };
+
+  // 更新设置
+  const updateSetting = <K extends keyof CC1GameSetting>(key: K, value: CC1GameSetting[K]) => {
+    gameSettings.value[key] = value;
+    saveSettingsToLocalStorage();
+  };
+
+  // 重置设置为默认值
+  const resetToDefaultSettings = () => {
+    gameSettings.value = { ...defaultGameSettings };
+    saveSettingsToLocalStorage();
+  };
+
+  // 初始化时加载设置
+  loadSettingsFromLocalStorage();
+
+  return {
+    gameSettings,
+    defaultGameSettings,
+    updateSetting,
+    resetToDefaultSettings,
+    saveSettingsToLocalStorage,
+    loadSettingsFromLocalStorage
+  }
+});

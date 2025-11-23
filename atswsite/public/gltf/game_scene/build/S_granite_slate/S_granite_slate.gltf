@@ -62,12 +62,12 @@
   ],
   "images": [
     {
-      "uri": "Material__34basecolortexture.jpeg"
+      "uri": "Material__35basecolortexture.jpeg"
     }
   ],
   "materials": [
     {
-      "name": "Material__34",
+      "name": "Material__35",
       "pbrMetallicRoughness": {
         "baseColorFactor": [
           0.5,

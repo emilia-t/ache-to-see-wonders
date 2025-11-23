@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // The relative position of this file: src/components/PageChineseChess.vue
+// CC1
 import { ref, onMounted, onUnmounted } from 'vue'
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -11,14 +12,33 @@ import type InstructObject from '@/interface/InstructObject';
 import ViewUserLayer from './ViewUserLayer.vue';
 import {CHINESE_CHESS_SERVER_URL} from '@/config/apiConfig.ts';
 import ViewHeart from '@/components/ViewHeart.vue'
-import PartCc1Loading from './PartCc1Loading.vue';
-import PartCc1Start from './PartCc1Start.vue';
+import PartCC1Loading from './PartCC1Loading.vue';
+import PartCC1StartMenu from './PartCC1StartMenu.vue';
+import { useGameSettingStore, type CC1GameSetting } from '@/stores/store'
+import ViewCC1Setting from './ViewCC1Setting.vue';
+import ViewCC1GiveUp from './ViewCC1GiveUp.vue';
+import ViewCC1GiveUpConfirm from './ViewCC1GiveUpConfirm.vue';
+import ViewCC1GiveUpResult from './ViewCC1GiveUpResult.vue';
+import ViewCC1ResetChess from './ViewCC1ResetChess.vue';
+import ViewCC1ResetChessResult from './ViewCC1ResetChessResult.vue';
 
 type Coord3D = {
   x: number;
   y: number;
   z: number;
 };
+const giveUpStateC1 = ref(false);
+const giveUpCdTimeC1 = 5;//second
+const giveUpConveyorC1 = ref('');//last fail user (name + & + email)
+const resetChessCountC1 = ref(0);
+const resetChessConveyorC1 = ref('');//last reset user (name + & + email)
+const pieceTrajectories = ref<{[key: string]:{
+  points: Coord3D[];
+  startTime: number;
+  duration: number;
+  currentIndex: number;
+}}>({});// 棋子运动轨迹插值
+
 // ==============================
 // 组件引用
 // ==============================
@@ -38,6 +58,8 @@ let chessPieces: THREE.Group; // 棋子模型组
 let panoramaCube: THREE.Mesh; // 全景立方体
 let centerGridHelper: THREE.GridHelper; // 参考网格
 let centerAxesHelper: THREE.AxesHelper; // 参考坐标轴
+let playerHeadBox_1: THREE.Group; // 玩家头部
+let playerHeadBox_2: THREE.Group; // 玩家头部
 
 // ==============================
 // 第一人称视角控制相关变量
@@ -50,7 +72,9 @@ const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 let pitch = 0;// 俯仰角（上下看）
 let yaw = 0;// 偏航角（左右看）
-const rotationSpeed = 0.002;
+let rotationSpeed = 0.002;
+// 使用游戏设置 store
+const gameSettingStore = useGameSettingStore();
 
 // ==============================
 // 第一人称棋子操作相关变量
@@ -83,8 +107,6 @@ let moveTrajectory: Coord3D[] = [];
 let lastMoveBroadcastTime = 0;
 const MOVE_BROADCAST_INTERVAL = 20; // 20ms = 0.02秒
 
-
-
 // ==============================
 // 加载状态管理
 // ==============================
@@ -97,9 +119,10 @@ const loadingState = ref({
 });
 
 
-// 创建对子组件的引用
-const heartRef = ref<InstanceType<typeof ViewHeart> | null>(null)
-const heartStatusText = ref('')
+// 子组件引用
+const heartRef = ref<InstanceType<typeof ViewHeart> | null>(null);
+const startMenuRef = ref<InstanceType<typeof PartCC1StartMenu> | null>(null);
+const giveUpConfirmRef = ref<InstanceType<typeof ViewCC1GiveUpConfirm> | null>(null);
 
 // ==============================
 // 通信相关
@@ -131,6 +154,9 @@ ccInstruct.onOpen = (ev: Event):void=>{
     }, 1000);
   }
 };
+
+// next_ 写走子可视化 (拾起 到 放置 箭头或其他方法可视化)
+
 ccInstruct.onClose = (ev: Event):void=>{
   console.log("服务器断开连接",ev);
 };
@@ -146,7 +172,6 @@ ccInstruct.onMessage = (instructObj: InstructObject):void=>{
  */
 const handleServerInstruct = (instructObj: InstructObject) => {
   const { type, class: class_, conveyor, data } = instructObj;
-
   if (type === 'broadcast') {
     switch (class_) {
       case 'pick_up_chess':
@@ -161,6 +186,9 @@ const handleServerInstruct = (instructObj: InstructObject) => {
       case 'reset_all_chess_pieces':
         handleBroadcastResetAllChessPieces(conveyor, data);
         break;
+      case 'give_up':
+        handleBroadcastGiveUp(conveyor, data);
+        break;
     }
   }
   else if(type === 'sync_chess_pieces'){
@@ -172,12 +200,25 @@ const handleServerInstruct = (instructObj: InstructObject) => {
 };
 
 /**
+ * 服务器返回投降事件
+ */
+const handleBroadcastGiveUp = (conveyor: string, data: any) =>{
+  giveUpStateC1.value=true;
+  giveUpConveyorC1.value=conveyor;
+  setTimeout(
+    ()=>{
+      giveUpStateC1.value=false;
+    },
+    giveUpCdTimeC1*1000
+  );
+};
+
+/**
  * 服务器返回点赞事件处理
  */
 const handleHeartTk = () => {
   if (heartRef.value) {
     heartRef.value.setLiked(true);
-    heartStatusText.value = '已点赞';
   }
 }
 
@@ -192,8 +233,6 @@ const handleHeart3=()=>{
  * 处理广播的重置所有棋子指令
  */
 const handleBroadcastResetAllChessPieces = (conveyor: string, data: any) => {
-  console.log(`玩家 ${conveyor} 重置了所有棋子`);
-  
   // 重置所有棋子状态
   Object.keys(chessPiecesState.value).forEach(pieceName => {
     chessPiecesState.value[pieceName] = {
@@ -219,7 +258,10 @@ const handleBroadcastResetAllChessPieces = (conveyor: string, data: any) => {
     resetPickingState();
   }
   
-  console.log("所有棋子已重置到初始位置");
+  resetChessCountC1.value+=1;
+  resetChessConveyorC1.value=conveyor;
+  // 重置投降的人名称
+  giveUpConveyorC1.value='';
 };
 
 /**
@@ -329,8 +371,19 @@ const handleBroadcastMovingChess = (conveyor: string, data: any) => {
     
     // 在场景中更新棋子位置
     const piece = chessPieces?.getObjectByName(piece_name);
-    if (piece && piece !== pickedPiece) { // 不更新自己正在操作的棋子
-      piece.position.set(latestPosition.x, latestPosition.y, latestPosition.z);
+    if (piece && piece !== pickedPiece) {
+      // 如果轨迹点数量足够，使用轨迹插值
+      if (trajectory.length >= 2) {
+        pieceTrajectories.value[piece_name] = {
+          points: trajectory,
+          startTime: Date.now(),
+          duration: MOVE_BROADCAST_INTERVAL * (trajectory.length - 1), // 总持续时间
+          currentIndex: 0
+        };
+      } else {
+        // 只有一个点，直接设置位置
+        piece.position.set(latestPosition.x, latestPosition.y, latestPosition.z);
+      }
     }
   }
 };
@@ -340,13 +393,6 @@ const handleBroadcastMovingChess = (conveyor: string, data: any) => {
  */
 const handleLoadingComplete = () => {
   console.log('资源加载完毕加载界面已隐藏');
-};
-
-/**
- * 重置棋子功能
- */
-const resetAllChessPieces = () => {
-  ccInstruct.broadcastResetAllChessPieces("");
 };
 
 /** 
@@ -378,6 +424,50 @@ const updateLoadingProgress = (increment = 1, status = '') => {
       loadingState.value.statusText = '场景加载完成！';
     }, 500);
   }
+};
+
+/**
+ * 棋子运动轨迹更新
+ */ 
+const updatePieceTrajectories = (delta: number) => {
+  const currentTime = Date.now();
+  
+  Object.keys(pieceTrajectories.value).forEach(pieceName => {
+    const trajectory = pieceTrajectories.value[pieceName];
+    const piece = chessPieces?.getObjectByName(pieceName);
+    
+    if (!piece || !trajectory || trajectory.points.length < 2) {
+      delete pieceTrajectories.value[pieceName];
+      return;
+    }
+    
+    const elapsed = currentTime - trajectory.startTime;
+    const progress = Math.min(elapsed / trajectory.duration, 1);
+    
+    // 计算当前应该在哪个线段上
+    const segmentCount = trajectory.points.length - 1;
+    const segmentIndex = Math.floor(progress * segmentCount);
+    const segmentProgress = (progress * segmentCount) - segmentIndex;
+    
+    if (segmentIndex < segmentCount) {
+      // 线性插值
+      const startPoint = trajectory.points[segmentIndex];
+      const endPoint = trajectory.points[segmentIndex + 1];
+      
+      const currentPosition = {
+        x: startPoint.x + (endPoint.x - startPoint.x) * segmentProgress,
+        y: startPoint.y + (endPoint.y - startPoint.y) * segmentProgress,
+        z: startPoint.z + (endPoint.z - startPoint.z) * segmentProgress
+      };
+      
+      piece.position.set(currentPosition.x, currentPosition.y, currentPosition.z);
+    } else {
+      // 到达轨迹终点
+      const finalPoint = trajectory.points[trajectory.points.length - 1];
+      piece.position.set(finalPoint.x, finalPoint.y, finalPoint.z);
+      delete pieceTrajectories.value[pieceName];
+    }
+  });
 };
 
 /**
@@ -498,6 +588,49 @@ const materialRestorePieceOriginal = (piece: THREE.Object3D) => {
   }
 };
 
+// 处理开始游戏事件
+const handleStartGame = (side: 'red' | 'black') => {
+  // 修改初始视角
+  if(side === 'red'){// 红方相机初始视角
+    camera.position.set(cameraConfig.redStartPos.x,cameraConfig.redStartPos.y,cameraConfig.redStartPos.z);
+    pitch=cameraConfig.redStartPitch;
+    yaw=cameraConfig.redStartYaw;
+  }
+  if(side === 'black'){// 黑方相机初始视角
+    camera.position.set(cameraConfig.blackStartPos.x,cameraConfig.blackStartPos.y,cameraConfig.blackStartPos.z);
+    pitch=cameraConfig.blackStartPitch;
+    yaw=cameraConfig.blackStartYaw;
+  }
+  const quaternion = new THREE.Quaternion();
+  quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+  camera.setRotationFromQuaternion(quaternion);
+  // 应用游戏设置
+  applyGameSettings();
+};
+
+// 应用游戏设置
+const applyGameSettings = () => {
+  const settings = gameSettingStore.gameSettings;
+  // 应用fov
+  if (camera) {
+    camera.fov = settings.fov;
+    camera.updateProjectionMatrix();
+  }
+  console.log('游戏设置已应用:', settings);
+};
+
+// 显示菜单
+const showStartMenu = () => {
+  if (startMenuRef.value) {
+    startMenuRef.value.isVisible=true;
+  }
+};
+// 显示确认头像确认框
+const showGiveUpConfirm = ()=>{
+  if(giveUpConfirmRef.value){
+    giveUpConfirmRef.value.isVisible=true;
+  }
+}
 // ==============================
 // 主要功能函数
 // ==============================
@@ -514,6 +647,8 @@ const initScene = () => {
   createGraniteSlate();
   createChessBoard();// 棋盘
   createChessPieces();// 棋子
+  createPlayerHeadBox1();// 
+  createPlayerHeadBox2();// 
   calculateTotalResources();
 }
 
@@ -577,8 +712,8 @@ const onMouseMove = (event: MouseEvent) => {
   if (!isPointerLocked) return;
   const movementX = event.movementX || 0;
   const movementY = event.movementY || 0;
-  yaw -= movementX * rotationSpeed;// 使用四元数控制相机旋转，避免万向节锁
-  pitch -= movementY * rotationSpeed;
+  yaw -= (movementX * rotationSpeed) * gameSettingStore.gameSettings.mouseSensitivity/100;// 使用四元数控制相机旋转，避免万向节锁
+  pitch -= (movementY * rotationSpeed) * gameSettingStore.gameSettings.mouseSensitivity/100;
   pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));// 限制俯仰角范围（避免翻转）
   const quaternion = new THREE.Quaternion();// 使用四元数设置相机旋转
   quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
@@ -815,8 +950,8 @@ const updateFirstPersonMovement = (delta: number) => {
     moveDirection.y = 0;// 移除Y轴分量，确保只在水平面移动
     moveDirection.normalize();
     
-    velocity.x += moveDirection.x * sceneConfig.firstPerson.moveSpeed * delta;// 应用移动速度
-    velocity.z += moveDirection.z * sceneConfig.firstPerson.moveSpeed * delta;
+    velocity.x += moveDirection.x * (sceneConfig.firstPerson.moveSpeed * gameSettingStore.gameSettings.moveSensitivity/100) * delta;// 应用移动速度
+    velocity.z += moveDirection.z * (sceneConfig.firstPerson.moveSpeed * gameSettingStore.gameSettings.moveSensitivity/100) * delta;
   }
   
   velocity.y -= sceneConfig.firstPerson.gravity * delta;// 应用重力
@@ -946,7 +1081,7 @@ const createGround = () => {
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
-  ground.name = 'ground';
+  ground.name = 'S_ground';
   scene.add(ground);
 }
 
@@ -1026,7 +1161,6 @@ const createPanoramaCube = () => {
     panoramaCube = new THREE.Mesh(geometry, loadedMaterials);
     panoramaCube.name = 'panorama-cube';
     scene.add(panoramaCube);
-    console.log('全景图加载完成');
   });
 };
 
@@ -1063,10 +1197,27 @@ const createModel = (
         }
       });
       
-      // 计算模型高度
+      // 获取模型高度等信息
       const bbox = new THREE.Box3().setFromObject(model);
-      const altitudeKey = name === 'table' ? 'S_table' : 'S_chess_board';
-      sceneConfig.altitude[altitudeKey] = bbox.max.y;
+      switch (name) {
+        case 'S_table':{sceneConfig.altitude.S_table = bbox.max.y;break;}
+        case 'S_chess_board':{sceneConfig.altitude.S_chess_board = bbox.max.y;break;}
+        case 'S_granite_slate':{sceneConfig.altitude.S_granite_slate = bbox.max.y;break;}
+        case 'V_Player_head_box_1':{
+          sceneConfig.altitude.V_Player_head_box_1 = bbox.max.y;
+          sceneConfig.playerHeadBoxOffset.rad_1.x = model.children[0].position.x;
+          sceneConfig.playerHeadBoxOffset.rad_1.y = model.children[0].position.y;
+          sceneConfig.playerHeadBoxOffset.rad_1.z = model.children[0].position.z;
+          break;
+        }
+        case 'V_Player_head_box_2':{
+          sceneConfig.altitude.V_Player_head_box_2 = bbox.max.y;
+          sceneConfig.playerHeadBoxOffset.black_2.x = model.children[0].position.x;
+          sceneConfig.playerHeadBoxOffset.black_2.y = model.children[0].position.y;
+          sceneConfig.playerHeadBoxOffset.black_2.z = model.children[0].position.z;
+          break;
+        }
+      }
       
       onLoad?.(model);
       scene.add(model);
@@ -1095,7 +1246,7 @@ const createCoffeeTable = () => {
     sceneConfig.S_table.modelPath,
     sceneConfig.S_table.position,
     sceneConfig.S_table.scale,
-    'table',
+    'S_table',
     (model) => { coffeeTable = model; }
   );
 }
@@ -1108,8 +1259,34 @@ const createGraniteSlate = () => {
     sceneConfig.S_granite_slate.modelPath,
     sceneConfig.S_granite_slate.position,
     sceneConfig.S_granite_slate.scale,
-    'slate',
+    'S_granite_slate',
     (model) => { gGraniteSlate = model; }
+  );
+}
+
+/**
+ * 加载头模型
+ */
+const createPlayerHeadBox1 = () => {
+  createModel(
+    sceneConfig.V_Player_head_box_1.modelPath,
+    sceneConfig.V_Player_head_box_1.position,
+    sceneConfig.V_Player_head_box_1.scale,
+    'V_Player_head_box_1',
+    (model) => { playerHeadBox_1 = model; }
+  );
+}
+
+/**
+ * 加载头模型
+ */
+const createPlayerHeadBox2 = () => {
+  createModel(
+    sceneConfig.V_Player_head_box_2.modelPath,
+    sceneConfig.V_Player_head_box_2.position,
+    sceneConfig.V_Player_head_box_2.scale,
+    'V_Player_head_box_2',
+    (model) => { playerHeadBox_2 = model; }
   );
 }
 
@@ -1121,7 +1298,7 @@ const createChessBoard = () => {
     sceneConfig.S_chess_board.modelPath,
     sceneConfig.S_chess_board.position,
     sceneConfig.S_chess_board.scale,
-    'board',
+    'S_chess_board',
     (model) => { chessBoard = model; }
   );
 }
@@ -1214,10 +1391,11 @@ const animate = () => {
   prevTime = time;
   updateFirstPersonMovement(delta);// 更新第一人称移动
   updatePieceFollowing();// 更新棋子跟随视角
+  updatePieceTrajectories(delta); // 棋子运动轨迹更新
   if (renderer && scene && camera) {
     renderer.render(scene, camera);
   }
-}
+};
 
 // ==============================
 // 生命周期钩子
@@ -1251,21 +1429,23 @@ onUnmounted(() => {
     scene.clear();
   }
 });
+
+
 </script>
 <template>
   <div class="pageBox">
     <div ref="sceneRef" class="chess-container"></div>
     <div class="crosshair"></div>
-    <!-- 重置棋子按钮 -->
-    <div class="reset-button-container">
-      <button class="reset-button" @click="resetAllChessPieces" title="重置所有棋子到初始位置">
-        重置棋子
-      </button>
-    </div>
     <view-user-layer theme="light" design="C"/>
-    <ViewHeart @like-change="handleHeart3" ref="heartRef" label="Like" />
-    <PartCc1Start/>
-    <PartCc1Loading :loading-state="loadingState" @loading-complete="handleLoadingComplete"/>
+    <ViewHeart ref="heartRef" @like-change="handleHeart3" label="Like" />
+    <ViewCC1Setting @click-open-setting="showStartMenu" :open-setting-state="false" :top="80" :left="20"/>
+    <ViewCC1GiveUp :give-up-state="giveUpStateC1" @click-give-up="showGiveUpConfirm"/>
+    <ViewCC1ResetChess :give-up-state="giveUpStateC1" :give-up-conveyor="giveUpConveyorC1" @click-reset-chess="ccInstruct.broadcastResetAllChessPieces('')"/>
+    <ViewCC1GiveUpConfirm ref="giveUpConfirmRef" :give-up-state="giveUpStateC1" @confirm-give-up="ccInstruct.broadcastGiveUp('')"/>
+    <ViewCC1GiveUpResult :give-up-state="giveUpStateC1" :give-up-conveyor="giveUpConveyorC1" @click-reset-chess="ccInstruct.broadcastResetAllChessPieces('')"/>
+    <ViewCC1ResetChessResult :reset-chess-count="resetChessCountC1" :reset-chess-conveyor="resetChessConveyorC1"/>
+    <PartCC1StartMenu ref="startMenuRef" @start-game="handleStartGame" @change-setting="applyGameSettings"/>
+    <PartCC1Loading :loading-state="loadingState" @loading-complete="handleLoadingComplete"/>
   </div>
 </template>
 <style scoped>
@@ -1303,59 +1483,5 @@ onUnmounted(() => {
 .chess-container:-moz-full-screen {
   /* 保留全屏时的光标隐藏 */
   cursor: none;
-}
-
-/* 重置棋子按钮 */
-.reset-button-container {
-  position: fixed;
-  bottom: 80px; /* 在控制台上方 */
-  left: 20px;
-  z-index: 100;
-}
-
-.reset-button {
-  padding: 10px 16px;
-  background: linear-gradient(135deg, #ff6b6b, #ee5a52);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
-  transition: all 0.3s ease;
-  min-width: 100px;
-}
-
-.reset-button:hover {
-  background: linear-gradient(135deg, #ff5252, #e53935);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.4);
-}
-
-.reset-button:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
-}
-
-.reset-button:disabled {
-  background: #cccccc;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .reset-button-container {
-    bottom: 70px;
-    left: 10px;
-  }
-  
-  .reset-button {
-    padding: 8px 12px;
-    font-size: 12px;
-    min-width: 80px;
-  }
 }
 </style>

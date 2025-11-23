@@ -416,6 +416,17 @@ class ChineseChessServer:
     async def handle_get_storage_json(self, websocket, instruct):
         await websocket.send(self.instruct.create_storage_json(load_storage_source()).to_json())
 
+    async def handle_give_up(self, websocket, instruct):
+        """处理投降指令"""
+        
+        user_data = self.logged_users[websocket]
+        log_message(f"用户 {user_data.get('name')} 发起投降")
+        
+        # 广播重置指令给所有玩家（包括发送者）
+        conveyor = f"{user_data.get('name')}&{user_data.get('email')}"
+        giveup_instruct = self.instruct.create_broadcast_give_up(conveyor)
+        await self.broadcast_to_all(giveup_instruct)
+
     async def handle_reset_all_chess_pieces(self, websocket, instruct):
         """处理重置所有棋子指令"""
         
@@ -573,9 +584,10 @@ class ChineseChessServer:
             await self.handle_moving_chess(websocket, instruct)
         elif class_ == "reset_all_chess_pieces":
             await self.handle_reset_all_chess_pieces(websocket, instruct)
+        elif class_ == "give_up":
+            await self.handle_give_up(websocket, instruct)
         else:
-            # 对于其他类型的广播，直接转发
-            await self.broadcast_to_all(instruct, exclude_websocket=websocket)
+            pass
 
     async def handle_unknown_instruct(self, websocket, instruct):
         """处理未知指令"""

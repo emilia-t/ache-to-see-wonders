@@ -423,13 +423,36 @@ onUnmounted(() => {
         <!-- 模组 -->
         <div v-show="activeTab === 'module'" class="tab-content">
           <div class="rct-placeholder">
-            
+            <p>敬请期待</p>
           </div>
         </div>
         <!-- 日志 -->
         <div v-show="activeTab === 'daily'" class="tab-content">
           <div class="rct-placeholder">
-            
+            <!-- 添加 daily 专用的容器 -->
+            <div class="daily-container">
+              <div class="daily-item">
+                <div class="daily-date">2025-11-17</div>
+                <div class="daily-content">
+                  <h4>优化了3D象棋界面</h4>
+                  <p>改进了用户交互体验，修复了已知问题</p>
+                </div>
+              </div>
+              <div class="daily-item">
+                <div class="daily-date">2025-11-16</div>
+                <div class="daily-content">
+                  <h4>网站维护结束</h4>
+                  <p>完成了系统升级和性能优化</p>
+                </div>
+              </div>
+              <div class="daily-item">
+                <div class="daily-date">2025-11-15</div>
+                <div class="daily-content">
+                  <h4>新增项目展示</h4>
+                  <p>添加了新的试做型项目到首页</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -966,6 +989,7 @@ onUnmounted(() => {
 .rct-placeholder {
   text-align: center;
   padding: 0px 0px 20px 0px;
+  font-size: 1.08rem;
 }
 
 /* 响应式设计 */
@@ -1410,5 +1434,145 @@ ul.icon{
     padding: 40px 15px;
     font-size: 1rem;
   }
+}
+
+/*** 日志样式 ***/
+.daily-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.daily-item {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 30px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  border: 1px solid rgba(81, 155, 233, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.daily-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 4px;
+  background: linear-gradient(135deg, rgb(81, 155, 233), rgb(15, 111, 180));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.daily-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(81, 155, 233, 0.15);
+  border-color: rgba(81, 155, 233, 0.3);
+}
+
+.daily-item:hover::before {
+  opacity: 1;
+}
+
+.daily-date {
+  flex-shrink: 0;
+  width: 120px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, rgb(81, 155, 233), rgb(15, 111, 180));
+  color: white;
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 8px rgba(81, 155, 233, 0.3);
+}
+
+.daily-content {
+  flex: 1;
+}
+
+.daily-content h4 {
+  margin: 0 0 8px 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+  background: linear-gradient(135deg, #333, #555);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.daily-content p {
+  margin: 0;
+  color: #666;
+  line-height: 1.5;
+  font-size: 1.08rem;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .daily-container {
+    padding: 16px;
+  }
+  
+  .daily-item {
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding: 16px;
+  }
+  
+  .daily-date {
+    width: auto;
+    align-self: flex-start;
+  }
+  
+  .daily-content h4 {
+    font-size: 1rem;
+  }
+  
+  .daily-content p {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .daily-container {
+    padding: 12px;
+  }
+  
+  .daily-item {
+    padding: 12px;
+    margin-bottom: 16px;
+  }
+  
+  .daily-date {
+    font-size: 0.85rem;
+    padding: 6px 10px;
+  }
+  
+  .daily-content h4 {
+    font-size: 0.95rem;
+    margin-bottom: 6px;
+  }
+  
+  .daily-content p {
+    font-size: 0.85rem;
+  }
+}
+
+/* 空状态 */
+.daily-container:empty::before {
+  content: "暂无日志记录";
+  display: block;
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 1.1rem;
 }
 </style>

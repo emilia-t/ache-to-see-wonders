@@ -681,17 +681,28 @@ class AccountServer:
             response = self.account_service.handle_request(request_data, addr)
             
             # 发送响应
-            client_socket.send(response)
-            
+            try:
+                client_socket.send(response)
+            except BrokenPipeError:
+                log_message(f"客户端 {addr} 在发送响应前关闭了连接")
+            except ConnectionResetError:
+                log_message(f"客户端 {addr} 重置了连接")
+                
         except Exception as e:
-            log_message(f"处理客户端请求时出错: {e}")
+            log_message(f"处理客户端 {addr} 请求时出错: {e}")
         finally:
-            client_socket.close()
+            try:
+                client_socket.close()
+            except:
+                pass
     
     def start(self):
         """启动服务器"""
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        
+        # 设置超时以避免永久阻塞
+        server_socket.settimeout(5.0)  # 5秒超时
         
         try:
             server_socket.bind((self.host, self.port))
@@ -714,17 +725,25 @@ class AccountServer:
                 log_message(f"账号服务器已启动（无SSL），监听端口 {self.host}:{self.port}")
             
             while True:
-                client_socket, addr = server_socket.accept()
-                log_message(f"接收到来自 {addr} 的连接")
-                
-                # 为每个客户端创建新线程
-                client_thread = threading.Thread(
-                    target=self.handle_client, 
-                    args=(client_socket, addr)
-                )
-                client_thread.daemon = True
-                client_thread.start()
-                
+                try:
+                    client_socket, addr = server_socket.accept()
+                    log_message(f"接收到来自 {addr} 的连接")
+                    
+                    # 为每个客户端创建新线程
+                    client_thread = threading.Thread(
+                        target=self.handle_client, 
+                        args=(client_socket, addr)
+                    )
+                    client_thread.daemon = True
+                    client_thread.start()
+                    
+                except socket.timeout:
+                    # 超时是正常的，继续循环
+                    continue
+                except Exception as e:
+                    log_message(f"接受客户端连接时出错: {e}")
+                    continue
+                    
         except KeyboardInterrupt:
             log_message("服务器正在关闭...")
         except Exception as e:

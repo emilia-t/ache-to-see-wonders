@@ -10,6 +10,18 @@ export const sceneConfig = {
     color: 0xffffff,
     opacity: 0.3, // 地面透明度
   },
+  // 头部模型配置
+  V_Player_head_box_1: {
+    modelPath: '/gltf/game_scene/build/V_Player_head_box_1/V_Player_head_box_1.gltf',
+    scale: 1,
+    position: { x: 0, y: 0, z: 0 }
+  },
+  // 头部模型配置
+  V_Player_head_box_2: {
+    modelPath: '/gltf/game_scene/build/V_Player_head_box_2/V_Player_head_box_2.gltf',
+    scale: 1,
+    position: { x: 0, y: 0, z: 0 }
+  },
   // 咖啡桌模型配置
   S_table: {
     modelPath: '/gltf/game_scene/build/S_table/S_table.gltf',
@@ -87,12 +99,20 @@ export const sceneConfig = {
     S_ground:0.0,//地面始终为0.0
     S_table:0.0,
     S_chess_board:0.0,
+    S_granite_slate:0.0,
+    V_Player_head_box_1:0.0,
+    V_Player_head_box_2:0.0,
     S_chess_pieces_max:0.0,
     S_chess_pieces_min:0.0,
     S_chess_pieces_height:0.0,
     S_chess_pieces_max_plus:0.0
   },
-  // 各棋子的模型水平偏移值（x和z轴）
+  // 各模型加载时原始偏移值(玩家头部盒子)
+  playerHeadBoxOffset:{
+    rad_1:{x:0.0,y:0.0,z:0.0},
+    black_2:{x:0.0,y:0.0,z:0.0}
+  },
+  // 各模型加载时原始偏移值(棋子)
   piecesOffset:{
     Black_00_chariot_left:{x:0.0,y:0.0,z:0.0},
     Black_01_horse_left:{x:0.0,y:0.0,z:0.0},
@@ -133,9 +153,15 @@ export const sceneConfig = {
 // ==============================
 export const cameraConfig = {
   position: { x: 0, y: sceneConfig.firstPerson.playerHeight, z: 1 }, // 相机位置（第一人称高度）
-  fov: 50,      // 视野角度
+  fov: 70,      // 视野角度
   near: 0.1,    // 近裁剪面
-  far: 2000     // 远裁剪面
+  far: 2000,     // 远裁剪面
+  redStartPos: { x: 0, y: sceneConfig.firstPerson.playerHeight, z: 1 },
+  redStartPitch:0,
+  redStartYaw:0,
+  blackStartPos: { x: 0, y: sceneConfig.firstPerson.playerHeight, z: -1 },
+  blackStartPitch:0,
+  blackStartYaw:Math.PI
 };
 // ==============================
 // 渲染器配置

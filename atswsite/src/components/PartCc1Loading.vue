@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// The relative position of this file: src/components/PartCc1Loading.vue
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+// The relative position of this file: src/components/PartCC1Loading.vue
+// CC1
+import { ref, computed, watch } from 'vue'
 
 // 定义props接收加载状态
 interface LoadingState {
@@ -48,14 +49,6 @@ watch(() => props.loadingState.isLoading, (newVal) => {
       emit('loadingComplete');
     }, 800); // 与CSS过渡时间匹配
   }
-});
-
-onMounted(() => {
-  
-});
-
-onUnmounted(() => {
-    
 });
 
 const emptyComputed = computed(() =>{

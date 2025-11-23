@@ -25,6 +25,9 @@ export default class ChineseChessInstruct extends Instruct {
     // ==============================
     // 发送指令的方法
     // ==============================
+    public broadcastGiveUp(conveyor: string): void{
+        this.send(ChineseChessInstruct._broadcastGiveUp_(conveyor));
+    }
     public getStorageJson(): void{
         this.send(ChineseChessInstruct._getStorageJson_());
     }
@@ -63,14 +66,22 @@ export default class ChineseChessInstruct extends Instruct {
     // ==============================
     // 创建指令对象的静态方法
     // ==============================
-
+    public static _broadcastGiveUp_(conveyor: string): InstructObject {
+        return {
+            "type": "broadcast",
+            "class": "give_up",
+            "conveyor": conveyor,
+            "time": Tool.getFormatTime(),
+            "data": ""
+        };
+    }
     public static _broadcastResetAllChessPieces_(conveyor: string): InstructObject {
         return {
             "type": "broadcast",
             "class": "reset_all_chess_pieces",
             "conveyor": conveyor,
             "time": Tool.getFormatTime(),
-            "data": {}
+            "data": ""
         };
     }
 

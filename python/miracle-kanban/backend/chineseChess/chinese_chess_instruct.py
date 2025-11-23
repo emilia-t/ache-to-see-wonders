@@ -31,6 +31,11 @@ class ChineseChessInstruct(Instruct):
     # 自定义指令
     # ==============================
     @staticmethod
+    def create_broadcast_give_up(conveyor: str) -> InstructObject:
+        """创建广播重置所有棋子指令"""
+        return InstructObject("broadcast", instruct_class="give_up", conveyor=conveyor)
+    
+    @staticmethod
     def create_broadcast_reset_all_chess_pieces(conveyor: str) -> InstructObject:
         """创建广播重置所有棋子指令"""
         return InstructObject("broadcast", instruct_class="reset_all_chess_pieces", conveyor=conveyor)
