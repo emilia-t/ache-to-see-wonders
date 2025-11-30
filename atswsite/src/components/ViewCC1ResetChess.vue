@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // The relative position of this file: src/components/ViewCC1ResetChess.vue
-import {ref,watch,computed,onMounted} from 'vue'
-import { useUserStore } from '@/stores/store';
+import {ref} from 'vue'
 
 // 定义组件属性
 interface Props {
@@ -15,16 +14,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const isVisible = ref(true);//默认启用
-const userStore = useUserStore();
-const myCov = computed(
-    ()=>{
-       if(userStore.userData!==null){
-          return userStore.userData.name + '&' + userStore.userData.email;
-       }else{
-          return '';
-       }
-    }
-);
+
 // 定义点击事件
 const emit = defineEmits<{
   'click-reset-chess': [value: boolean]
@@ -34,17 +24,6 @@ const emit = defineEmits<{
 const handleClick = () => {
   emit('click-reset-chess', props.giveUpState);
 };
-
-// 监听
-watch(props,(newValue,oldValue)=>{
-  if(newValue.giveUpConveyor === ''){
-    isVisible.value = false;
-  }else if(newValue.giveUpConveyor === myCov.value){
-    isVisible.value = true;
-  }else{
-    setTimeout(()=>isVisible.value=true,9000);
-  }
-});
 
 // 暴露给父组件
 defineExpose({

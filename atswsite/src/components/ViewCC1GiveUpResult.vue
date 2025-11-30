@@ -34,6 +34,7 @@ const emit = defineEmits<{
 // 方法
 const handleClickResetChess = () => {
   emit('click-reset-chess',props.giveUpState);
+  isVisible.value = false;
 };
 
 const handleClickHoldOn = () => {
