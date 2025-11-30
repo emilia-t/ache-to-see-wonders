@@ -311,4 +311,35 @@ export default class Tool {
             return this.imageExtensions.includes(extension);
         }
     }
+
+    /**
+     * 检测两点之间的距离和角度(与x轴相交)弧度制
+     * @param str 
+     */
+    public static calculateDistanceAndAngle(x1:number,y1:number,x2:number,y2:number) {
+        // 计算两点在x轴和y轴上的差值
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        
+        // 计算两点之间的距离（欧几里得距离）
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // 计算线段AB与x轴的夹角（使用Math.atan2，结果在[-π, π]之间）
+        const angle = Math.atan2(dy, dx);
+    
+        return {
+            distance: distance,
+            angle: angle
+        };
+    }
+    /**
+     * 逆时针旋转角度
+     * @param angleA 被旋转角度值
+     * @param angleB 旋转角度值
+     */
+    public static adjustAngle(angleA: number, angleB: number): number {
+        let result = angleA + angleB;
+        result = (result + Math.PI) % (2 * Math.PI);
+        return result <= 0 ? result + Math.PI : result - Math.PI;
+    }
 }

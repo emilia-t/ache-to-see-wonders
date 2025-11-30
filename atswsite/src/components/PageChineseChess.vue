@@ -1,48 +1,34 @@
 <script setup lang="ts">
 // The relative position of this file: src/components/PageChineseChess.vue
 // CC1
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { sceneConfig, piecesConfig, cameraConfig, rendererConfig, lightConfig } from '@/config/chineseChessConfig.ts';
-import ChineseChessInstruct from '@/class/ChineseChessInstruct';
 import Tool from '@/class/Tool';
+import type Notification from '@/interface/Notification';
+import type Coord3D from '@/interface/Coord3D';
+import type PieceSyncData from '@/interface/PieceSyncData';
+import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { sceneConfig, piecesConfig, cameraConfig, rendererConfig, lightConfig ,type PieceNameKeys} from '@/config/chineseChessConfig.ts';
+import { CHINESE_CHESS_SERVER_URL } from '@/config/apiConfig.ts';
+import { useGameSettingStore } from '@/stores/store'
+import type CampData from '@/interface/CampData';
 import type LogConfig from '@/interface/LogConfig';
 import type InstructObject from '@/interface/InstructObject';
+import ChineseChessInstruct from '@/class/ChineseChessInstruct';
 import ViewUserLayer from './ViewUserLayer.vue';
-import {CHINESE_CHESS_SERVER_URL} from '@/config/apiConfig.ts';
-import ViewHeart from '@/components/ViewHeart.vue'
+import ViewHeart from '@/components/ViewHeart.vue';
+import PartCC1Check from './PartCC1Check.vue';
 import PartCC1Loading from './PartCC1Loading.vue';
 import PartCC1StartMenu from './PartCC1StartMenu.vue';
-import { useGameSettingStore, type CC1GameSetting } from '@/stores/store'
-import ViewCC1Setting from './ViewCC1Setting.vue';
+import ViewCC1Menu from './ViewCC1Menu.vue';
 import ViewCC1GiveUp from './ViewCC1GiveUp.vue';
 import ViewCC1GiveUpConfirm from './ViewCC1GiveUpConfirm.vue';
 import ViewCC1GiveUpResult from './ViewCC1GiveUpResult.vue';
 import ViewCC1ResetChess from './ViewCC1ResetChess.vue';
 import ViewCC1ResetChessResult from './ViewCC1ResetChessResult.vue';
-
-type Coord3D = {
-  x: number;
-  y: number;
-  z: number;
-};
-const giveUpStateC1 = ref(false);
-const giveUpCdTimeC1 = 5;//second
-const giveUpConveyorC1 = ref('');//last fail user (name + & + email)
-const resetChessCountC1 = ref(0);
-const resetChessConveyorC1 = ref('');//last reset user (name + & + email)
-const pieceTrajectories = ref<{[key: string]:{
-  points: Coord3D[];
-  startTime: number;
-  duration: number;
-  currentIndex: number;
-}}>({});// 棋子运动轨迹插值
-
-// ==============================
-// 组件引用
-// ==============================
-const sceneRef = ref<HTMLDivElement>();
+import ViewCC1Notifications from './ViewCC1Notifications.vue';
+import ViewCC1DebugInfo from './ViewCC1DebugInfo.vue';
 
 // ==============================
 // Three.js 对象变量
@@ -50,7 +36,10 @@ const sceneRef = ref<HTMLDivElement>();
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
 let renderer: THREE.WebGLRenderer;
-let directionalLight: THREE.DirectionalLight;
+let directionalLight1: THREE.DirectionalLight;
+let directionalLight2: THREE.DirectionalLight;
+let fillLight: THREE.DirectionalLight;
+let ambientLight: THREE.AmbientLight;
 let coffeeTable: THREE.Group; // 咖啡桌模型组
 let gGraniteSlate: THREE.Group; // 咖啡桌模型组
 let chessBoard: THREE.Group; // 棋盘模型组
@@ -64,17 +53,16 @@ let playerHeadBox_2: THREE.Group; // 玩家头部
 // ==============================
 // 第一人称视角控制相关变量
 // ==============================
-let isPointerLocked = false;
-const moveState = {forward: false,backward: false,left: false,right: false};
-let canJump = false;
-let prevTime = performance.now();
+let   isPointerLocked = false;
+let   canJump = false;
+let   prevTime = performance.now();
+let   pitch = 0;// 俯仰角（上下看）
+let   yaw = 0;// 偏航角（左右看）
+let   rotationSpeed = 0.002;
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
-let pitch = 0;// 俯仰角（上下看）
-let yaw = 0;// 偏航角（左右看）
-let rotationSpeed = 0.002;
-// 使用游戏设置 store
-const gameSettingStore = useGameSettingStore();
+const moveState = {forward: false,backward: false,left: false,right: false};
+const gameSettingStore = useGameSettingStore();// 使用游戏设置 store
 
 // ==============================
 // 第一人称棋子操作相关变量
@@ -88,24 +76,23 @@ let transparentMaterial: THREE.MeshLambertMaterial;
 // ==============================
 // 棋子状态管理
 // ==============================
-const chessPiecesState = ref<{ [key: string]: { 
+const chessPiecesState = ref<{ [key: string]: { // 拾起
   isPicked: boolean; 
   pickedBy: string; 
   position: { x: number; y: number; z: number };
   lastUpdate: number;
 } }>({});
-
-// ==============================
-// 棋子材质管理
-// ==============================
-const pieceOriginalMaterials = new Map<string, THREE.Material | THREE.Material[]>(); // 保存棋子原始材质
+const chessPiecesMoveHistory = ref<{ [key: string]: { // 走子
+  lastPickUpPosition: Coord3D | null;
+  lastPickUpTime: number;
+  lastPickUpBy: string;
+} }>({});
 
 // ==============================
 // 棋子移动轨迹
 // ==============================
 let moveTrajectory: Coord3D[] = [];
 let lastMoveBroadcastTime = 0;
-const MOVE_BROADCAST_INTERVAL = 20; // 20ms = 0.02秒
 
 // ==============================
 // 加载状态管理
@@ -118,14 +105,53 @@ const loadingState = ref({
   totalResources: 0
 });
 
-
+// ==============================
 // 子组件引用
+// ==============================
+const sceneRef = ref<HTMLDivElement>();
 const heartRef = ref<InstanceType<typeof ViewHeart> | null>(null);
 const startMenuRef = ref<InstanceType<typeof PartCC1StartMenu> | null>(null);
 const giveUpConfirmRef = ref<InstanceType<typeof ViewCC1GiveUpConfirm> | null>(null);
 
 // ==============================
-// 通信相关
+// 杂项变量和常量
+// ==============================
+const gameTick = 50;//ms
+const selectedCampC1 =  ref('');
+const giveUpStateC1 = ref(false);
+const giveUpCdTimeC1 = 5;//second
+const giveUpConveyorC1 = ref('');//last fail user (name + & + email)
+const resetChessCountC1 = ref(0);
+const resetChessConveyorC1 = ref('');//last reset user (name + & + email)
+const pieceTrajectoriesC1 = ref<{[key: string]:{points: Coord3D[];startTime: number;duration: number;currentIndex: number;}}>({});// 棋子运动轨迹插值
+const campDataC1 = ref<CampData>({red: {email: '',name: '',id: 0},black: {email: '',name: '',id: 0}});// 阵营数据
+const pieceOriginalMaterials = new Map<string, THREE.Material | THREE.Material[]>(); // 用于保存棋子原始材质
+const piecesPendingData = ref<any>(null);// 待同步的棋子数据
+const notificationArr = ref<Notification[]>([]);// 通知管理
+const playerNameTags = new Map<string, CSS2DObject>();// 玩家名字标签管理
+const playersDataHeadModel = ref<{ [key: string]: {// 玩家头部状态管理
+  position: Coord3D;
+  targetPosition: Coord3D; 
+  pitch: number;
+  yaw: number;
+  targetPitch: number; 
+  targetYaw: number;  
+  name: string;
+  lastUpdate: number;
+  camp: string;
+}}>({});
+const debugInfoC1 = ref({
+  cameraPosition: { x: 0, y: 0, z: 0 },
+  intersectionPoint: { x: 0, y: 0, z: 0 },
+  hasIntersection: false
+});
+let   enabledDebug = false;
+let   labelRenderer: any = null;
+let   headBroadcastInterval: number | null = null;// 头部数据广播定时器
+let   notificationIdCounter = 0;
+
+// ==============================
+// 与服务器通信相关的方面
 // ==============================
 const ccInstruct = new ChineseChessInstruct(CHINESE_CHESS_SERVER_URL);
 ccInstruct.onLog = (message:string,type:'tip'|'warn'|'error',data?:any):LogConfig=>{
@@ -148,14 +174,18 @@ ccInstruct.onOpen = (ev: Event):void=>{
   const localStorageUserToken = localStorage.getItem('user_token');
   if(localStorageUserId && localStorageUserToken){
     ccInstruct.getTokenLogin(Number(localStorageUserId),localStorageUserToken);
-    // 登录成功后请求棋子状态同步
-    setTimeout(() => {
-      ccInstruct.getSyncChessPieces();
-    }, 1000);
   }
 };
 
-// next_ 写走子可视化 (拾起 到 放置 箭头或其他方法可视化)
+ccInstruct.onLogin = ():void=>{
+  ccInstruct.getCampData();
+  ccInstruct.getSyncChessPieces();
+  ccInstruct.getRbHeadPositionPitchYaw();
+};
+
+ccInstruct.onLogout = ():void=>{
+  return
+};
 
 ccInstruct.onClose = (ev: Event):void=>{
   console.log("服务器断开连接",ev);
@@ -164,39 +194,154 @@ ccInstruct.onError = (ev: Event):void=>{
   console.log("服务器连接失败",ev);
 };
 ccInstruct.onMessage = (instructObj: InstructObject):void=>{
-  handleServerInstruct(instructObj);
+  handleMessage(instructObj);
 };
 
 /**
  * 处理服务器指令
  */
-const handleServerInstruct = (instructObj: InstructObject) => {
+const handleMessage = (instructObj: InstructObject) => {
   const { type, class: class_, conveyor, data } = instructObj;
-  if (type === 'broadcast') {
-    switch (class_) {
-      case 'pick_up_chess':
-        handleBroadcastPickUpChess(conveyor, data);
-        break;
-      case 'pick_down_chess':
-        handleBroadcastPickDownChess(conveyor, data);
-        break;
-      case 'moving_chess':
-        handleBroadcastMovingChess(conveyor, data);
-        break;
-      case 'reset_all_chess_pieces':
-        handleBroadcastResetAllChessPieces(conveyor, data);
-        break;
-      case 'give_up':
-        handleBroadcastGiveUp(conveyor, data);
-        break;
+  //console.log(instructObj)
+  switch (type) {
+    case 'broadcast':{
+      switch (class_) {
+        case 'pick_up_chess':
+          handleBroadcastPickUpChess(conveyor, data);
+          break;
+        case 'pick_down_chess':
+          handleBroadcastPickDownChess(conveyor, data);
+          break;
+        case 'moving_chess':
+          handleBroadcastMovingChess(conveyor, data);
+          break;
+        case 'head_position_pitch_yaw':
+          handleBroadcastHeadPositionPitchYaw(conveyor, data);
+          break;
+        case 'reset_all_chess_pieces':
+          handleBroadcastResetAllChessPieces(conveyor, data);
+          break;
+        case 'give_up':
+          handleBroadcastGiveUp(conveyor, data);
+          break;
+        case 'user_left_game':
+          handleBroadcastUserLeftGame(conveyor, data);
+          break;
+        case 'user_join_game':
+          handleBroadcastUserJoinGame(conveyor, data);
+          break;
+      }
+      break;
+    }
+    case 'rb_head_position_pitch_yaw':{
+      handleRbHeadPositionPitchYaw(data)
+      break;
+    }
+    case 'sync_chess_pieces':{
+      handleSyncChessPieces(data);
+      break;
+    }
+    case 'camp_data':{
+      handleCampData(data);
+      break;
+    }
+    case 'heart_tk':{
+      handleHeartTk();
+      break;
+    }
+    case 'select_camp_red':{
+      selectedCampC1.value = 'red';
+      break;
+    }
+    case 'select_camp_black':{
+      selectedCampC1.value = 'black';
+      break;
     }
   }
-  else if(type === 'sync_chess_pieces'){
-    handleSyncChessPieces(data);
+};
+
+/**
+ * 处理阵营数据变化
+ */
+const handleCampData = (data: any) => {
+  campDataC1.value = {
+    red: {
+      id: data.red.id,
+      name: data.red.name,
+      email: data.red.email
+    },
+    black: {
+      id: data.black.id,
+      name: data.black.name,
+      email: data.black.email
+    }
+  };
+  
+  // 更新头部模型可见性
+  updatePlayerHeadVisibility();
+};
+
+/**
+ * 服务器返回玩家加入和退出游戏事件处理
+ */
+
+const handleBroadcastUserJoinGame = (conveyor: string, data: any) => {
+  const userName = conveyor.split('&')[0]; // 从conveyor中提取用户名
+  const userEmail = conveyor.split('&')[1]; // 从conveyor中提取用户名
+  const notification : Notification = {
+    id: notificationIdCounter++,
+    timestamp: Date.now(),
+    content: {
+      type: 'join',
+      name: userName,
+      email: userEmail
+    }
+  };
+  notificationArr.value.push(notification);
+  let ID = notification.id
+  setTimeout(() => {
+    const index = notificationArr.value.findIndex(notif => notif.id === ID);
+    if (index !== -1) {
+      notificationArr.value.splice(index, 1);
+    }
+  }, 5000);
+
+  updatePlayerHeadVisibility();// 更新头部模型可见性
+};
+const handleBroadcastUserLeftGame = (conveyor: string, data: any) => {
+  const userName = conveyor.split('&')[0]; // 从conveyor中提取用户名
+  const userEmail = conveyor.split('&')[1]; // 从conveyor中提取用户名
+  
+  // 从玩家头部数据中移除该玩家
+  if (playersDataHeadModel.value[conveyor]) {
+    delete playersDataHeadModel.value[conveyor];
   }
-  else if(type === 'heart_tk'){
-    handleHeartTk();
-  }
+  
+  // 移除玩家的名字标签
+  removePlayerHead(conveyor);
+  
+  // 显示离开通知
+  const notification : Notification = {
+    id: notificationIdCounter++,
+    timestamp: Date.now(),
+    content: {
+      type: 'left',
+      name: userName,
+      email: userEmail
+    }
+  };
+  
+  notificationArr.value.push(notification);
+  let ID = notification.id
+  // 5秒后自动移除通知
+  setTimeout(() => {
+    const index = notificationArr.value.findIndex(notif => notif.id === ID);
+    if (index !== -1) {
+      notificationArr.value.splice(index, 1);
+    }
+  }, 5000);
+    
+  updatePlayerHeadVisibility();// 更新头部模型可见性
 };
 
 /**
@@ -233,7 +378,10 @@ const handleHeart3=()=>{
  * 处理广播的重置所有棋子指令
  */
 const handleBroadcastResetAllChessPieces = (conveyor: string, data: any) => {
-  // 重置所有棋子状态
+  // 清除所有移动箭头
+  removeAllArrowGroups();
+  
+  // 重置所有棋子状态（原有逻辑）
   Object.keys(chessPiecesState.value).forEach(pieceName => {
     chessPiecesState.value[pieceName] = {
       isPicked: false,
@@ -245,11 +393,13 @@ const handleBroadcastResetAllChessPieces = (conveyor: string, data: any) => {
     // 在场景中重置棋子位置和状态
     const piece = chessPieces?.getObjectByName(pieceName);
     if (piece) {
-      // 重置位置
       piece.position.set(0, 0, 0);
-      
-      // 恢复原始材质
       restorePieceState(piece);
+    }
+    
+    // 清除移动历史
+    if (chessPiecesMoveHistory.value[pieceName]) {
+      chessPiecesMoveHistory.value[pieceName].lastPickUpPosition = null;
     }
   });
   
@@ -258,10 +408,9 @@ const handleBroadcastResetAllChessPieces = (conveyor: string, data: any) => {
     resetPickingState();
   }
   
-  resetChessCountC1.value+=1;
-  resetChessConveyorC1.value=conveyor;
-  // 重置投降的人名称
-  giveUpConveyorC1.value='';
+  resetChessCountC1.value += 1;
+  resetChessConveyorC1.value = conveyor;
+  giveUpConveyorC1.value = '';
 };
 
 /**
@@ -274,9 +423,33 @@ const handleSyncChessPieces = (data: any) => {
     console.error('同步棋子数据格式错误');
     return;
   }
+
+  // 检查棋子组是否已创建
+  if (!chessPieces) {
+    piecesPendingData.value = data;
+    return;
+  }
+
+  // 检查棋子是否全部加载完成
+  const allPiecesLoaded = pieces.every(pieceData => {
+    return chessPieces.getObjectByName(pieceData.piece_name);
+  });
+
+  if (!allPiecesLoaded) {
+    piecesPendingData.value = data;
+    return;
+  }
+
+  handleSyncChessPiecesP(data);
+};
+
+/**
+ * 应用同步数据
+ */
+const handleSyncChessPiecesP = (data: any) => {
+  const { pieces } = data;
   
-  // 更新所有棋子状态
-  pieces.forEach(pieceData => {
+  pieces.forEach((pieceData: PieceSyncData) => {
     const { piece_name, position, is_picked, picked_by } = pieceData;
     
     // 更新棋子状态管理
@@ -288,12 +461,11 @@ const handleSyncChessPieces = (data: any) => {
     };
     
     // 在场景中更新棋子位置和状态
-    const piece = chessPieces?.getObjectByName(piece_name);
+    const piece = chessPieces.getObjectByName(piece_name);
+    
     if (piece) {
-      // 更新位置
       piece.position.set(position.x, position.y, position.z);
       
-      // 更新状态显示
       if (is_picked && picked_by) {
         setPieceAsPickedByOther(piece);
       } else {
@@ -303,6 +475,7 @@ const handleSyncChessPieces = (data: any) => {
   });
   
   console.log('棋子状态同步完成');
+  piecesPendingData.value = null;
 };
 
 /**
@@ -310,8 +483,20 @@ const handleSyncChessPieces = (data: any) => {
  */
 const handleBroadcastPickUpChess = (conveyor: string, data: any) => {
   const { piece_name, position } = data;
+  // 记录拾起位置
+  if (!chessPiecesMoveHistory.value[piece_name]) {
+    chessPiecesMoveHistory.value[piece_name] = {
+      lastPickUpPosition: null,
+      lastPickUpTime: 0,
+      lastPickUpBy: ''
+    };
+  }
   
-  // 更新棋子状态
+  chessPiecesMoveHistory.value[piece_name].lastPickUpPosition = { ...position };
+  chessPiecesMoveHistory.value[piece_name].lastPickUpTime = Date.now();
+  chessPiecesMoveHistory.value[piece_name].lastPickUpBy = conveyor;
+  
+  // 更新棋子状态（原有逻辑）
   chessPiecesState.value[piece_name] = {
     isPicked: true,
     pickedBy: conveyor,
@@ -319,12 +504,12 @@ const handleBroadcastPickUpChess = (conveyor: string, data: any) => {
     lastUpdate: Date.now()
   };
   
-  // 在场景中更新棋子状态
+  // 在场景中更新棋子状态和位置
   const piece = chessPieces?.getObjectByName(piece_name);
   if (piece) {
+    piece.position.set(position.x, position.y, position.z);
     setPieceAsPickedByOther(piece);
   }
-  
   console.log(`玩家 ${conveyor} 拾起了棋子 ${piece_name}`);
 };
 
@@ -334,7 +519,36 @@ const handleBroadcastPickUpChess = (conveyor: string, data: any) => {
 const handleBroadcastPickDownChess = (conveyor: string, data: any) => {
   const { piece_name, position } = data;
   
-  // 更新棋子状态
+  // 检查是否有拾起记录并创建箭头
+  const moveHistory = chessPiecesMoveHistory.value[piece_name];
+  if (moveHistory && moveHistory.lastPickUpPosition && moveHistory.lastPickUpBy === conveyor) {
+    const startPos = moveHistory.lastPickUpPosition;
+    const endPos = position;
+    
+    // 确定玩家阵营
+    let playerCamp = 'unknown';
+    if (playersDataHeadModel.value[conveyor]) {
+      playerCamp = playersDataHeadModel.value[conveyor].camp;
+    } else {
+      // 通过对比阵营数据确定
+      const redKey = `${campDataC1.value.red.name}&${campDataC1.value.red.email}`;
+      const blackKey = `${campDataC1.value.black.name}&${campDataC1.value.black.email}`;
+      
+      if (conveyor === redKey) {
+        playerCamp = 'red';
+      } else if (conveyor === blackKey) {
+        playerCamp = 'black';
+      }
+    }
+    // 清除之前的箭头
+    removeAllArrowGroups();
+    // 添加移动箭头
+    addMoveArrow(startPos, endPos, playerCamp, conveyor, piece_name);
+    // 清除拾起记录
+    moveHistory.lastPickUpPosition = null;
+  }
+  
+  // 更新棋子状态（原有逻辑）
   chessPiecesState.value[piece_name] = {
     isPicked: false,
     pickedBy: '',
@@ -345,11 +559,70 @@ const handleBroadcastPickDownChess = (conveyor: string, data: any) => {
   // 在场景中更新棋子状态和位置
   const piece = chessPieces?.getObjectByName(piece_name);
   if (piece) {
-    restorePieceState(piece); // 这会恢复原始材质
+    restorePieceState(piece);
     piece.position.set(position.x, position.y, position.z);
   }
   
   console.log(`玩家 ${conveyor} 放置了棋子 ${piece_name}`);
+};
+
+/**
+ * 处理广播的玩家头部位置和旋转数据
+ */
+const handleBroadcastHeadPositionPitchYaw = (conveyor: string, data: any) => {
+  const { position, pitch, yaw, camp } = data;
+  
+  // 更新其他玩家数据
+  if (!playersDataHeadModel.value[conveyor]) {
+    playersDataHeadModel.value[conveyor] = {
+      position: position,
+      targetPosition: position,
+      pitch: pitch,
+      yaw: yaw,
+      targetPitch: pitch,
+      targetYaw: yaw,
+      name: conveyor.split('&')[0],
+      lastUpdate: Date.now(),
+      camp: camp
+    };
+  } else {
+    // 只更新目标位置和旋转，不直接更新当前位置
+    playersDataHeadModel.value[conveyor].targetPosition = position;
+    playersDataHeadModel.value[conveyor].targetPitch = pitch;
+    playersDataHeadModel.value[conveyor].targetYaw = yaw;
+    playersDataHeadModel.value[conveyor].lastUpdate = Date.now();
+    playersDataHeadModel.value[conveyor].camp = camp;
+  }
+};
+
+const handleRbHeadPositionPitchYaw = (data: any) => {
+  const { red, black } = data;
+  if (!playersDataHeadModel.value[red.conveyor]) {
+    playersDataHeadModel.value[red.conveyor] = {
+      position: red.position,
+      targetPosition: red.position,
+      pitch: red.pitch,
+      yaw: red.yaw,
+      targetPitch: red.pitch,
+      targetYaw: red.yaw,
+      name: red.conveyor.split('&')[0],
+      lastUpdate: Date.now(),
+      camp: 'red'
+    };
+  }
+  if (!playersDataHeadModel.value[black.conveyor]) {
+    playersDataHeadModel.value[black.conveyor] = {
+      position: black.position,
+      targetPosition: black.position,
+      pitch: black.pitch,
+      yaw: black.yaw,
+      targetPitch: black.pitch,
+      targetYaw: black.yaw,
+      name: black.conveyor.split('&')[0],
+      lastUpdate: Date.now(),
+      camp: 'black'
+    };
+  }
 };
 
 /**
@@ -372,12 +645,22 @@ const handleBroadcastMovingChess = (conveyor: string, data: any) => {
     // 在场景中更新棋子位置
     const piece = chessPieces?.getObjectByName(piece_name);
     if (piece && piece !== pickedPiece) {
+      // 获取棋子当前位置
+      const currentPosition = {
+        x: piece.position.x,
+        y: piece.position.y,
+        z: piece.position.z
+      };
+      
       // 如果轨迹点数量足够，使用轨迹插值
       if (trajectory.length >= 2) {
-        pieceTrajectories.value[piece_name] = {
-          points: trajectory,
+        // 创建平滑的轨迹：从当前位置开始，连接到接收到的轨迹
+        const smoothTrajectory = [currentPosition, ...trajectory];
+        
+        pieceTrajectoriesC1.value[piece_name] = {
+          points: smoothTrajectory,
           startTime: Date.now(),
-          duration: MOVE_BROADCAST_INTERVAL * (trajectory.length - 1), // 总持续时间
+          duration: gameTick * (smoothTrajectory.length - 1), // 总持续时间
           currentIndex: 0
         };
       } else {
@@ -388,11 +671,51 @@ const handleBroadcastMovingChess = (conveyor: string, data: any) => {
   }
 };
 
+
+// ==============================
+// 游戏操作或模型创建等方面函数
+// ==============================
 /**
- * 处理加载完成事件
+ * 更新调试信息
  */
-const handleLoadingComplete = () => {
-  console.log('资源加载完毕加载界面已隐藏');
+const updateDebugInfo = () => {
+  if (!camera || !scene) return;
+  
+  // 更新相机位置
+  debugInfoC1.value.cameraPosition = {
+    x: Number(camera.position.x.toFixed(3)),
+    y: Number(camera.position.y.toFixed(3)),
+    z: Number(camera.position.z.toFixed(3))
+  };
+  
+  // 计算视线交点
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  
+  // 使用与棋子放置相同的过滤条件
+  const intersectableObjects = scene.children.filter(createIntersectableFilter());
+  const intersects = raycaster.intersectObjects(intersectableObjects, true);
+  
+  if (intersects.length > 0) {
+    const intersect = intersects[0];
+    debugInfoC1.value.intersectionPoint = {
+      x: Number(intersect.point.x.toFixed(3)),
+      y: Number(intersect.point.y.toFixed(3)),
+      z: Number(intersect.point.z.toFixed(3))
+    };
+    debugInfoC1.value.hasIntersection = true;
+  } else {
+    debugInfoC1.value.hasIntersection = false;
+    // 如果没有交点，可以显示射线方向上的某个点，或者重置为0
+    const direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    const targetPoint = camera.position.clone().add(direction.multiplyScalar(10)); // 10单位距离的点
+    
+    debugInfoC1.value.intersectionPoint = {
+      x: Number(targetPoint.x.toFixed(3)),
+      y: Number(targetPoint.y.toFixed(3)),
+      z: Number(targetPoint.z.toFixed(3))
+    };
+  }
 };
 
 /** 
@@ -403,6 +726,176 @@ const calculateTotalResources = () => {
   const total = 6 + 1 + 1 + piecesConfig.length;
   loadingState.value.totalResources = total;
   return total;
+};
+
+/**
+ * 平滑插值更新函数
+ */ 
+const smoothUpdatePlayerHeads = (delta: number) => {
+  const lerpFactor = 0.2; // 插值因子，可调整平滑程度
+  const rotationLerpFactor = 0.1; // 旋转插值因子
+  
+  Object.keys(playersDataHeadModel.value).forEach(conveyor => {
+    const playerData = playersDataHeadModel.value[conveyor];
+    
+    // 位置插值（线性插值）
+    playerData.position.x += (playerData.targetPosition.x - playerData.position.x) * lerpFactor;
+    playerData.position.y += (playerData.targetPosition.y - playerData.position.y) * lerpFactor;
+    playerData.position.z += (playerData.targetPosition.z - playerData.position.z) * lerpFactor;
+    
+    // 旋转插值（角度插值）
+    playerData.pitch += (playerData.targetPitch - playerData.pitch) * rotationLerpFactor;
+    playerData.yaw += (playerData.targetYaw - playerData.yaw) * rotationLerpFactor;
+    
+    // 更新模型
+    updatePlayerHeadModel(conveyor, playerData.position, playerData.pitch, playerData.yaw, playerData.camp);
+  });
+};
+
+/**
+ * 更新玩家头部模型可见性
+ */
+const updatePlayerHeadVisibility = () => {
+  const redName = campDataC1.value.red.name;
+  const blackName = campDataC1.value.black.name;
+  if (playerHeadBox_1) {
+    // 红方头部模型：如果有红方玩家且不是当前玩家，则显示
+    let visible_1 = redName !== '' && selectedCampC1.value !== 'red'
+    playerHeadBox_1.visible = visible_1;
+    playerHeadBox_1.traverse((child) => {
+        child.visible = visible_1;
+    });
+  }
+  if (playerHeadBox_2) {
+    // 黑方头部模型：如果有黑方玩家且不是当前玩家，则显示
+    let visible_2 = blackName !== '' && selectedCampC1.value !== 'black';
+    playerHeadBox_2.visible = visible_2;
+    playerHeadBox_2.traverse((child) => {
+        child.visible = visible_2;
+    });
+  }
+};
+
+/**
+ * 更新玩家头部模型位置和旋转
+ */
+const updatePlayerHeadModel = (conveyor: string, position: Coord3D, pitch: number, yaw: number, camp: string) => {
+  // 如果是当前玩家自己的阵营，不渲染对应的头部模型
+  if (camp === selectedCampC1.value) {
+    return;
+  }
+  
+  let headModel: THREE.Group | undefined;
+  
+  // 根据 camp 分配不同的头部模型
+  if (camp === 'red') { 
+    headModel = playerHeadBox_1;
+  } else if (camp === 'black') {
+    headModel = playerHeadBox_2;
+  }
+  
+  if (headModel) {
+    // 确保模型可见
+    headModel.visible = true;
+    
+    // 获取对应的偏移值
+    let offset: { x: number; y: number; z: number };
+    if (camp === 'red') {
+      offset = sceneConfig.playerHeadBoxOffset.rad_1;
+    } else {
+      offset = sceneConfig.playerHeadBoxOffset.black_2;
+    }
+    
+    // 更新位置，减去模型加载初期的偏移值
+    headModel.position.set(
+      position.x - offset.x,
+      position.y - offset.y - (sceneConfig.altitude.V_Player_head_box_1 / 2), 
+      position.z - offset.z
+    );
+    
+    // 更新旋转
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+    headModel.setRotationFromQuaternion(quaternion);
+    
+    // 更新名字标签
+    updatePlayerNameTag(conveyor, position, playersDataHeadModel.value[conveyor]?.name || conveyor);
+  }
+};
+
+/**
+ * 创建玩家名字标签
+ */
+const createPlayerNameTag = (playerId: string, position: Coord3D, playerName: string) => {
+  if(playerName === ''){
+    return
+  }
+  // 创建名字标签的HTML元素
+  const nameTagDiv = document.createElement('div');
+  nameTagDiv.className = 'player-name-tag';
+  nameTagDiv.textContent = playerName;
+  nameTagDiv.style.color = 'white';
+  nameTagDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+  nameTagDiv.style.padding = '4px 8px';
+  nameTagDiv.style.borderRadius = '4px';
+  nameTagDiv.style.fontSize = '15px';
+  nameTagDiv.style.fontFamily = 'Arial, sans-serif';
+  nameTagDiv.style.pointerEvents = 'none';
+  nameTagDiv.style.whiteSpace = 'nowrap';
+  nameTagDiv.style.textAlign = 'center';
+  nameTagDiv.style.backdropFilter = 'blur(2px)';
+  nameTagDiv.style.border = '1px solid rgba(255, 255, 255, 0.3)';
+  
+  // 创建CSS2D对象
+  const nameTag = new CSS2DObject(nameTagDiv);
+  nameTag.position.set(position.x,  position.y+0.18, position.z); // 在头部上方显示
+  nameTag.name = "player_name_tag";
+  scene.add(nameTag);
+  playerNameTags.set(playerId, nameTag);
+  
+  return nameTag;
+};
+
+/**
+ * 更新玩家名字标签位置
+ */
+const updatePlayerNameTag = (playerId: string, position: Coord3D, playerName: string) => {
+  let nameTag = playerNameTags.get(playerId);
+  
+  if (!nameTag) {
+    nameTag = createPlayerNameTag(playerId, position, playerName);
+  } else {
+    nameTag.position.set(position.x, position.y+0.18, position.z);
+    
+    // 更新名字（如果名字变了）
+    const nameDiv = nameTag.element as HTMLDivElement;
+    if (nameDiv.textContent !== playerName) {
+      nameDiv.textContent = playerName;
+    }
+  }
+};
+
+/**
+ * 更新其他玩家头部模型
+ */
+const updateOtherPlayersHeads = () => {
+  
+  Object.keys(playersDataHeadModel.value).forEach(conveyor => {
+    const playerData = playersDataHeadModel.value[conveyor];
+    
+    updatePlayerHeadModel(conveyor, playerData.position, playerData.pitch, playerData.yaw, playerData.camp);
+  });
+};
+
+/**
+ * 移除玩家头部模型和名字标签
+ */
+const removePlayerHead = (playerId: string) => {
+  const nameTag = playerNameTags.get(playerId);
+  if (nameTag) {
+    scene.remove(nameTag);
+    playerNameTags.delete(playerId);
+  }
 };
 
 /**
@@ -427,20 +920,20 @@ const updateLoadingProgress = (increment = 1, status = '') => {
 };
 
 /**
- * 棋子运动轨迹更新
+ * 棋子运动轨迹更新 棋子轨迹插值
  */ 
-const updatePieceTrajectories = (delta: number) => {
+const updatepieceTrajectoriesC1 = (delta: number) => {
   const currentTime = Date.now();
   
-  Object.keys(pieceTrajectories.value).forEach(pieceName => {
-    const trajectory = pieceTrajectories.value[pieceName];
+  Object.keys(pieceTrajectoriesC1.value).forEach(pieceName => {
+    const trajectory = pieceTrajectoriesC1.value[pieceName];
     const piece = chessPieces?.getObjectByName(pieceName);
     
     if (!piece || !trajectory || trajectory.points.length < 2) {
-      delete pieceTrajectories.value[pieceName];
+      delete pieceTrajectoriesC1.value[pieceName];
       return;
     }
-    
+
     const elapsed = currentTime - trajectory.startTime;
     const progress = Math.min(elapsed / trajectory.duration, 1);
     
@@ -465,7 +958,7 @@ const updatePieceTrajectories = (delta: number) => {
       // 到达轨迹终点
       const finalPoint = trajectory.points[trajectory.points.length - 1];
       piece.position.set(finalPoint.x, finalPoint.y, finalPoint.z);
-      delete pieceTrajectories.value[pieceName];
+      delete pieceTrajectoriesC1.value[pieceName];
     }
   });
 };
@@ -488,11 +981,6 @@ const setPieceAsPickedByOther = (piece: THREE.Object3D) => {
 const restorePieceState = (piece: THREE.Object3D) => {
   materialRestorePieceOriginal(piece);
 };
-
-
-// ==============================
-// 工具函数
-// ==============================
 
 /**
  * 创建可交互对象过滤器
@@ -588,6 +1076,23 @@ const materialRestorePieceOriginal = (piece: THREE.Object3D) => {
   }
 };
 
+
+/**
+ * 检查并应用暂存的同步数据
+ */
+const checkAndApplyPendingSyncData = () => {
+  if (piecesPendingData.value && chessPieces) {
+    // 检查所有棋子是否都已创建
+    const allPiecesLoaded = piecesPendingData.value.pieces.every((pieceData: PieceSyncData) => {
+      return chessPieces.getObjectByName(pieceData.piece_name);
+    });
+    
+    if (allPiecesLoaded) {
+      handleSyncChessPiecesP(piecesPendingData.value);
+    }
+  }
+};
+
 // 处理开始游戏事件
 const handleStartGame = (side: 'red' | 'black') => {
   // 修改初始视角
@@ -595,28 +1100,67 @@ const handleStartGame = (side: 'red' | 'black') => {
     camera.position.set(cameraConfig.redStartPos.x,cameraConfig.redStartPos.y,cameraConfig.redStartPos.z);
     pitch=cameraConfig.redStartPitch;
     yaw=cameraConfig.redStartYaw;
+    ccInstruct.getSelectCampRed();
+    setTimeout(
+      ()=>{//首次加入时更新位置
+       const position = {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z
+      };
+      ccInstruct.broadcastHeadPositionPitchYaw('', position, pitch, yaw, selectedCampC1.value);
+      }
+      ,0
+    );
+    // 隐藏红方头部模型（自己的模型）
+    if (playerHeadBox_1) {
+      playerHeadBox_1.visible = false;
+    }
   }
   if(side === 'black'){// 黑方相机初始视角
     camera.position.set(cameraConfig.blackStartPos.x,cameraConfig.blackStartPos.y,cameraConfig.blackStartPos.z);
     pitch=cameraConfig.blackStartPitch;
     yaw=cameraConfig.blackStartYaw;
+    ccInstruct.getSelectCampBlack();
+    setTimeout(
+      ()=>{//首次加入时更新位置
+       const position = {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z
+      };
+      ccInstruct.broadcastHeadPositionPitchYaw('', position, pitch, yaw, selectedCampC1.value);
+      }
+      ,0
+    );
+    // 隐藏黑方头部模型（自己的模型）
+    if (playerHeadBox_2) {
+      playerHeadBox_2.visible = false;
+    }
   }
   const quaternion = new THREE.Quaternion();
   quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
   camera.setRotationFromQuaternion(quaternion);
   // 应用游戏设置
   applyGameSettings();
+  
+  // 更新其他玩家头部可见性
+  updatePlayerHeadVisibility();
 };
 
 // 应用游戏设置
 const applyGameSettings = () => {
   const settings = gameSettingStore.gameSettings;
-  // 应用fov
+  // 修改fov
   if (camera) {
     camera.fov = settings.fov;
     camera.updateProjectionMatrix();
   }
-  console.log('游戏设置已应用:', settings);
+  // 修改环境光
+  if (ambientLight) {
+    ambientLight.intensity = settings.ambientIntensity;
+  }
+  console.log('设置已应用');
 };
 
 // 显示菜单
@@ -631,16 +1175,14 @@ const showGiveUpConfirm = ()=>{
     giveUpConfirmRef.value.isVisible=true;
   }
 }
-// ==============================
-// 主要功能函数
-// ==============================
+
 const initScene = () => {
   if (!sceneRef.value) return;
   createScene();// 场景
   createCamera();// 相机
   createRenderer();// 渲染器
   createLights();// 灯光
-  createPanoramaCube();// 全景图
+  //createPanoramaCube();// 全景图
   createHelpers();// 辅助对象
   createGround();// 地面
   //createCoffeeTable();// 咖啡桌
@@ -649,8 +1191,26 @@ const initScene = () => {
   createChessPieces();// 棋子
   createPlayerHeadBox1();// 
   createPlayerHeadBox2();// 
+  initLabelRenderer();
   calculateTotalResources();
 }
+
+/**
+ * 初始化CSS2D渲染器用于显示名字标签
+ */
+const initLabelRenderer = () => {
+  if (!sceneRef.value) return;
+  
+  labelRenderer = new CSS2DRenderer();
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.domElement.style.position = 'absolute';
+  labelRenderer.domElement.style.top = '0';
+  labelRenderer.domElement.style.pointerEvents = 'none';
+  labelRenderer.domElement.style.zIndex = '1000'; // 确保在正确层级
+  
+  // 添加到场景容器中
+  sceneRef.value.appendChild(labelRenderer.domElement);
+};
 
 /**
  * 初始化交互系统
@@ -894,7 +1454,7 @@ const updatePieceFollowing = () => {
   
   // 记录移动轨迹并定期发送
   const currentTime = Date.now();
-  if (currentTime - lastMoveBroadcastTime >= MOVE_BROADCAST_INTERVAL) {
+  if (currentTime - lastMoveBroadcastTime >= gameTick) {
     const currentPosition = {
       x: pickedPiece.position.x,
       y: pickedPiece.position.y,
@@ -972,10 +1532,43 @@ const updateFirstPersonMovement = (delta: number) => {
 // ==============================
 
 /**
+ * 设置非反光材质
+ */
+const setNonReflectiveMaterial = (model: THREE.Group) => {
+  model.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      // 创建非反光材质
+      const nonReflectiveMaterial = new THREE.MeshLambertMaterial();
+      
+      // 如果原始材质有贴图，复制贴图
+      if (child.material instanceof THREE.Material) {
+        const originalMaterial = child.material as any;
+        
+        // 复制基础属性
+        if (originalMaterial.map) nonReflectiveMaterial.map = originalMaterial.map;
+        if (originalMaterial.color) nonReflectiveMaterial.color = originalMaterial.color.clone();
+        if (originalMaterial.transparent !== undefined) nonReflectiveMaterial.transparent = originalMaterial.transparent;
+        if (originalMaterial.opacity !== undefined) nonReflectiveMaterial.opacity = originalMaterial.opacity;
+        
+        // 确保贴图正确设置
+        if (nonReflectiveMaterial.map) {
+          nonReflectiveMaterial.map.needsUpdate = true;
+        }
+      }
+      
+      child.material = nonReflectiveMaterial;
+      child.receiveShadow = true;
+      child.castShadow = true;
+    }
+  });
+}
+
+/**
  * 创建Three.js场景
  */
 const createScene = () => {
   scene = new THREE.Scene();
+  scene.name = "root_scene";
   scene.background = new THREE.Color(sceneConfig.color.tempBackgroundColor);
 }
 
@@ -1000,6 +1593,7 @@ const createCamera = () => {
   const quaternion = new THREE.Quaternion();// 设置初始朝向（看向负Z轴）
   quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
   camera.setRotationFromQuaternion(quaternion);
+  camera.name = "player_camera";
 }
 
 /**
@@ -1021,32 +1615,230 @@ const createRenderer = () => {
  * 创建场景灯光
  */
 const createLights = () => {
-  directionalLight = new THREE.DirectionalLight(// 创建定向光
+  // 顶部光源1
+  directionalLight1 = new THREE.DirectionalLight(
     lightConfig.directional.color, 
     lightConfig.directional.intensity
   );
-  directionalLight.position.set(
+  directionalLight1.position.set(
     lightConfig.directional.position.x,
     lightConfig.directional.position.y,
     lightConfig.directional.position.z
   );
-  directionalLight.castShadow = true;
-  const shadowConfig = lightConfig.directional.shadow;// 配置阴影属性
-  directionalLight.shadow.mapSize.width = shadowConfig.mapSize.width;
-  directionalLight.shadow.mapSize.height = shadowConfig.mapSize.height;
-  directionalLight.shadow.camera.near = shadowConfig.camera.near;
-  directionalLight.shadow.camera.far = shadowConfig.camera.far;
-  directionalLight.shadow.camera.left = shadowConfig.camera.left;
-  directionalLight.shadow.camera.right = shadowConfig.camera.right;
-  directionalLight.shadow.camera.top = shadowConfig.camera.top;
-  directionalLight.shadow.camera.bottom = shadowConfig.camera.bottom;
-  scene.add(directionalLight);
-  const ambientLight = new THREE.AmbientLight(// 创建环境光
+  directionalLight1.castShadow = true;
+  let shadowConfig = lightConfig.directional.shadow;
+  directionalLight1.shadow.mapSize.width = shadowConfig.mapSize.width;
+  directionalLight1.shadow.mapSize.height = shadowConfig.mapSize.height;
+  directionalLight1.shadow.camera.near = shadowConfig.camera.near;
+  directionalLight1.shadow.camera.far = shadowConfig.camera.far;
+  directionalLight1.shadow.camera.left = shadowConfig.camera.left;
+  directionalLight1.shadow.camera.right = shadowConfig.camera.right;
+  directionalLight1.shadow.camera.top = shadowConfig.camera.top;
+  directionalLight1.shadow.camera.bottom = shadowConfig.camera.bottom;
+  directionalLight1.name="directional_light1";
+  scene.add(directionalLight1);
+  
+  // 顶部光源2
+  directionalLight2 = new THREE.DirectionalLight(
+    lightConfig.directional2.color, 
+    lightConfig.directional2.intensity
+  );
+  directionalLight2.position.set(
+    lightConfig.directional2.position.x,
+    lightConfig.directional2.position.y,
+    lightConfig.directional2.position.z
+  );
+  directionalLight2.castShadow = true;
+  shadowConfig = lightConfig.directional2.shadow;
+  directionalLight2.shadow.mapSize.width = shadowConfig.mapSize.width;
+  directionalLight2.shadow.mapSize.height = shadowConfig.mapSize.height;
+  directionalLight2.shadow.camera.near = shadowConfig.camera.near;
+  directionalLight2.shadow.camera.far = shadowConfig.camera.far;
+  directionalLight2.shadow.camera.left = shadowConfig.camera.left;
+  directionalLight2.shadow.camera.right = shadowConfig.camera.right;
+  directionalLight2.shadow.camera.top = shadowConfig.camera.top;
+  directionalLight2.shadow.camera.bottom = shadowConfig.camera.bottom;
+  directionalLight2.name="directional_light2";
+  scene.add(directionalLight2);
+  
+  // 添加补光光源
+  fillLight = new THREE.DirectionalLight(
+    lightConfig.fillLight.color,
+    lightConfig.fillLight.intensity
+  );
+  fillLight.position.set(
+    lightConfig.fillLight.position.x,
+    lightConfig.fillLight.position.y,
+    lightConfig.fillLight.position.z
+  );
+  fillLight.castShadow = false;
+  fillLight.name="fill_light";
+  scene.add(fillLight);
+  
+  // 环境光源
+  ambientLight = new THREE.AmbientLight(
     lightConfig.ambient.color, 
     lightConfig.ambient.intensity
   );
+  ambientLight.name="ambient_light";
   scene.add(ambientLight);
 }
+
+/**
+ * 创建移动箭头
+ */
+const createMoveArrow = (start: Coord3D, end: Coord3D, camp: string, pieceName: string): THREE.Group => {
+  const pn = pieceName as PieceNameKeys;
+  const pieceOffset: Coord3D = sceneConfig.piecesOffset[pn];
+  const startAdj: Coord3D = {x:start.x+pieceOffset.x,y:start.y+pieceOffset.y,z:start.z+pieceOffset.z};
+  const endAdj: Coord3D = {x:end.x+pieceOffset.x,y:end.y+pieceOffset.y,z:end.z+pieceOffset.z};
+  const group = new THREE.Group();
+  
+  // 计算方向向量和距离
+  const direction = new THREE.Vector3(
+    endAdj.x - startAdj.x,
+    0,
+    endAdj.z - startAdj.z
+  );
+  const distance = direction.length() - sceneConfig.moveArrow.margin;
+  const angle = Tool.adjustAngle(Math.atan2(direction.x, direction.z),Math.PI/2);
+  direction.normalize();
+  
+  // 根据阵营设置颜色
+  let arrowColor: number;
+  switch (camp) {
+    case 'red':
+      arrowColor = sceneConfig.moveArrow.color.red;
+      break;
+    case 'black':
+      arrowColor = sceneConfig.moveArrow.color.black;
+      break;
+    default:
+      arrowColor = sceneConfig.moveArrow.color.default;
+  }
+  
+  // 创建箭头身体（长方形）
+  const bodyLength = distance - sceneConfig.moveArrow.size.arrowHeadLength;
+  
+  const bodyGeometry = new THREE.PlaneGeometry(
+    bodyLength,
+    sceneConfig.moveArrow.size.lineWidth
+  );
+  
+  const bodyMaterial = new THREE.MeshBasicMaterial({ 
+    color: arrowColor,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide
+  });
+  
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  
+  // 放置箭头身体
+  const bodyPosition = new THREE.Vector3(
+    startAdj.x + direction.x * bodyLength / 2,
+    sceneConfig.moveArrow.height,
+    startAdj.z + direction.z * bodyLength / 2
+  );
+  
+  body.position.copy(bodyPosition);
+  
+  // 旋转箭头身体指向正确方向
+  body.rotation.z = angle;
+  
+  body.rotation.x = -Math.PI / 2; // 使其平放在xz平面上
+  
+  // 创建箭头头部（三角形）
+  const headGeometry = new THREE.Shape();
+  
+  const headWidth = sceneConfig.moveArrow.size.arrowHeadWidth;
+  
+  const headLength = sceneConfig.moveArrow.size.arrowHeadLength;
+  
+  headGeometry.moveTo(0, -headWidth / 2);
+  
+  headGeometry.lineTo(headLength, 0);
+  
+  headGeometry.lineTo(0, headWidth / 2);
+  
+  headGeometry.lineTo(0, -headWidth / 2);
+  
+  
+  const headShapeGeometry = new THREE.ShapeGeometry(headGeometry);
+  
+  const headMaterial = new THREE.MeshBasicMaterial({ 
+    color: arrowColor,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide
+  });
+  
+  const head = new THREE.Mesh(headShapeGeometry, headMaterial);
+  
+  // 放置箭头头部
+  const headPosition = new THREE.Vector3(
+    startAdj.x + direction.x * bodyLength,
+    sceneConfig.moveArrow.height,
+    startAdj.z + direction.z * bodyLength
+  );
+  
+  head.position.copy(headPosition);
+  
+  // 旋转箭头头部指向正确方向
+  head.rotation.z = Tool.adjustAngle(angle,Math.PI);
+  
+  head.rotation.x = -Math.PI / 2; // 使其平放在xz平面上
+  
+  group.add(body);
+  group.add(head);
+  
+  return group;
+};
+
+/**
+ * 添加移动箭头到场景
+ */
+const addMoveArrow = (start: Coord3D, end: Coord3D, camp: string, conveyor: string, pieceName: string) => {
+  if (!sceneConfig.moveArrow.enabled) return;
+  // 创建箭头组
+  const arrowGroup = createMoveArrow(start, end, camp, pieceName);
+  arrowGroup.name = "arrow_group";
+  // 添加到场景
+  scene.add(arrowGroup);
+};
+
+/**
+ * 移除场景中所有走子箭头的对象
+ */
+const removeAllArrowGroups = () => {
+  if (!scene) {
+    return;
+  }
+  // 收集所有需要移除的对象
+  const objectsToRemove: THREE.Object3D[] = [];
+  // 遍历场景中的所有对象
+  scene.traverse((object) => {
+    if (object.name === 'arrow_group') {
+      objectsToRemove.push(object);
+    }
+  });
+  // 移除所有找到的对象
+  objectsToRemove.forEach((object) => {
+    // 从父级中移除对象
+    if (object.parent) {
+      object.parent.remove(object);
+    }
+    // 清理对象的几何体
+    object.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        // 清理几何体
+        if (child.geometry) {
+          child.geometry.dispose();
+        }
+      }
+    });
+  });
+};
 
 /**
  * 创建辅助对象（网格、坐标轴）
@@ -1059,9 +1851,11 @@ const createHelpers = () => {
     sceneConfig.color.helperGrid
   );
   centerGridHelper.position.y = sceneConfig.helpers.grid.position.y;
-  scene.add(centerGridHelper);
   centerAxesHelper = new THREE.AxesHelper(sceneConfig.helpers.axes.size);// 坐标轴辅助对象
   centerAxesHelper.setColors(sceneConfig.color.axesX, sceneConfig.color.axesY, sceneConfig.color.axesZ);
+  centerGridHelper.name="center_grid_helper";
+  centerAxesHelper.name="center_axes_helper";
+  scene.add(centerGridHelper);
   scene.add(centerAxesHelper);
 }
 
@@ -1159,7 +1953,7 @@ const createPanoramaCube = () => {
   // 等待所有材质加载完成
   Promise.all(materials).then((loadedMaterials) => {
     panoramaCube = new THREE.Mesh(geometry, loadedMaterials);
-    panoramaCube.name = 'panorama-cube';
+    panoramaCube.name = 'panorama_cube';
     scene.add(panoramaCube);
   });
 };
@@ -1220,6 +2014,7 @@ const createModel = (
       }
       
       onLoad?.(model);
+      model.name = name;
       scene.add(model);
       
       // 更新加载进度
@@ -1273,7 +2068,15 @@ const createPlayerHeadBox1 = () => {
     sceneConfig.V_Player_head_box_1.position,
     sceneConfig.V_Player_head_box_1.scale,
     'V_Player_head_box_1',
-    (model) => { playerHeadBox_1 = model; }
+    (model) => { 
+      playerHeadBox_1 = model;
+      setNonReflectiveMaterial(playerHeadBox_1);// 设置非反光材质
+      playerHeadBox_1.visible = false;
+      // 遍历所有子对象，确保都隐藏
+      playerHeadBox_1.traverse((child) => {
+        child.visible = false;
+      });
+    }
   );
 }
 
@@ -1286,7 +2089,15 @@ const createPlayerHeadBox2 = () => {
     sceneConfig.V_Player_head_box_2.position,
     sceneConfig.V_Player_head_box_2.scale,
     'V_Player_head_box_2',
-    (model) => { playerHeadBox_2 = model; }
+    (model) => { 
+      playerHeadBox_2 = model;
+      setNonReflectiveMaterial(playerHeadBox_2);// 设置非反光材质
+      playerHeadBox_2.visible = false;
+      // 遍历所有子对象，确保都隐藏
+      playerHeadBox_2.traverse((child) => {
+        child.visible = false;
+      });
+    }
   );
 }
 
@@ -1309,7 +2120,7 @@ const createChessBoard = () => {
 const createChessPieces = () => {
   const loader = new GLTFLoader();
   chessPieces = new THREE.Group();
-  chessPieces.name = 'chess-pieces-group';
+  chessPieces.name = 'chess_pieces_group';
   
   let loadedPieces = 0;
   const totalPieces = piecesConfig.length;
@@ -1369,12 +2180,27 @@ const createChessPieces = () => {
         chessPieces.add(piece);
         loadedPieces++;
         updateLoadingProgress(1, `加载棋子模型... (${loadedPieces}/${totalPieces})`);
+        
+        // 每次加载完一个棋子都检查是否有待处理的同步数据
+        if (loadedPieces === totalPieces) {
+          // 所有棋子加载完成，检查是否有待处理的同步数据
+          setTimeout(() => {
+            checkAndApplyPendingSyncData();
+          }, 100);
+        }
       },
       undefined,
       (error) => {
         console.error(`棋子模型加载失败: ${pieceConfig.modelPath}`, error);
         loadedPieces++;
         updateLoadingProgress(1, `加载棋子模型... (${loadedPieces}/${totalPieces})`);
+        
+        // 即使有棋子加载失败，也要检查同步数据
+        if (loadedPieces === totalPieces) {
+          setTimeout(() => {
+            checkAndApplyPendingSyncData();
+          }, 100);
+        }
       }
     );
   });
@@ -1386,19 +2212,42 @@ const createChessPieces = () => {
  */
 const animate = () => {
   requestAnimationFrame(animate);
-  const time = performance.now();// 计算时间增量
+  const time = performance.now();
   const delta = (time - prevTime) / 1000;
   prevTime = time;
-  updateFirstPersonMovement(delta);// 更新第一人称移动
-  updatePieceFollowing();// 更新棋子跟随视角
-  updatePieceTrajectories(delta); // 棋子运动轨迹更新
+  
+  updateFirstPersonMovement(delta);
+  updatePieceFollowing();
+  updatepieceTrajectoriesC1(delta);
+  
+  // 平滑更新其他玩家头部
+  smoothUpdatePlayerHeads(delta);
+  
+  // 定期广播头部位置
+  if (time % gameTick < delta * 1000) {
+    if(selectedCampC1.value === 'red' || selectedCampC1.value === 'black'){
+      if (!isPointerLocked) return;
+      const position = {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z
+      };
+      ccInstruct.broadcastHeadPositionPitchYaw('', position, pitch, yaw, selectedCampC1.value);
+    }
+  }
+  
+  updateOtherPlayersHeads();// 更新其他玩家头部模型
+  if (enabledDebug) updateDebugInfo();//更新调试信息
   if (renderer && scene && camera) {
     renderer.render(scene, camera);
+    if (labelRenderer) {
+      labelRenderer.render(scene, camera);
+    }
   }
 };
 
 // ==============================
-// 生命周期钩子
+// 生命周期钩子等
 // ==============================
 onMounted(() => {
   window.addEventListener('resize', () => {
@@ -1413,6 +2262,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  removeAllArrowGroups();// 清理移动箭头
   if (renderer) {// 清理资源
     if (renderer.domElement) {// 移除事件监听器
       renderer.domElement.removeEventListener('click', onClick);
@@ -1424,28 +2274,34 @@ onUnmounted(() => {
     document.removeEventListener('pointerlockchange', onPointerLockChange);
     document.removeEventListener('mozpointerlockchange', onPointerLockChange);
     renderer.dispose();
+    if (headBroadcastInterval) clearInterval(headBroadcastInterval);// 清理头部广播定时器
+    playerNameTags.forEach((nameTag, playerId) => {scene.remove(nameTag);});// 清理名字标签
+    playerNameTags.clear();
+    if (labelRenderer && labelRenderer.domElement.parentNode) labelRenderer.domElement.parentNode.removeChild(labelRenderer.domElement);// 清理标签渲染器
   }
   if (scene) {
     scene.clear();
   }
 });
 
-
 </script>
 <template>
   <div class="pageBox">
     <div ref="sceneRef" class="chess-container"></div>
     <div class="crosshair"></div>
-    <view-user-layer theme="light" design="C"/>
+    <ViewCC1DebugInfo :enabled-debug="enabledDebug" :debug-info="debugInfoC1"/>
+    <ViewUserLayer theme="light" design="C" @click-logout="ccInstruct.closeLink()"/>
     <ViewHeart ref="heartRef" @like-change="handleHeart3" label="Like" />
-    <ViewCC1Setting @click-open-setting="showStartMenu" :open-setting-state="false" :top="80" :left="20"/>
+    <ViewCC1Menu @click-open-menu="showStartMenu" :open-menu-state="false" :top="80" :left="20"/>
     <ViewCC1GiveUp :give-up-state="giveUpStateC1" @click-give-up="showGiveUpConfirm"/>
     <ViewCC1ResetChess :give-up-state="giveUpStateC1" :give-up-conveyor="giveUpConveyorC1" @click-reset-chess="ccInstruct.broadcastResetAllChessPieces('')"/>
     <ViewCC1GiveUpConfirm ref="giveUpConfirmRef" :give-up-state="giveUpStateC1" @confirm-give-up="ccInstruct.broadcastGiveUp('')"/>
     <ViewCC1GiveUpResult :give-up-state="giveUpStateC1" :give-up-conveyor="giveUpConveyorC1" @click-reset-chess="ccInstruct.broadcastResetAllChessPieces('')"/>
     <ViewCC1ResetChessResult :reset-chess-count="resetChessCountC1" :reset-chess-conveyor="resetChessConveyorC1"/>
-    <PartCC1StartMenu ref="startMenuRef" @start-game="handleStartGame" @change-setting="applyGameSettings"/>
-    <PartCC1Loading :loading-state="loadingState" @loading-complete="handleLoadingComplete"/>
+    <ViewCC1Notifications :notifications="notificationArr"/>
+    <PartCC1StartMenu ref="startMenuRef" :camp-data="campDataC1" :selected-camp="selectedCampC1" @start-game="handleStartGame" @change-setting="applyGameSettings"/>
+    <PartCC1Loading :loading-state="loadingState"/>
+    <PartCC1Check/>
   </div>
 </template>
 <style scoped>
@@ -1462,6 +2318,24 @@ onUnmounted(() => {
 .pageBox{
   width: 100vw;
   height: 100vh;
+}
+
+.player-name-tag {
+  color: white;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: Arial, sans-serif;
+  pointer-events: none;
+  white-space: nowrap;
+  text-align: center;
+  backdrop-filter: blur(2px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.chess-container > .css2d-label {
+  z-index: 1000;
 }
 
 .crosshair{

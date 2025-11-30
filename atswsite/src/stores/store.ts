@@ -39,10 +39,10 @@ export const useUserStore = defineStore('user', () => {
 
   // 登出
   function logout() {
-    user.value = null
-    token.value = null
     localStorage.removeItem('user_token')
     localStorage.removeItem('user_id')
+    user.value = null
+    token.value = null
     error.value = null
   }
 
@@ -103,11 +103,25 @@ interface HomePageTrialBoxConfig {
   list: HomePageTrialCardConfig[]
 }
 
+interface HomePageLogItemConfig{
+  id: number
+  time: string
+  title: string
+  descript: string
+}
+
+interface HomePageLogsConfig{
+  annotation: string
+  version: string
+  list: HomePageLogItemConfig[]
+}
+
 interface WebConfig {
   annotation?: string
   version?: string
   homePageCurrentVideo?: HomePageVideoConfig
   homePageTrialBox?: HomePageTrialBoxConfig
+  homePageLogs?: HomePageLogsConfig
   [key: string]: any
 }
 
@@ -130,6 +144,11 @@ export const useConfigStore = defineStore('config', () => {
     version: 'Loding',
     list: []
   }
+  const defaultLogsConfig: HomePageLogsConfig = {
+    annotation: 'Loding',
+    version: 'Loding',
+    list: []
+  }
 
   // 计算属性，方便直接访问视频配置
   const homePageCurrentVideo = computed((): HomePageVideoConfig => {
@@ -137,6 +156,9 @@ export const useConfigStore = defineStore('config', () => {
   })
   const homePageTrialBox = computed((): HomePageTrialBoxConfig => {
     return config.value?.homePageTrialBox || defaultTrialBoxConfig
+  })
+  const homePageLogsBox = computed((): HomePageLogsConfig => {
+    return config.value?.homePageLogs || defaultLogsConfig
   })
 
   // 加载配置
@@ -173,6 +195,7 @@ export const useConfigStore = defineStore('config', () => {
     config,
     homePageCurrentVideo,
     homePageTrialBox,
+    homePageLogsBox,
     loading,  
     error,
     configVersion,
@@ -187,6 +210,7 @@ export interface CC1GameSetting {
   mouseSensitivity: number;
   moveSensitivity: number;
   fov: number;
+  ambientIntensity: number;
   graphicsQuality: 'low' | 'medium' | 'high';
 } 
 
@@ -199,7 +223,8 @@ export const useGameSettingStore = defineStore('gameSetting', () => {
     mouseSensitivity: 75,
     moveSensitivity: 75,
     fov: 70,
-    graphicsQuality: 'high',
+    ambientIntensity: 50,
+    graphicsQuality: 'high'
   };
 
   // 游戏设置

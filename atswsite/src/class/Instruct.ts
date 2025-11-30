@@ -37,6 +37,8 @@ export default abstract class Instruct {
     public onClose: (ev: Event) => void = () => {};
     public onError: (ev: Event) => void = () => {};
     public onMessage: (instructObj: InstructObject) => void = () => {};
+    public onLogin: () => void = () => {};
+    public onLogout: () => void = () => {};
     /**
      * 指令的具体处理
      * @param ev 
@@ -401,9 +403,11 @@ export default abstract class Instruct {
         if (login) {
             this.pingIntervalStart();
             this.getUserData();
+            this.onLogin();
         } else {
             this.pingIntervalStop();
             this.userData=null;
+            this.onLogout();
         }
     }
 
@@ -450,7 +454,7 @@ export default abstract class Instruct {
             this.pingInterval = null;
         }
     }
-    public manualClose(): void{
+    public closeLink(): void{
         this.socket?.close();
     }
 }

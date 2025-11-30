@@ -3,6 +3,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import ViewFilingLicense from '@/components/ViewFilingLicense.vue'
 
+//const EndMaintenanceDate = 1763254800;//网站维护的截止时间戳(秒)
 const EndMaintenanceDate = 1763254800;//网站维护的截止时间戳(秒)
 
 /* ---------- 倒计时核心逻辑 ---------- */
@@ -49,7 +50,7 @@ const completionDateStr = computed(() => {
       <div class="countdown">
         预计剩余时间: 
         <br/>
-        <span v-if="remainSeconds === 0">已结束，请刷新页面</span>
+        <span v-if="remainSeconds === 0">维护结束，请返回主页</span>
         <template v-else>
           <span v-if="days">{{ days }}天</span>
           {{ hours }}小时 {{ minutes }}分钟 {{ seconds }}秒

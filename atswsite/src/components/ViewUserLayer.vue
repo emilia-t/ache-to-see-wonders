@@ -2,8 +2,6 @@
 // The relative position of this file: src/components/ViewUserLayer.vue
 // 此组件用于各个page的登录用户信息展示和登录界面
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import type ChineseChessUserData from '@/interface/ChineseChessUserData';
-import type UserData from '@/interface/UserData';
 import Tool from '@/class/Tool';
 import { useUserStore } from '@/stores/store';
 import { accountApiService, type LoginCredentials, type RegisterData } from '@/services/api';
@@ -15,6 +13,15 @@ interface Props {
   design?: string    // 界面的样式类型(具体参考html模板)
 };
 
+// ==================== 用户名验证方法 ====================
+const validateName = (name: string): boolean => {
+  return !name.includes('&');
+};
+
+const getValidationMessage = (): string => {
+  return '用户名中不能包含 "&" 符号';
+};
+
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   theme: '',
@@ -23,9 +30,8 @@ const props = withDefaults(defineProps<Props>(), {
 
 // 事件定义
 const emit = defineEmits<{
-  login: [credentials?: any]
-  logout: []
-  'update:userData': [userData: UserData | ChineseChessUserData | null]
+  'click-login': [credentials?: any]
+  'click-logout': []
 }>();
 
 // ==================== Store 和 状态管理 ====================
@@ -183,7 +189,7 @@ const handleLogin = async () => {
       loginForm.value = { email: '', password: '' };
       
       // 触发事件
-      emit('login', credentials);
+      emit('click-login', credentials);
     } else {
       loginError.value = response.message;
     }
@@ -197,6 +203,13 @@ const handleLogin = async () => {
 const handleRegister = async () => {
   registerError.value = '';
   userStore.setLoading(true);
+
+  // 用户名验证 - 检查是否包含 "&" 符号
+  if (!validateName(registerForm.value.name)) {
+    registerError.value = getValidationMessage();
+    userStore.setLoading(false);
+    return;
+  }
 
   try {
     const registerData: RegisterData = {
@@ -228,13 +241,9 @@ const handleRegister = async () => {
 };
 
 const handleLogout = () => {
-  // 清除本地存储的认证信息
-  localStorage.removeItem('user_token');
-  localStorage.removeItem('user_id');
-  
   userStore.logout();
   closeAllModals();
-  emit('logout');
+  emit('click-logout');
 };
 
 // 自动登录检查 - 使用新的tokenLogin方法
@@ -271,9 +280,6 @@ const checkAutoLogin = async () => {
 
 // 自动登录失败处理
 const handleAutoLoginFailure = () => {
-  // 清除无效的认证信息
-  localStorage.removeItem('user_token');
-  localStorage.removeItem('user_id');
   userStore.logout();
 };
 
@@ -591,8 +597,12 @@ defineExpose({
                 id="reg-name" 
                 v-model="registerForm.name" 
                 required 
-                placeholder="请输入昵称" 
+                placeholder="请输入昵称（不能包含&符号）" 
+                @input="registerError = validateName(registerForm.name) ? '' : getValidationMessage()"
               />
+              <div v-if="registerForm.name && !validateName(registerForm.name)" class="validation-error">
+                {{ getValidationMessage() }}
+              </div>
             </div>
             <div class="form-group">
               <label for="reg-qq">QQ号 <span class="optional">(选填)</span></label>
@@ -663,8 +673,12 @@ defineExpose({
                 id="reg-name" 
                 v-model="registerForm.name" 
                 required 
-                placeholder="昵称" 
+                placeholder="昵称（不能包含&符号）" 
+                @input="registerError = validateName(registerForm.name) ? '' : getValidationMessage()"
               />
+              <div v-if="registerForm.name && !validateName(registerForm.name)" class="validation-error">
+                {{ getValidationMessage() }}
+              </div>
             </div>
             <div class="form-group">
               <input 
@@ -778,6 +792,21 @@ defineExpose({
 
 .theme-dark .password-toggle:hover {
   background-color: rgba(255, 255, 255, 0.1);
+}
+
+.validation-error {
+  color: #f44336;
+  font-size: 12px;
+  margin-top: 5px;
+  padding: 5px;
+  background: #ffebee;
+  border-radius: 3px;
+  border-left: 3px solid #f44336;
+}
+
+.theme-dark .validation-error {
+  background: rgba(244, 67, 54, 0.1);
+  color: #ff8a80;
 }
 
 /* 设计A样式 */

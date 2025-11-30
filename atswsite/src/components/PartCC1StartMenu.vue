@@ -1,16 +1,22 @@
 <script setup lang="ts">
 // The relative position of this file: src/components/PartCC1StartMenu.vue
 // CC1
-import { ref} from 'vue'
+import { ref, computed } from 'vue'
 import ViewFilingLicense from '@/components/ViewFilingLicense.vue'
 import { useGameSettingStore, type CC1GameSetting } from '@/stores/store'
+import type CampData from '@/interface/CampData';
 
-// 使用游戏设置 store
+// 使用设置 store
 const gameSettingStore = useGameSettingStore();
 
 // 菜单状态
 const isVisible = ref(true);
 const activeTab = ref('main'); // 'main', 'settings', 'about'
+
+const props = defineProps<{
+  campData: CampData;
+  selectedCamp: string;
+}>();
 
 // 定义事件
 const emit = defineEmits<{
@@ -23,14 +29,60 @@ defineExpose({
   isVisible
 });
 
+// 计算属性：判断阵营是否已被选择
+const isRedSelected = computed(() => {
+  return props.campData.red.id !== 0 && props.campData.red.name !== '';
+});
+
+const isBlackSelected = computed(() => {
+  return props.campData.black.id !== 0 && props.campData.black.name !== '';
+});
+
+// 计算属性：获取阵营选择者信息
+const redSelectorInfo = computed(() => {
+  return isRedSelected.value ? `已被 ${props.campData.red.name} 选择` : '可选';
+});
+
+const blackSelectorInfo = computed(() => {
+  return isBlackSelected.value ? `已被 ${props.campData.black.name} 选择` : '可选';
+});
+
+// 计算属性：判断当前玩家是否已选择阵营
+const currentPlayerId = computed(() => {
+  // 这里需要根据你的实际用户系统获取当前玩家ID
+  // 假设从 localStorage 获取
+  const userId = localStorage.getItem('user_id');
+  return userId ? parseInt(userId) : 0;
+});
+
+const isCurrentPlayerRed = computed(() => {
+  return currentPlayerId.value === props.campData.red.id;
+});
+
+const isCurrentPlayerBlack = computed(() => {
+  return currentPlayerId.value === props.campData.black.id;
+});
+
 const backGame = () => {
     isVisible.value = false;
 };
-// 开始游戏 - 选择阵营
+
+// 开始 - 选择阵营
 const startGame = (side: 'red' | 'black') => {
-  console.log(`开始游戏，选择阵营: ${side}`);
-  isVisible.value = false;
+  // 检查阵营是否已被其他玩家选择
+  if (side === 'red' && isRedSelected.value && !isCurrentPlayerRed.value) {
+    alert(`红方已被 ${props.campData.red.name} 选择，请选择其他阵营或等待`);
+    return;
+  }
+  
+  if (side === 'black' && isBlackSelected.value && !isCurrentPlayerBlack.value) {
+    alert(`黑方已被 ${props.campData.black.name} 选择，请选择其他阵营或等待`);
+    return;
+  }
+  
+  console.log(`选择阵营: ${side}`);
   emit('start-game', side);
+  isVisible.value=false;
 };
 
 // 显示设置
@@ -48,9 +100,9 @@ const backToMain = () => {
   activeTab.value = 'main';
 };
 
-// 退出游戏
+// 退出
 const exitGame = () => {
-  if (confirm('确定要退出游戏吗？')) {
+  if (confirm('确定要退出吗？')) {
     window.close();
   }
 };
@@ -97,45 +149,87 @@ const resetToDefaultSettings = () => {
     
     <!-- 主菜单内容 -->
     <div class="menu-content" v-if="activeTab === 'main'">
-      <!-- 游戏标题 -->
+      <!-- 标题 -->
       <div class="game-title">
         <h1 class="title-main">3D象棋</h1>
         <p class="title-sub">棋逢对手, 将遇良才</p>
+      </div>
+
+      <!-- 阵营状态显示 -->
+      <div class="camp-status">
+        <div class="camp-status-item red-status" :class="{ 'selected': isRedSelected }">
+          <span class="status-icon">🔴</span>
+          <span class="status-text">
+            {{ isRedSelected ? `红方: ${campData.red.name}` : '红方: 等待选择' }}
+          </span>
+        </div>
+        <div class="camp-status-item black-status" :class="{ 'selected': isBlackSelected }">
+          <span class="status-icon">⚫</span>
+          <span class="status-text">
+            {{ isBlackSelected ? `黑方: ${campData.black.name}` : '黑方: 等待选择' }}
+          </span>
+        </div>
       </div>
 
       <!-- 菜单按钮组 -->
       <div class="menu-buttons">
         <!-- 阵营选择按钮 -->
         <div class="side-selection">
-          <button class="menu-btn red-side" @click="startGame('red')">
+          <button 
+            class="menu-btn red-side" 
+            @click="startGame('red')"
+            :class="{ 
+              'disabled': isRedSelected && !isCurrentPlayerRed,
+              'rejoin': isCurrentPlayerRed
+            }"
+            :disabled="isRedSelected && !isCurrentPlayerRed"
+          >
             <span class="btn-icon">🔴</span>
-            红方视角
+            <span class="btn-text">
+              {{ isCurrentPlayerRed ? '已选择红方' : '红方阵营' }}
+            </span>
+            <span class="btn-status" v-if="isRedSelected">
+              {{ redSelectorInfo }}
+            </span>
           </button>
           
-          <button class="menu-btn black-side" @click="startGame('black')">
+          <button 
+            class="menu-btn black-side" 
+            @click="startGame('black')"
+            :class="{ 
+              'disabled': isBlackSelected && !isCurrentPlayerBlack,
+              'rejoin': isCurrentPlayerBlack
+            }"
+            :disabled="isBlackSelected && !isCurrentPlayerBlack"
+          >
             <span class="btn-icon">⚫</span>
-            黑方视角
+            <span class="btn-text">
+              {{ isCurrentPlayerBlack ? '已选择黑方' : '黑方阵营' }}
+            </span>
+            <span class="btn-status" v-if="isBlackSelected">
+              {{ blackSelectorInfo }}
+            </span>
           </button>
         </div>
         
         <button class="menu-btn secondary" @click="showSettings">
           <span class="btn-icon">⚙️</span>
-          游戏设置
+          设置
         </button>
         
         <button class="menu-btn secondary" @click="showAbout">
           <span class="btn-icon">ℹ️</span>
-          关于游戏
+          关于
         </button>
         
         <button class="menu-btn back" @click="backGame">
           <span class="btn-icon">🔙</span>
-          继续游戏
+          {{ selectedCamp === '' ? "自由观看":"返回"}}
         </button>
 
         <button class="menu-btn exit" @click="exitGame">
           <span class="btn-icon">🚪</span>
-          退出游戏
+          退出
         </button>
       </div>
     </div>
@@ -147,7 +241,7 @@ const resetToDefaultSettings = () => {
           <span class="back-arrow">←</span>
           返回
         </button>
-        <h2>游戏设置</h2>
+        <h2>设置</h2>
         <button class="reset-btn" @click="resetToDefaultSettings" title="重置为默认设置">
           🔄 重置
         </button>
@@ -158,7 +252,7 @@ const resetToDefaultSettings = () => {
         <div class="setting-group">
           <label class="setting-label">
             <span class="label-icon">🔊</span>
-            音效音量
+            <span class="label-text">音效音量</span>
           </label>
           <div class="slider-container">
             <input 
@@ -178,7 +272,7 @@ const resetToDefaultSettings = () => {
         <div class="setting-group">
           <label class="setting-label">
             <span class="label-icon">🎵</span>
-            背景音乐
+            <span class="label-text">背景音乐</span>
           </label>
           <div class="slider-container">
             <input 
@@ -198,7 +292,7 @@ const resetToDefaultSettings = () => {
         <div class="setting-group">
           <label class="setting-label">
             <span class="label-icon">🖱️</span>
-            鼠标灵敏度
+            <span class="label-text">鼠标灵敏度</span>
           </label>
           <div class="slider-container">
             <input 
@@ -218,7 +312,7 @@ const resetToDefaultSettings = () => {
         <div class="setting-group">
           <label class="setting-label">
             <span class="label-icon">🏃</span>
-            移动灵敏度
+            <span class="label-text">移动速度</span>
           </label>
           <div class="slider-container">
             <input 
@@ -238,7 +332,7 @@ const resetToDefaultSettings = () => {
         <div class="setting-group">
           <label class="setting-label">
             <span class="label-icon">👁️</span>
-            视野范围 (FOV)
+            <span class="label-text">视野范围</span>
           </label>
           <div class="slider-container">
             <input 
@@ -253,6 +347,26 @@ const resetToDefaultSettings = () => {
             <span class="slider-value">{{ gameSettingStore.gameSettings.fov }}°</span>
           </div>
         </div>
+
+        <!-- 环境光照亮度 -->
+        <div class="setting-group">
+          <label class="setting-label">
+            <span class="label-icon">💡</span>
+            <span class="label-text">环境光亮度</span>
+          </label>
+          <div class="slider-container">
+            <input 
+              type="range" 
+              min="1" 
+              max="100" 
+              :value="gameSettingStore.gameSettings.ambientIntensity"
+              @input="handleSettingChange('ambientIntensity', ($event.target as HTMLInputElement).value)"
+              @change="handleSettingChange('ambientIntensity', ($event.target as HTMLInputElement).value)"
+              class="setting-slider"
+            >
+            <span class="slider-value">{{ gameSettingStore.gameSettings.ambientIntensity }}</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -263,7 +377,7 @@ const resetToDefaultSettings = () => {
           <span class="back-arrow">←</span>
           返回
         </button>
-        <h2>关于游戏</h2>
+        <h2>关于</h2>
       </div>
 
       <div class="about-info">
@@ -284,7 +398,7 @@ const resetToDefaultSettings = () => {
 
         <div class="info-section">
           <h4>版本信息</h4>
-          <p>版本: 1.0.0</p>
+          <p>版本: 1.0.1</p>
           <p>Copyright © 2025 Ache to See Wonders. All rights reserved.</p>
         </div>
       </div>
@@ -322,7 +436,6 @@ const resetToDefaultSettings = () => {
 .settings-content,
 .about-content {
   position: relative;
-  z-index: 10;
   border-radius: 20px;
   padding: 3rem;
   max-width: 500px;
@@ -341,10 +454,10 @@ const resetToDefaultSettings = () => {
   }
 }
 
-/* 游戏标题样式 */
+/* 标题样式 */
 .game-title {
   text-align: center;
-  margin-bottom: 3rem;
+  margin-bottom: 2rem;
 }
 
 .title-main {
@@ -365,6 +478,49 @@ const resetToDefaultSettings = () => {
   font-weight: 300;
 }
 
+/* 阵营状态显示 */
+.camp-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.camp-status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.8rem;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.camp-status-item.selected {
+  background: rgba(0, 0, 0, 0.05);
+  border-left: 4px solid;
+}
+
+.red-status.selected {
+  border-left-color: #e74c3c;
+}
+
+.black-status.selected {
+  border-left-color: #2c3e50;
+}
+
+.status-icon {
+  font-size: 1.5rem;
+}
+
+.status-text {
+  font-weight: 600;
+  color: #333;
+}
+
 /* 菜单按钮样式 */
 .menu-buttons {
   display: flex;
@@ -383,6 +539,8 @@ const resetToDefaultSettings = () => {
 .side-selection .menu-btn {
   flex: 1;
   padding: 1rem 1.5rem;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .menu-btn {
@@ -397,6 +555,7 @@ const resetToDefaultSettings = () => {
   align-items: center;
   justify-content: center;
   gap: 0.8rem;
+  position: relative;
 }
 
 /* 红方按钮样式 */
@@ -406,9 +565,13 @@ const resetToDefaultSettings = () => {
   box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
 }
 
-.menu-btn.red-side:hover {
+.menu-btn.red-side:hover:not(.disabled) {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(231, 76, 60, 0.6);
+}
+
+.menu-btn.red-side.rejoin {
+  background: linear-gradient(135deg, #e67e22, #d35400);
 }
 
 /* 黑方按钮样式 */
@@ -418,9 +581,31 @@ const resetToDefaultSettings = () => {
   box-shadow: 0 4px 15px rgba(44, 62, 80, 0.4);
 }
 
-.menu-btn.black-side:hover {
+.menu-btn.black-side:hover:not(.disabled) {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(44, 62, 80, 0.6);
+}
+
+.menu-btn.black-side.rejoin {
+  background: linear-gradient(135deg, #7f8c8d, #95a5a6);
+}
+
+/* 禁用状态 */
+.menu-btn.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+.btn-text {
+  font-size: 1rem;
+}
+
+.btn-status {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  font-weight: normal;
 }
 
 .menu-btn.secondary {
@@ -440,14 +625,19 @@ const resetToDefaultSettings = () => {
   border: 2px solid #ff6b6b;
 }
 
+.menu-btn.exit:hover {
+  background: rgba(255, 107, 107, 0.2);
+  transform: translateY(-1px);
+}
+
 .menu-btn.back {
   background: rgba(255, 107, 107, 0.1);
   color: #249bd6;
   border: 2px solid #2cc1eb;
 }
 
-.menu-btn.exit:hover {
-  background: rgba(255, 107, 107, 0.2);
+.menu-btn.back:hover {
+  background: rgba(40, 139, 226, 0.2);
   transform: translateY(-1px);
 }
 
@@ -524,6 +714,7 @@ const resetToDefaultSettings = () => {
 .setting-label {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.8rem;
   font-weight: 600;
   color: #333;
@@ -531,6 +722,10 @@ const resetToDefaultSettings = () => {
 }
 
 .label-icon {
+  font-size: 1.2rem;
+}
+
+.label-text{
   font-size: 1.2rem;
 }
 

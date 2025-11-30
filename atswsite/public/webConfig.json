@@ -1,6 +1,6 @@
 {
   "annotation": "The relative position of this file: ./webConfig.json",  
-  "version": "1",
+  "version": "2",
   "homePageCurrentVideo": {
     "title": "3D象棋",
     "description": "在线和朋友下象棋，自由的放置棋子~",
@@ -24,6 +24,42 @@
         "online_state": false,
         "visit_count": 0,
         "heart_count": 0
+      }
+    ]
+  },
+  "homePageLogs": {
+    "annotation": "Some logs", 
+    "version": "2",
+    "list": [
+      {
+        "id":5,
+        "time": "2025-11-30",
+        "title": "3D象棋增加显示走子",
+        "descript": "增加各个阵营最后一次移动棋子的路径"
+      },
+      {
+        "id":4,
+        "time": "2025-11-25",
+        "title": "3D象棋增加了玩家模型",
+        "descript": "增加红色方玩家模型和黑色方玩家模型并实况显示"
+      },
+      {
+        "id":3,
+        "time": "2025-11-17",
+        "title": "优化了3D象棋界面",
+        "descript": "改进了用户交互体验，修复了已知问题"
+      },
+      {
+        "id":2,
+        "time": "2025-11-16",
+        "title": "新增项目展示",
+        "descript": "添加了新的试做型项目到首页"
+      },
+      {
+        "id":1,
+        "time": "2025-11-15",
+        "title": "网站维护结束",
+        "descript": "完成了系统升级和性能优化"
       }
     ]
   }

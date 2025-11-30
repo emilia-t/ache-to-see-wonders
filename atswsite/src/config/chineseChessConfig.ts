@@ -68,6 +68,23 @@ export const sceneConfig = {
       back: '/bg/scene_bg_b.jpg'     // 后
     }
   },
+  // 箭头走子指示器配置
+  moveArrow: {
+    enabled: true,
+    color: {
+      red: 0xff4444,    // 红方箭头颜色
+      black: 0x4444ff,  // 黑方箭头颜色
+      default: 0xffff00  // 默认颜色
+    },
+    size: {
+      arrowLength: 0.3,     // 箭头长度
+      arrowHeadLength: 0.016, // 箭头头部长度
+      arrowHeadWidth: 0.032, // 箭头头部宽度
+      lineWidth: 0.006       // 线宽 
+    },
+    margin: 0.025,      //距离棋子的间距
+    height: 1.002           // 箭头离棋盘高度
+  },
   // 辅助对象配置
   helpers: {
     grid: {
@@ -85,7 +102,7 @@ export const sceneConfig = {
     lookSpeed: 0.002,  // 视角移动速度
     gravity: 30,       // 重力
     jumpForce: 10,     // 跳跃力量
-    playerHeight: 1.7  // 玩家身高
+    playerHeight: 1.5  // 玩家身高
   },
   // 棋子操作配置
   pieceInteraction: {
@@ -154,7 +171,7 @@ export const sceneConfig = {
 export const cameraConfig = {
   position: { x: 0, y: sceneConfig.firstPerson.playerHeight, z: 1 }, // 相机位置（第一人称高度）
   fov: 70,      // 视野角度
-  near: 0.1,    // 近裁剪面
+  near: 0.05,    // 近裁剪面
   far: 2000,     // 远裁剪面
   redStartPos: { x: 0, y: sceneConfig.firstPerson.playerHeight, z: 1 },
   redStartPitch:0,
@@ -181,8 +198,8 @@ export const lightConfig = {
   // 定向光配置
   directional: {
     color: 0xffffff,
-    intensity: 5.0,
-    position: { x: 2, y: 3, z: 1 },
+    intensity: 3, 
+    position: { x: 3, y: 3, z: 2 },
     shadow: {
       mapSize: { width: 2048, height: 2048 },
       camera: {
@@ -195,10 +212,32 @@ export const lightConfig = {
       }
     }
   },
-  // 环境光配置
+  directional2: {
+    color: 0xffffff,
+    intensity: 3, 
+    position: { x: -3, y: 3, z: -2 },
+    shadow: {
+      mapSize: { width: 2048, height: 2048 },
+      camera: {
+        near: 0.0,
+        far: 0.0,
+        left: -5,
+        right: 5,
+        top: 5,
+        bottom: -5
+      }
+    }
+  },
+  // 添加补光光源
+  fillLight: {
+    color: 0x404040,
+    intensity: 15,
+    position: { x: 0, y: 2, z: 0 }
+  },
+  // 环境光配置 
   ambient: {
     color: 0x404040,
-    intensity: 0.6 // 环境光强度
+    intensity: 50.0
   }
 };
 // ==============================
@@ -302,3 +341,5 @@ export const piecesConfig =  [
     modelPath: '/gltf/game_scene/build/Red_31_chariot_right/Red_31_chariot_right.gltf',
     scale: 1, position: { x: 0, y: 0, z: 0 }}
 ];
+
+export type PieceNameKeys = keyof typeof sceneConfig.piecesOffset;

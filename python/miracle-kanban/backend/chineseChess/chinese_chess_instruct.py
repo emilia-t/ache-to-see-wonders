@@ -11,6 +11,12 @@ class Coord3D(TypedDict):
     y: float
     z: float
 
+class PieceSyncData(TypedDict):
+    piece_name: str
+    position: Coord3D
+    is_picked: bool
+    picked_by: str
+
 class ChineseChessInstruct(Instruct):
     """中国象棋指令类"""
 
@@ -31,6 +37,23 @@ class ChineseChessInstruct(Instruct):
     # 自定义指令
     # ==============================
     @staticmethod
+    def create_broadcast_user_join_game(conveyor: str) -> InstructObject:
+        """创建广播用户加入游戏指令"""
+        return InstructObject("broadcast", instruct_class="user_join_game", conveyor=conveyor)
+    @staticmethod
+    def create_broadcast_user_left_game(conveyor: str) -> InstructObject:
+        """创建广播用户离开游戏指令"""
+        return InstructObject("broadcast", instruct_class="user_left_game", conveyor=conveyor)
+    @staticmethod
+    def create_broadcast_head_position_pitch_yaw(conveyor: str,position: Coord3D,pitch: float,yaw: float,camp: str='') -> InstructObject:
+        """创建广播玩家头部的坐标与俯仰角与偏航角指令"""
+        return InstructObject("broadcast", instruct_class="head_position_pitch_yaw", conveyor=conveyor, data={
+            "position":position,
+            "pitch":pitch,
+            "yaw":yaw,
+            "camp":camp
+        })
+    @staticmethod
     def create_broadcast_give_up(conveyor: str) -> InstructObject:
         """创建广播重置所有棋子指令"""
         return InstructObject("broadcast", instruct_class="give_up", conveyor=conveyor)
@@ -41,7 +64,20 @@ class ChineseChessInstruct(Instruct):
         return InstructObject("broadcast", instruct_class="reset_all_chess_pieces", conveyor=conveyor)
 
     @staticmethod
-    def create_sync_chess_pieces(pieces_data: List[Dict[str, Any]]) -> InstructObject:
+    def create_get_camp_data() -> InstructObject:
+        """创建获取阵营数据指令"""
+        return InstructObject("get_camp_data")
+
+    @staticmethod
+    def create_camp_data(email1:str,name1:str,id1:int,email2:str,name2:str,id2:int) -> InstructObject:
+        """创建获取阵营数据指令"""
+        return InstructObject("camp_data",data={
+            "red" : {"email":email1,"name":name1,"id":id1},
+            "black":{"email":email2,"name":name2,"id":id2}
+        })
+
+    @staticmethod
+    def create_sync_chess_pieces(pieces_data: List[PieceSyncData]) -> InstructObject:
         """创建广播同步棋子状态指令"""
         return InstructObject("sync_chess_pieces", data={
             "pieces": pieces_data
@@ -95,3 +131,40 @@ class ChineseChessInstruct(Instruct):
             "piece_name": piece_name,
             "trajectory": trajectory
         })
+    @staticmethod
+    def create_get_rb_head_position_pitch_yaw() -> InstructObject:
+        """创建获取红方和黑方头部数据指令"""
+        return InstructObject("get_rb_head_position_pitch_yaw")
+    @staticmethod
+    def create_rb_head_position_pitch_yaw(conveyor1:str,position1:Coord3D,pitch1:float,yaw1:float,conveyor2:str,position2:Coord3D,pitch2:float,yaw2:float) -> InstructObject:
+        """创建获取红方和黑方头部数据指令"""
+        return InstructObject("rb_head_position_pitch_yaw",data={
+            "red":{
+                "conveyor":conveyor1,
+                "position":position1,
+                "pitch":pitch1,
+                "yaw":yaw1
+            },
+            "black":{
+                "conveyor":conveyor2,
+                "position":position2,
+                "pitch":pitch2,
+                "yaw":yaw2
+            }
+        })
+    @staticmethod
+    def create_get_select_camp_red() -> InstructObject:
+        """创建选择红色阵营指令"""
+        return InstructObject("get_select_camp_red")
+    @staticmethod
+    def create_select_camp_red(status:bool = True) -> InstructObject:
+        """创建选择红色阵营指令"""
+        return InstructObject("select_camp_red",data=status)
+    @staticmethod
+    def create_get_select_camp_black() -> InstructObject:
+        """创建选择黑色阵营指令"""
+        return InstructObject("get_select_camp_black")
+    @staticmethod
+    def create_select_camp_black(status:bool = True) -> InstructObject:
+        """创建选择黑色阵营指令"""
+        return InstructObject("select_camp_black",data=status)

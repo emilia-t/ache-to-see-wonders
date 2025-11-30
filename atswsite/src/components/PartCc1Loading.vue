@@ -51,16 +51,12 @@ watch(() => props.loadingState.isLoading, (newVal) => {
   }
 });
 
-const emptyComputed = computed(() =>{
-        return;
-    }
-)
 </script>
 
 <template>
   <div 
     v-if="isVisible" 
-    class="part-cc1-loading"
+    class="part-cc1-loading-container"
     :class="{ 'fade-out': isFadingOut }"
   >
     <div class="loading-overlay">
@@ -97,7 +93,7 @@ const emptyComputed = computed(() =>{
 </template>
 
 <style scoped>
-.part-cc1-loading {
+.part-cc1-loading-container {
   position: fixed;
   top: 0;
   left: 0;
@@ -111,7 +107,7 @@ const emptyComputed = computed(() =>{
   transition: opacity 0.8s ease-out, visibility 0.8s ease-out;
 }
 
-.part-cc1-loading.fade-out {
+.part-cc1-loading-container.fade-out {
   opacity: 0;
   visibility: hidden;
 }

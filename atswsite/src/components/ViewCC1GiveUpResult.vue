@@ -87,7 +87,7 @@ watch(props,(newValue,oldValue)=>{
         
         <div v-if="isMyFail" class="result-message">
           <p class="main-text">您已选择投降</p>
-          <p class="sub-text">是否要立即重置棋子开始新游戏？</p>
+          <p class="sub-text">是否要立即重置棋子？</p>
         </div>
         
         <div v-else class="result-message">

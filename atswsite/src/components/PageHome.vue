@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import ViewBottomLicense from '@/components/ViewBottomLicense.vue'
-import ViewUserLayer from './ViewUserLayer.vue'
 import { useConfigStore } from '@/stores/store'
 import { CHINESE_CHESS_SERVER_URL } from '@/config/apiConfig'
-import ChineseChessInstruct from '@/class/ChineseChessInstruct'
 import type InstructObject from '@/interface/InstructObject'
+import ChineseChessInstruct from '@/class/ChineseChessInstruct'
+import ViewBottomLicense from '@/components/ViewBottomLicense.vue'
+import ViewUserLayer from '@/components/ViewUserLayer.vue'
 import ViewBackOld from './ViewBackOld.vue' 
 
 // 响应式数据
@@ -29,6 +29,7 @@ const currentVideo = computed(() => configStore.homePageCurrentVideo.video);
 const currentTargetUrl = computed(() => configStore.homePageCurrentVideo.targetUrl);
 const currentButtonName = computed(() => configStore.homePageCurrentVideo.button_name);
 const trialPartBoxList = computed(() => configStore.homePageTrialBox.list);
+const logsPartBoxList = computed(() => configStore.homePageLogsBox.list);
 
 watch(trialPartBoxList, (newVlue, oldValue) => {
   if (newVlue.length!==oldValue.length) {
@@ -68,10 +69,10 @@ watch(trialPartBoxList, (newVlue, oldValue) => {
                   }
                 }
               }
-              ws.manualClose();
+              ws.closeLink();
             }
             catch (e){
-              ws.manualClose();
+              ws.closeLink();
             }
           };
           break;
@@ -272,7 +273,7 @@ onUnmounted(() => {
         </div>
 
         <!-- 用户信息 -->
-        <view-user-layer 
+        <ViewUserLayer 
           class="user-section"
           :loading="loading" 
           :theme="theme" 
@@ -431,25 +432,15 @@ onUnmounted(() => {
           <div class="rct-placeholder">
             <!-- 添加 daily 专用的容器 -->
             <div class="daily-container">
-              <div class="daily-item">
-                <div class="daily-date">2025-11-17</div>
+              <div 
+                v-for="value in logsPartBoxList"
+                :key="value.id"
+                class="daily-item"
+              >
+                <div class="daily-date">{{ value.time }}</div>
                 <div class="daily-content">
-                  <h4>优化了3D象棋界面</h4>
-                  <p>改进了用户交互体验，修复了已知问题</p>
-                </div>
-              </div>
-              <div class="daily-item">
-                <div class="daily-date">2025-11-16</div>
-                <div class="daily-content">
-                  <h4>网站维护结束</h4>
-                  <p>完成了系统升级和性能优化</p>
-                </div>
-              </div>
-              <div class="daily-item">
-                <div class="daily-date">2025-11-15</div>
-                <div class="daily-content">
-                  <h4>新增项目展示</h4>
-                  <p>添加了新的试做型项目到首页</p>
+                  <h4>{{ value.title }}</h4>
+                  <p>{{ value.descript }}</p>
                 </div>
               </div>
             </div>
