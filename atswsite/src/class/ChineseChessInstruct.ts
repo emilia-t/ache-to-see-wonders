@@ -80,21 +80,77 @@ export default class ChineseChessInstruct extends Instruct {
     }>): void {
         this.send(ChineseChessInstruct._syncChessPieces_(pieces));
     }
+    public switchCampPoll(conveyor:string,second:number):void{
+        this.send(ChineseChessInstruct._switchCampPoll_(conveyor,second));
+    }
+    public switchCampVote(conveyor:string,status:boolean):void{
+        this.send(ChineseChessInstruct._switchCampVote_(conveyor,status));
+    }
+    public switchCampResult(result:string,total:number,agree:number,disagree:number):void{
+        this.send(ChineseChessInstruct._switchCampResult_(result,total,agree,disagree));
+    }
     public broadcastResetAllChessPieces(conveyor: string):void{
-        this.send(ChineseChessInstruct._broadcastResetAllChessPieces_(conveyor))
+        this.send(ChineseChessInstruct._broadcastResetAllChessPieces_(conveyor));
     }
     public broadcastHeadPositionPitchYaw(conveyor:string,position:Coord3D,pitch:number,yaw:number,camp:string=''){
-        this.send(ChineseChessInstruct._broadcastHeadPositionPitchYaw_(conveyor,position,pitch,yaw,camp))
+        this.send(ChineseChessInstruct._broadcastHeadPositionPitchYaw_(conveyor,position,pitch,yaw,camp));
     }
     public broadcastUserLeftGame(conveyor:string){
-        this.send(ChineseChessInstruct._broadcastUserLeftGame_(conveyor))
+        this.send(ChineseChessInstruct._broadcastUserLeftGame_(conveyor));
     }
     public broadcastUserJoinGame(conveyor:string){
-        this.send(ChineseChessInstruct._broadcastUserJoinGame_(conveyor))
+        this.send(ChineseChessInstruct._broadcastUserJoinGame_(conveyor));
+    }
+    public broadcastRequestDraw(conveyor:string,){
+        this.send(ChineseChessInstruct._broadcastRequestDraw_(conveyor));
+    }
+    public broadcastResponseDraw(conveyor:string,status:boolean){
+        this.send(ChineseChessInstruct._broadcastResponseDraw_(conveyor,status));
+    }
+    /**
+     * 创建普通文本消息|字符数量限制800(个)
+     * @param conveyor 
+     * @param text 
+     */
+    public broadcastSpMessage(conveyor:string,text:string){
+        const limitedText = text.length > 800 ? text.substring(0,800) : text;
+        this.send(ChineseChessInstruct._broadcastSpMessage_(conveyor,limitedText));
     }
     // ==============================
     // 创建指令对象的静态方法
     // ==============================
+    public static _broadcastSpMessage_(conveyor:string,text:string): InstructObject {
+        return {
+            "type": "broadcast",
+            "class": "sp_message",
+            "conveyor": conveyor,
+            "time": Tool.getFormatTime(),
+            "data": {
+                "text": text
+            }
+        };
+    }
+
+    public static _broadcastResponseDraw_(conveyor:string,status:boolean): InstructObject {
+        return {
+            "type": "broadcast",
+            "class": "response_draw",
+            "conveyor": conveyor,
+            "time": Tool.getFormatTime(),
+            "data": status
+        };
+    }
+
+    public static _broadcastRequestDraw_(conveyor: string): InstructObject {
+        return {
+            "type": "broadcast",
+            "class": "request_draw",
+            "conveyor": conveyor,
+            "time": Tool.getFormatTime(),
+            "data": ""
+        };
+    }
+
     public static _broadcastUserJoinGame_(conveyor: string): InstructObject {
         return {
             "type": "broadcast",
@@ -180,6 +236,41 @@ export default class ChineseChessInstruct extends Instruct {
                     "yaw":yaw2
                 }
             }
+        };
+    }
+
+    public static _switchCampPoll_(conveyor:string,second:number): InstructObject {
+        return {
+            "type":"switch_camp_poll",
+            "class":"",
+            "conveyor":conveyor,
+            "time": Tool.getFormatTime(),
+            "data": {
+                "timeout":second
+            }
+        };
+    }
+    public static _switchCampVote_(conveyor:string,status:boolean): InstructObject {
+        return {
+            "type":"switch_camp_vote",
+            "class":"",
+            "conveyor":conveyor,
+            "time": Tool.getFormatTime(),
+            "data": status
+        };
+    }
+    public static _switchCampResult_(result:string,total:number,agree:number,disagree:number): InstructObject {
+        return {
+            "type":"switch_camp_result",
+            "class":"",
+            "conveyor":"",
+            "time": Tool.getFormatTime(),
+            "data": {
+                "result": result,// 'all_pass' | 'partly_pass' | 'timeout' | 'shorthanded'
+                "total": total,
+                "agree": agree,
+                "disagree": disagree
+            } 
         };
     }
 

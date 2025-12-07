@@ -1,44 +1,82 @@
 <script setup lang="ts">
-// The relative position of this file: src/components/ViewCC1Menu.vue
+// The relative position of this file: src/components/ViewCC1SwitchCamp.vue
+import { computed } from 'vue'
+import type CampData from '@/interface/CampData';
+import { useUserStore } from '@/stores/store';
 
 // 定义组件属性
 interface Props {
-    openMenuState: boolean
+    campData: CampData;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  openMenuState: false
-})
+  campData: () => ({
+    red: {
+      email: '',
+      name: '',
+      id: 0
+    },
+    black: {
+      email: '',
+      name: '',
+      id: 0
+    }
+  })
+});
+
+const userStore = useUserStore();
+
+// 计算当前用户身份
+const myCov = computed(() => {
+  if (userStore.userData !== null) {
+    return userStore.userData.name + '&' + userStore.userData.email;
+  } else {
+    return '';
+  }
+});
 
 // 定义点击事件
 const emit = defineEmits<{
-  'click-open-menu': [value: boolean]
-}>()
+  'click-switch-camp-poll': [value: boolean]
+}>();
 
 // 方法
-const handleClick = () => {
-  emit('click-open-menu', props.openMenuState)
-}
+const handleClickPoll = () => {
+  if(props.campData.red.name === '' || props.campData.black.name === ''){
+    return;
+  }
+  let redCov   = props.campData.red.name + '&' + props.campData.red.email;
+  let blackCov = props.campData.black.name + '&' + props.campData.black.email;
+  if(myCov.value === redCov || myCov.value === blackCov){
+    emit('click-switch-camp-poll', true);
+  }
+  else{
+    emit('click-switch-camp-poll', false);
+  }
+};
+
 </script>
 
 <template>
-  <div class="view-menu-container">
+<div 
+    v-if="campData.red.name !== '' && campData.black.name !== ''"
+    class="view-switch-camp-container"
+  >
     <a 
-      class="button" 
-      :class="openMenuState ? 'openState' : 'closeState'"
-      @click="handleClick"
+      class="button"
+      @click="handleClickPoll"
       role="button"
       tabindex="0"
-      @keydown.enter="handleClick"
-      @keydown.space.prevent="handleClick"
+      @keydown.enter="handleClickPoll"
+      @keydown.space.prevent="handleClickPoll"
     >
       <div class="icon-wrapper">
         <ul class="icon">
-            <li class="c_menu"></li>
+            <li class="c_switch_camp"></li>
         </ul>
       </div>
       <span>
-        菜单
+        换边
       </span>
     </a>
   </div>
@@ -47,18 +85,18 @@ const handleClick = () => {
 <style scoped lang="scss">
 /* 导入路径根据实际情况编写 */
 @import '../sprite/style/sprite.scss';
-.view-menu-container {
+.view-switch-camp-container {
     position: fixed;
     left: 20px;
-    top: 80px;
+    top: 320px;
     z-index: 490;
 }
 
 @media (max-width: 480px) {
-    .view-menu-container {
+    .view-switch-camp-container {
         position: fixed;
         left: 10px;
-        top: 70px;
+        top: 320px;
     }
 }
 
@@ -73,20 +111,20 @@ const handleClick = () => {
   justify-content: center;
   font-size: 1rem;
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  // filter: grayscale(100%);
+//   filter: grayscale(100%);
   -webkit-user-select: none;
      -moz-user-select: none;
       -ms-user-select: none;
           user-select: none;
   text-decoration: none;
-  background: white;
+  background: rgba(255, 255, 255, 1);
   cursor: pointer;
   outline: none;
 }
 .button.openState {
   color: #ff6e6f;
   border-color: currentColor;
-  // filter: grayscale(0);
+//   filter: grayscale(0);
 }
 .button:hover {
   border-color: currentColor;

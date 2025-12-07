@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import type UserData from '@/interface/UserData'
+import type CC1GameSetting from '@/interface/CC1GameSetting.ts'
 
 export const useUserStore = defineStore('user', () => {
   const user = ref<UserData | null>(null)
@@ -202,17 +203,6 @@ export const useConfigStore = defineStore('config', () => {
     loadConfig
   }
 })
-
-// 游戏设置接口
-export interface CC1GameSetting {
-  soundVolume: number;
-  musicVolume: number;
-  mouseSensitivity: number;
-  moveSensitivity: number;
-  fov: number;
-  ambientIntensity: number;
-  graphicsQuality: 'low' | 'medium' | 'high';
-} 
 
 // 游戏设置 store
 export const useGameSettingStore = defineStore('gameSetting', () => {

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // The relative position of this file: src/components/PartCC1StartMenu.vue
 // CC1
-import { ref, computed } from 'vue'
-import ViewFilingLicense from '@/components/ViewFilingLicense.vue'
-import { useGameSettingStore, type CC1GameSetting } from '@/stores/store'
+import { ref, computed } from 'vue';
+import ViewFilingLicense from '@/components/ViewFilingLicense.vue';
+import { useGameSettingStore } from '@/stores/store';
+import type CC1GameSetting from '@/interface/CC1GameSetting';
 import type CampData from '@/interface/CampData';
 
 // 使用设置 store

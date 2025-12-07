@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // The relative position of this file: src/components/ViewCC1Notifications.vue
 import type Notification from '@/interface/Notification';
+import type NotifyUserLineChange from '@/interface/NotifyUserLineChange';
+import type NotifySimple from '@/interface/NotifySimple';
 import { computed } from 'vue';
 
 const props = defineProps<{
@@ -10,13 +12,22 @@ const props = defineProps<{
 /* 计算每条通知的垂直位置 */
 const positionedNotifications = computed(() => {
   return props.notifications.map((notification, index) => {
-    const top = 100 + index * 70;
+    const top = 110 + index * 80;
     return {
       ...notification,
       position: { top: `${top}px` }
     };
   });
 });
+
+/* 类型守卫函数，用于运行时类型检查 */
+const isNotifySimple = (content: any): content is NotifySimple => {
+  return content.type === 'simple';
+};
+
+const isNotifyUserLineChange = (content: any): content is NotifyUserLineChange => {
+  return content.type === 'join' || content.type === 'left';
+};
 </script>
 
 <template>
@@ -25,18 +36,25 @@ const positionedNotifications = computed(() => {
              v-for="notification in positionedNotifications" 
              :key="notification.id"
              :style="notification.position">
-            <div class="user-line-notification" v-if="notification.content.type === 'left'">
+            <!-- 用户加入/离开通知 -->
+            <div class="notification-item" v-if="isNotifyUserLineChange(notification.content) && notification.content.type === 'left'">
                 <div class="notification-icon">👋</div>
                 <div class="notification-content">
                     <span class="user-name">{{ notification.content.name }}</span>
                     <span class="notification-text">离开了世界</span>
                 </div>
             </div>
-            <div class="user-line-notification" v-if="notification.content.type === 'join'">
+            <div class="notification-item" v-if="isNotifyUserLineChange(notification.content) && notification.content.type === 'join'">
                 <div class="notification-icon">🤗</div>
                 <div class="notification-content">
                     <span class="user-name">{{ notification.content.name }}</span>
                     <span class="notification-text">加入了世界</span>
+                </div>
+            </div>
+            <!-- 简单文本通知 -->
+            <div class="notification-item" v-if="isNotifySimple(notification.content)">
+                <div class="notification-content">
+                    <span class="simple-text">{{ notification.content.text }}</span>
                 </div>
             </div>
         </div>
@@ -63,7 +81,7 @@ const positionedNotifications = computed(() => {
   transition: top 0.3s ease;
 }
 
-.user-line-notification {
+.notification-item {
   display: flex;
   align-items: center;
   background: rgba(0, 0, 0, 0.8);
@@ -71,7 +89,7 @@ const positionedNotifications = computed(() => {
   padding: 12px 16px;
   border-radius: 8px;
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   animation: slideInRight 0.3s ease-out;
   pointer-events: auto;
   cursor: pointer;
@@ -80,7 +98,7 @@ const positionedNotifications = computed(() => {
   transition: all 0.3s ease;
 }
 
-.user-line-notification:hover {
+.notification-item:hover {
   background: rgba(0, 0, 0, 0.9);
   transform: translateX(-5px);
 }
@@ -99,13 +117,18 @@ const positionedNotifications = computed(() => {
 
 .user-name {
   font-weight: bold;
-  font-size: 14px;
+  font-size: 15px;
   color: #ff6b6b;
   margin-bottom: 2px;
 }
 
 .notification-text {
-  font-size: 12px;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.simple-text{
+  font-size: 17px;
   color: #ccc;
 }
 
@@ -139,13 +162,13 @@ const positionedNotifications = computed(() => {
     right: 10px;
   }
   
-  .user-line-notification {
+  .notification-item {
     max-width: 200px;
     padding: 10px 12px;
   }
   
   .user-name {
-    font-size: 13px;
+    font-size: 14px;
   }
   
   .notification-text {

@@ -1,4 +1,3 @@
-<!-- ViewCC1ResetChessResult.vue -->
 <script setup lang="ts">
 // The relative position of this file: src/components/ViewCC1ResetChessResult.vue
 import {ref,watch,computed} from 'vue'

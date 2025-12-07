@@ -63,7 +63,7 @@ defineExpose({
 .view-reset-chess-container {
     position: fixed;
     left: 20px;
-    top: 200px;
+    top: 260px;
     z-index: 490;
 }
 
@@ -86,20 +86,20 @@ defineExpose({
   justify-content: center;
   font-size: 1rem;
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  filter: grayscale(100%);
+  // filter: grayscale(100%);
   -webkit-user-select: none;
      -moz-user-select: none;
       -ms-user-select: none;
           user-select: none;
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 1);
   cursor: pointer;
   outline: none;
 }
 .button.openState {
   color: #ff6e6f;
   border-color: currentColor;
-  filter: grayscale(0);
+  // filter: grayscale(0);
 }
 .button:hover {
   border-color: currentColor;

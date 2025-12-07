@@ -7,7 +7,7 @@ import websockets
 import json
 import sqlite3
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
 import configure
 import chinese_chess_instruct
 import tool
@@ -16,6 +16,7 @@ import datetime
 import aiohttp
 from urllib.parse import urlencode
 from websockets.exceptions import ConnectionClosed
+from functools import partial
 
 # 创建日志文件
 logs_folder = "logs"
@@ -25,9 +26,15 @@ current_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 log_filename = f"./logs/{current_time}-log.log"
 log_file = open(log_filename, 'w', encoding='utf-8')
 
-def log_message(message):
+def log_message(message:str):
     """记录日志信息到文件和控制台"""
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 限制消息长度不超过100字符（不包括时间戳部分）
+    max_message_length = 100
+    if len(message) > max_message_length:
+        message = message[:max_message_length] + " [已截断...]"
+    
     formatted_message = f"[{timestamp}] {message}"
     print(formatted_message)
     log_file.write(formatted_message + '\n')
@@ -95,6 +102,75 @@ def save_storage(visit_count, heart_count, online_count):
 # 初始化计数
 visit_count, heart_count , online_count = load_storage()
 
+
+class SwitchCampPoll:
+    """阵营交换投票池类"""
+    
+    def __init__(self, server, starter_ws, timeout_seconds: int):
+        self.server = server
+        self.starter_ws = starter_ws  # 发起投票的WebSocket
+        self.timeout_seconds = timeout_seconds
+        self.start_time = datetime.datetime.now()
+        self.votes = {}  # websocket -> vote_status (True=同意, False=不同意)
+        self.voter_ws = set()  # 记录参与投票的WebSocket
+        self.poll_active = True
+        self.timeout_task = None
+        self.result_broadcasted = False
+        
+    def add_voter(self, websocket):
+        """添加投票者"""
+        self.voter_ws.add(websocket)
+        
+    def record_vote(self, websocket, status: bool):
+        """记录投票结果"""
+        if websocket in self.voter_ws:
+            self.votes[websocket] = status
+            return True
+        return False
+    
+    def get_vote_results(self) -> tuple[int, int, int]:
+        """获取投票结果"""
+        total = len(self.voter_ws)
+        agree = sum(1 for vote in self.votes.values() if vote)
+        disagree = total - agree
+        return total, agree, disagree
+    
+    def should_switch(self) -> bool:
+        """判断是否应该交换阵营"""
+        total, agree, _ = self.get_vote_results()
+        if total == 0:
+            return False
+        # 需要所有投票者都同意才交换阵营
+        return agree == total
+    
+    def get_result_string(self) -> str:
+        """获取投票结果字符串"""
+        if not self.poll_active and not self.result_broadcasted:
+            total, agree, disagree = self.get_vote_results()
+            
+            if total < 2:  # 人数不足
+                return 'shorthanded'
+            elif agree == total:  # 全部通过
+                return 'all_pass'
+            elif agree > 0 and agree < total:  # 部分通过
+                return 'partly_pass'
+            else:  # 超时
+                return 'timeout'
+        return 'timeout'
+    
+    def end_poll(self):
+        """结束投票"""
+        self.poll_active = False
+        if self.timeout_task and not self.timeout_task.done():
+            self.timeout_task.cancel()
+    
+    def cleanup(self):
+        """清理资源"""
+        self.end_poll()
+        self.votes.clear()
+        self.voter_ws.clear()
+
+
 class HTTPClient:
     """HTTP客户端工具类"""
     
@@ -161,6 +237,7 @@ class ChineseChessServer:
         self.game_rooms = {}
         self.red_camp_player = None   # websocket
         self.black_camp_player = None # websocket
+        self.switch_camp_poll = None
 
         # 全局计数器
         global visit_count, heart_count
@@ -187,10 +264,104 @@ class ChineseChessServer:
         # 指令
         self.instruct = chinese_chess_instruct.ChineseChessInstruct()
 
+        # 预编译指令树
+        self._init_instruct_tree()
+
+    def _init_instruct_tree(self):
+        """初始化指令处理树"""
+        self.instruct_handlers = {
+            # 无需登录的指令
+            'ping': {
+                'handler': self.handle_ping,
+                'require_login': False
+            },
+            'get_publickey': {
+                'handler': self.handle_get_publickey,
+                'require_login': False
+            },
+            'get_login': {
+                'handler': self.handle_get_login,
+                'require_login': False
+            },
+            'get_anonymous_login': {
+                'handler': self.handle_get_anonymous_login,
+                'require_login': False
+            },
+            'get_server_config': {
+                'handler': self.handle_get_server_config,
+                'require_login': False
+            },
+            'get_user_data': {
+                'handler': self.handle_get_user_data,
+                'require_login': False
+            },
+            'get_token_login': {
+                'handler': self.handle_get_token_login,
+                'require_login': False
+            },
+            'get_storage_json': {
+                'handler': self.handle_get_storage_json,
+                'require_login': False
+            },
+            'heart_3': {
+                'handler': self.handle_heart_3,
+                'require_login': False
+            },
+            
+            # 需要登录的指令
+            'broadcast': {
+                'handler': self.handle_broadcast,
+                'require_login': True
+            },
+            'get_select_camp_red': {
+                'handler': self.handle_get_select_camp_red,
+                'require_login': True
+            },
+            'get_select_camp_black': {
+                'handler': self.handle_get_select_camp_black,
+                'require_login': True
+            },
+            'get_sync_chess_pieces': {
+                'handler': self.handle_get_sync_chess_pieces,
+                'require_login': True
+            },
+            'get_camp_data': {
+                'handler': self.handel_get_camp_data,
+                'require_login': True
+            },
+            'get_rb_head_position_pitch_yaw': {
+                'handler': self.handle_get_rb_head_position_pitch_yaw,
+                'require_login': True
+            },
+            'switch_camp_poll':{
+                'handler': self.handle_switch_camp_poll,
+                'require_login': True
+            },
+            'switch_camp_vote':{
+                'handler': self.handle_switch_camp_vote,
+                'require_login': True
+            }
+        }
+
+        # 广播子指令处理树
+        self.broadcast_handlers = {
+            "moving_chess": self.handle_moving_chess,
+            "head_position_pitch_yaw": self.handle_head_position_pitch_yaw,
+            "pick_up_chess": self.handle_pick_up_chess,
+            "pick_down_chess": self.handle_pick_down_chess,
+            "reset_all_chess_pieces": self.handle_reset_all_chess_pieces,
+            "give_up": self.handle_give_up,
+            "response_draw": self.handle_response_draw,
+            "request_draw": self.handle_request_draw,
+            "sp_message": self.handle_sp_message
+        }
+
     async def cleanup_user_session(self, websocket):
         """清理用户会话状态"""
         client_id = id(websocket)
         
+        await self.cleanup_switch_camp_poll_for_user(websocket)
+
         # 在清理之前获取用户信息，用于广播
         user_data = None
         conveyor = ""
@@ -239,6 +410,45 @@ class ChineseChessServer:
             user_left_instruct = self.instruct.create_broadcast_user_left_game(conveyor)
             await self.broadcast_to_all(user_left_instruct, exclude_websocket=websocket)
             log_message(f"用户离开游戏: {conveyor}")
+
+    async def cleanup_switch_camp_poll_for_user(self, websocket):
+        """清理用户的阵营投票相关状态"""
+        if not self.switch_camp_poll:
+            return
+        
+        # 如果用户是投票者
+        if websocket in self.switch_camp_poll.voter_ws:
+            # 记录用户退出投票
+            self.switch_camp_poll.record_vote(websocket, False)
+            
+            # 如果用户是发起者，标记投票结束
+            if websocket == self.switch_camp_poll.starter_ws:
+                log_message("阵营交换投票发起者断开连接，投票结束")
+                await self.end_switch_camp_poll()
+            else:
+                # 检查是否所有投票者都已投票
+                total_voters = len(self.switch_camp_poll.voter_ws)
+                total_votes = len(self.switch_camp_poll.votes)
+                
+                if total_votes == total_voters:
+                    # 所有投票者都已完成投票，结束投票
+                    await self.end_switch_camp_poll()
+
+    async def release_pieces_by_user(self, websocket, user_id):
+        """释放用户拾起的所有棋子"""
+        for piece_name, piece_state in self.chess_pieces_state.items():
+            if piece_state.is_picked and piece_state.picked_by == user_id:
+                # 重置棋子状态
+                piece_state.is_picked = False
+                piece_state.picked_by = None
+                piece_state.picked_by_ws = None
+                
+                # 停止移动轨迹定时器
+                if piece_name in self.chess_moving_timers:
+                    self.chess_moving_timers[piece_name].cancel()
+                    del self.chess_moving_timers[piece_name]
+                
+                log_message(f"用户断开连接，自动释放棋子 {piece_name}")
 
     async def cleanup_camp_selection(self, websocket):
         """清理阵营选择状态"""
@@ -420,23 +630,6 @@ class ChineseChessServer:
         finally:
             # 清理方法
             await self.cleanup_user_session(websocket)
-            
-
-    async def release_pieces_by_user(self, websocket, user_id):
-        """释放用户拾起的所有棋子"""
-        for piece_name, piece_state in self.chess_pieces_state.items():
-            if piece_state.is_picked and piece_state.picked_by == user_id:
-                # 重置棋子状态
-                piece_state.is_picked = False
-                piece_state.picked_by = None
-                piece_state.picked_by_ws = None
-                
-                # 停止移动轨迹定时器
-                if piece_name in self.chess_moving_timers:
-                    self.chess_moving_timers[piece_name].cancel()
-                    del self.chess_moving_timers[piece_name]
-                
-                log_message(f"用户断开连接，自动释放棋子 {piece_name}")
 
     async def handle_message(self, websocket, message):
         """处理客户端消息"""
@@ -452,29 +645,16 @@ class ChineseChessServer:
                     self.visit_count += 1
                     websocket.visit_counted = True
 
-            # log_message(f"收到指令: {instruct_type}")
-
-            # 根据指令类型处理
-            handlers = {
-                'broadcast': self.handle_broadcast, # 明确要求登录
-                'ping': self.handle_ping, # 未登录
-                'get_publickey': self.handle_get_publickey, # 未登录
-                'get_login': self.handle_get_login, # pass 项
-                'get_anonymous_login': self.handle_get_anonymous_login, # pass 项
-                'get_server_config': self.handle_get_server_config, # 未登录
-                'get_user_data': self.handle_get_user_data, # 未登录
-                'get_token_login': self.handle_get_token_login, # 未登录
-                'get_select_camp_red': self.handle_get_select_camp_red, # 明确要求登录
-                'get_select_camp_black': self.handle_get_select_camp_black, # 明确要求登录
-                'get_storage_json': self.handle_get_storage_json, # 未登录
-                'heart_3': self.handle_heart_3, # 未登录
-                'get_sync_chess_pieces': self.handle_get_sync_chess_pieces, # 明确要求登录
-                'get_camp_data': self.handel_get_camp_data, # 明确要求登录
-                'get_rb_head_position_pitch_yaw': self.handle_get_rb_head_position_pitch_yaw # 明确要求登录
-            }
-
-            handler = handlers.get(instruct_type)
-            if handler:
+            # 使用指令树查找处理器
+            handler_info = self.instruct_handlers.get(instruct_type)
+            if handler_info:
+                handler = handler_info['handler']
+                require_login = handler_info['require_login']
+                
+                # 检查登录状态
+                if require_login and websocket not in self.logged_users:                    
+                    return
+                
                 await handler(websocket, instruct)
             else:
                 await self.handle_unknown_instruct(websocket, instruct)
@@ -482,10 +662,212 @@ class ChineseChessServer:
         except json.JSONDecodeError:
             pass
 
+    async def handle_broadcast(self, websocket, instruct):
+        """处理广播指令"""
+        class_ = instruct.get('class')
+        # 使用广播子指令树查找处理器
+        handler = self.broadcast_handlers.get(class_)
+        if handler:
+            await handler(websocket, instruct)
+        else:
+            log_message(f"未知的广播子指令: {class_}")
+
+    async def handle_unknown_instruct(self, websocket, instruct):
+        """处理未知指令"""
+        log_message(f"未知指令: {instruct.get('type')}")
+        return False
+
+    async def handle_sp_message(self, websocket, instruct):
+        """处理简单消息指令"""
+        user_data = self.logged_users[websocket]
+        data = instruct.get('data',{})
+        text = data.get('text','')
+        conveyor = f"{user_data.get('name')}&{user_data.get('email')}"
+        instruct = self.instruct.create_broadcast_sp_message(conveyor,text)
+        await self.broadcast_to_all(instruct)
+        log_message(f"用户 {conveyor} 发送消息: {text}")
+
+    async def handle_switch_camp_poll(self, websocket, instruct):
+        """处理客户端发起的阵营交换投票"""
+        data = instruct.get('data', {})
+        timeout = data.get('timeout', 30)  # 默认30秒
+        
+        # 检查发起者是否有权限（必须是红方或黑方玩家）
+        if websocket not in [self.red_camp_player, self.black_camp_player]:
+            return
+        
+        # 检查是否已经有投票在进行中
+        if self.switch_camp_poll and self.switch_camp_poll.poll_active:
+            return
+        
+        # 检查双方玩家是否都在线
+        if not self.red_camp_player or not self.black_camp_player:
+            return
+        
+        # 创建投票池
+        self.switch_camp_poll = SwitchCampPoll(self, websocket, timeout)
+        
+        # 添加投票者（红方和黑方玩家）
+        self.switch_camp_poll.add_voter(self.red_camp_player)
+        self.switch_camp_poll.add_voter(self.black_camp_player)
+        
+        # 获取发起者信息
+        starter_data = self.logged_users[websocket]
+        starter_conveyor = f"{starter_data.get('name')}&{starter_data.get('email')}"
+        
+        log_message(f"阵营交换投票发起: 发起者={starter_conveyor}, 超时时间={timeout}秒")
+        
+        # 发送投票指令给所有投票者（红方和黑方玩家）
+        for voter_ws in [self.red_camp_player, self.black_camp_player]:
+            if voter_ws:
+                try:
+                    poll_instruct = self.instruct.create_switch_camp_poll(
+                        starter_conveyor, timeout
+                    )
+                    await voter_ws.send(poll_instruct.to_json())
+                    log_message(f"发送投票指令给玩家 {self.logged_users[voter_ws].get('name')}")
+                except Exception as e:
+                    log_message(f"发送投票指令失败: {e}")
+        
+        # 启动超时定时器
+        self.switch_camp_poll.timeout_task = asyncio.create_task(
+            self.switch_camp_poll_timeout(timeout)
+        )
+
+    async def handle_switch_camp_vote(self, websocket, instruct):
+        """处理客户端发起的投票"""
+        data = instruct.get('data', False)  # True=同意, False=不同意
+        
+        # 检查投票是否在进行中
+        if not self.switch_camp_poll or not self.switch_camp_poll.poll_active:
+            # log_message(f"没有进行中的阵营交换投票")
+            return
+        
+        # 检查投票者是否有权限
+        if websocket not in self.switch_camp_poll.voter_ws:
+            # log_message(f"非投票者尝试投票")
+            return
+        
+        # 记录投票
+        if self.switch_camp_poll.record_vote(websocket, data):
+            voter_data = self.logged_users[websocket]
+            voter_conveyor = f"{voter_data.get('name')}&{voter_data.get('email')}"
+            vote_status = "同意" if data else "不同意"
+            log_message(f"阵营交换投票: {voter_conveyor} {vote_status}")
+            
+            # 检查是否所有投票者都已投票
+            total_voters = len(self.switch_camp_poll.voter_ws)
+            total_votes = len(self.switch_camp_poll.votes)
+            
+            if total_votes == total_voters:
+                # 所有投票者都已完成投票，提前结束投票
+                await self.end_switch_camp_poll()
+            else:
+                # 还有投票者未投票，记录当前进度
+                log_message(f"投票进度: {total_votes}/{total_voters}")
+
+    async def switch_camp_poll_timeout(self, timeout_seconds: int):
+        """投票超时处理"""
+        try:
+            await asyncio.sleep(timeout_seconds)
+            
+            if self.switch_camp_poll and self.switch_camp_poll.poll_active:
+                log_message(f"阵营交换投票超时")
+                await self.end_switch_camp_poll()
+        except asyncio.CancelledError:
+            # 投票提前结束，定时器被取消
+            pass
+
+    async def end_switch_camp_poll(self):
+        """结束投票并处理结果"""
+        if not self.switch_camp_poll or self.switch_camp_poll.result_broadcasted:
+            return
+        
+        # 结束投票
+        self.switch_camp_poll.end_poll()
+        
+        # 获取投票结果
+        total, agree, disagree = self.switch_camp_poll.get_vote_results()
+        result_str = self.switch_camp_poll.get_result_string()
+        
+        # 创建结果指令
+        result_instruct = self.instruct.create_switch_camp_result(
+            result_str, total, agree, disagree
+        )
+        
+        log_message(f"阵营交换投票结束: 结果={result_str}, 总数={total}, 同意={agree}, 不同意={disagree}")
+        
+        # 广播投票结果给所有已登录用户
+        for ws in list(self.logged_users.keys()):
+            try:
+                await ws.send(result_instruct.to_json())
+            except Exception as e:
+                log_message(f"广播投票结果失败: {e}")
+        
+        # 如果需要交换阵营且结果为通过
+        if result_str == 'all_pass' and (self.red_camp_player is not None and self.black_camp_player is not None):
+            await self.perform_switch_camp()
+        
+        # 标记结果已广播
+        self.switch_camp_poll.result_broadcasted = True
+        
+        # 清理投票池
+        self.switch_camp_poll.cleanup()
+        self.switch_camp_poll = None
+
+    async def perform_switch_camp(self):
+        """执行阵营交换"""
+        log_message("开始执行阵营交换")
+        
+        # 获取当前玩家信息
+        red_user = self.logged_users[self.red_camp_player] if self.red_camp_player in self.logged_users else None
+        black_user = self.logged_users[self.black_camp_player] if self.black_camp_player in self.logged_users else None
+        
+        # 交换阵营引用
+        temp_red = self.red_camp_player
+        self.red_camp_player = self.black_camp_player
+        self.black_camp_player = temp_red
+        
+        # 更新玩家的阵营选择标记
+        if self.red_camp_player and hasattr(self.red_camp_player, 'choice_camp'):
+            self.red_camp_player.choice_camp = 'red'
+        
+        if self.black_camp_player and hasattr(self.black_camp_player, 'choice_camp'):
+            self.black_camp_player.choice_camp = 'black'
+        
+        # 获取交换后的玩家信息
+        new_red_user = self.logged_users[self.red_camp_player] if self.red_camp_player in self.logged_users else None
+        new_black_user = self.logged_users[self.black_camp_player] if self.black_camp_player in self.logged_users else None
+        
+        # 更新阵营数据
+        email1 = new_red_user.get('email') if new_red_user else ''
+        name1 = new_red_user.get('name') if new_red_user else ''
+        id1 = new_red_user.get('id') if new_red_user else 0
+        email2 = new_black_user.get('email') if new_black_user else ''
+        name2 = new_black_user.get('name') if new_black_user else ''
+        id2 = new_black_user.get('id') if new_black_user else 0
+        
+        # 广播新的阵营数据给所有玩家
+        camp_instruct = self.instruct.create_camp_data(
+            email1, name1, id1, email2, name2, id2
+        )
+        await self.broadcast_to_all(camp_instruct)
+        
+        log_message(f"阵营交换完成: 红方={name1}, 黑方={name2}")
+        
+        # 发送阵营选择确认指令给交换后的玩家
+        if self.red_camp_player:
+            await self.red_camp_player.send(
+                self.instruct.create_select_camp_red().to_json()
+            )
+        
+        if self.black_camp_player:
+            await self.black_camp_player.send(
+                self.instruct.create_select_camp_black().to_json()
+            )
+
     async def handel_get_camp_data(self, websocket, instruct):
         """处理获取阵营数据指令"""
-        if websocket not in self.logged_users:
-            return
         email1 = ''
         name1 = ''
         id1 = 0
@@ -513,9 +895,6 @@ class ChineseChessServer:
 
     async def handle_get_rb_head_position_pitch_yaw(self, websocket, instruct):
         """处理获取红方和黑方头部数据指令"""
-        if websocket not in self.logged_users:
-            return
-
         # 初始化默认值
         conveyor1 = ''
         position1 = {"x": 0.0, "y": 0.0, "z": 0.0}
@@ -528,12 +907,9 @@ class ChineseChessServer:
         
         # 查找红方玩家的头部数据
         if self.red_camp_player and self.red_camp_player in self.logged_users:
-            log_message("dddddddddddddddddd")
             red_user = self.logged_users[self.red_camp_player]
             red_conveyor = f"{red_user.get('name')}&{red_user.get('email')}"
-            log_message(red_conveyor)
             if red_conveyor in self.player_model_state:
-                log_message("fffffffffffffffff")
                 red_model = self.player_model_state[red_conveyor]
                 conveyor1 = red_model.conveyor
                 position1 = red_model.head_position
@@ -542,12 +918,9 @@ class ChineseChessServer:
         
         # 查找黑方玩家的头部数据
         if self.black_camp_player and self.black_camp_player in self.logged_users:
-            log_message("rrrrrrrrrrrrrrrrr")
             black_user = self.logged_users[self.black_camp_player]
             black_conveyor = f"{black_user.get('name')}&{black_user.get('email')}"
-            log_message(black_conveyor)
             if black_conveyor in self.player_model_state:
-                log_message("eeeeeeeeeeeeeeeeee")
                 black_model = self.player_model_state[black_conveyor]
                 conveyor2 = black_model.conveyor
                 position2 = black_model.head_position
@@ -567,9 +940,6 @@ class ChineseChessServer:
 
     async def handle_get_sync_chess_pieces(self, websocket, instruct):
         """处理获取棋子同步状态指令"""
-        if websocket not in self.logged_users:
-            return
-        
         # 构建所有棋子的当前状态数据
         pieces_data = []
         for piece_name, piece_state in self.chess_pieces_state.items():
@@ -592,6 +962,33 @@ class ChineseChessServer:
     
     async def handle_get_storage_json(self, websocket, instruct):
         await websocket.send(self.instruct.create_storage_json(load_storage_source()).to_json())
+
+    async def handle_request_draw(self, websocket, instruct):
+        """处理和棋指令"""
+        if websocket.choice_camp not in ['red', 'black']:
+            return
+        user_data = self.logged_users[websocket]
+        log_message(f"用户 {user_data.get('name')} 请求和棋")
+        
+        # 广播和棋指令给所有玩家（不包括发送者）
+        conveyor = f"{user_data.get('name')}&{user_data.get('email')}"
+        draw_instruct = self.instruct.create_broadcast_request_draw(conveyor)
+        await self.broadcast_to_all(draw_instruct,exclude_websocket=websocket)
+    
+    async def handle_response_draw(self, websocket, instruct):
+        """处理和棋指令"""
+        if websocket.choice_camp not in ['red', 'black']:
+            return
+        user_data = self.logged_users[websocket]
+        status = instruct.get('data',False)
+        if status:
+            log_message(f"用户 {user_data.get('name')} 同意了和棋")
+        else:
+            log_message(f"用户 {user_data.get('name')} 拒绝了和棋")
+        # 广播和棋指令给所有玩家（包括发送者）
+        conveyor = f"{user_data.get('name')}&{user_data.get('email')}"
+        draw_instruct = self.instruct.create_broadcast_response_draw(conveyor,status)
+        await self.broadcast_to_all(draw_instruct)
 
     async def handle_give_up(self, websocket, instruct):
         """处理投降指令"""
@@ -631,29 +1028,25 @@ class ChineseChessServer:
 
     async def handle_heart_3(self, websocket, instruct):
         """处理heart_3指令"""
-        # 检查用户是否已登录
-        if websocket not in self.logged_users:
-            # log_message("未登录用户尝试发送heart_3指令")
-            return
-        
         # 检查该会话是否已经发送过heart_3
         if websocket in self.heart_sent_sessions:
-            # log_message(f"用户 {self.logged_users[websocket].get('name')} 重复发送heart_3指令，已忽略")
             return
         
-        # 增加heart_count
-        self.heart_count += 1
-        self.heart_sent_sessions.add(websocket)
-        
-        user_data = self.logged_users[websocket]
-        log_message(f"用户 {user_data.get('name')} 发送heart_3指令，heart_count增加到: {self.heart_count}")
-        
-        # 立即保存到文件
-        await self.save_current_counts()
-        
-        # 发送heart_tk感谢指令
-        thank_you_instruct = self.instruct.create_heart_tk()
-        await websocket.send(thank_you_instruct.to_json())
+        # 只有已登录用户才能增加heart_count
+        if websocket in self.logged_users:
+            # 增加heart_count
+            self.heart_count += 1
+            self.heart_sent_sessions.add(websocket)
+            
+            user_data = self.logged_users[websocket]
+            log_message(f"用户 {user_data.get('name')} 发送heart_3指令，heart_count增加到: {self.heart_count}")
+            
+            # 立即保存到文件
+            await self.save_current_counts()
+            
+            # 发送heart_tk感谢指令
+            thank_you_instruct = self.instruct.create_heart_tk()
+            await websocket.send(thank_you_instruct.to_json())
 
     async def handle_ping(self, websocket, instruct):
         """处理ping指令"""
@@ -669,9 +1062,6 @@ class ChineseChessServer:
 
     async def handle_get_select_camp_red(self, websocket, instruct):
         """处理选择红色阵营请求指令"""
-        if websocket not in self.logged_users:
-            return
-        
         # 检查用户是否已经在其他阵营
         if websocket == self.black_camp_player:
             # 用户已经在黑方，先清理黑方状态
@@ -710,9 +1100,6 @@ class ChineseChessServer:
 
     async def handle_get_select_camp_black(self, websocket, instruct):
         """处理选择黑色阵营请求指令"""
-        if websocket not in self.logged_users:
-            return
-        
         # 检查用户是否已经在其他阵营
         if websocket == self.red_camp_player:
             # 用户已经在红方，先清理红方状态
@@ -819,34 +1206,6 @@ class ChineseChessServer:
             "head_img": "none"
         }
         await websocket.send(self.instruct.create_user_data(empty_user_data).to_json())
-
-    async def handle_broadcast(self, websocket, instruct):
-        """处理广播指令"""
-        # 检查用户是否已登录
-        if websocket not in self.logged_users:
-            return
-        
-        class_ = instruct.get('class')
-        
-        # 根据广播类型进行不同的处理
-        if class_ == "pick_up_chess":
-            await self.handle_pick_up_chess(websocket, instruct)
-        elif class_ == "pick_down_chess":
-            await self.handle_pick_down_chess(websocket, instruct)
-        elif class_ == "moving_chess":
-            await self.handle_moving_chess(websocket, instruct)
-        elif class_ == "head_position_pitch_yaw":
-            await self.handle_head_position_pitch_yaw(websocket, instruct)
-        elif class_ == "reset_all_chess_pieces":
-            await self.handle_reset_all_chess_pieces(websocket, instruct)
-        elif class_ == "give_up":
-            await self.handle_give_up(websocket, instruct)
-        else:
-            pass
-
-    async def handle_unknown_instruct(self, websocket, instruct):
-        """处理未知指令"""
-        return False
 
     async def handle_pick_up_chess(self, websocket, instruct):
         """处理拾起棋子指令"""

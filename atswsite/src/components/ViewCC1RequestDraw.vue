@@ -1,31 +1,30 @@
 <script setup lang="ts">
-// The relative position of this file: src/components/ViewCC1Menu.vue
-
-// 定义组件属性
-interface Props {
-    openMenuState: boolean
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  openMenuState: false
-})
-
+// The relative position of this file: src/components/ViewCC1RequestDraw.vue
+import { ref} from 'vue'
+const isVisible = ref(true);
 // 定义点击事件
 const emit = defineEmits<{
-  'click-open-menu': [value: boolean]
-}>()
+  'click-request-draw': [value: boolean]
+}>();
 
 // 方法
 const handleClick = () => {
-  emit('click-open-menu', props.openMenuState)
-}
+  emit('click-request-draw', true);
+};
+
+// 暴露给父组件
+defineExpose({
+  isVisible
+});
 </script>
 
 <template>
-  <div class="view-menu-container">
+<div 
+    v-if="isVisible"
+    class="view-request-draw-container"
+  >
     <a 
-      class="button" 
-      :class="openMenuState ? 'openState' : 'closeState'"
+      class="button"
       @click="handleClick"
       role="button"
       tabindex="0"
@@ -34,11 +33,11 @@ const handleClick = () => {
     >
       <div class="icon-wrapper">
         <ul class="icon">
-            <li class="c_menu"></li>
+            <li class="c_handshake"></li>
         </ul>
       </div>
       <span>
-        菜单
+        和棋
       </span>
     </a>
   </div>
@@ -47,18 +46,18 @@ const handleClick = () => {
 <style scoped lang="scss">
 /* 导入路径根据实际情况编写 */
 @import '../sprite/style/sprite.scss';
-.view-menu-container {
+.view-request-draw-container {
     position: fixed;
     left: 20px;
-    top: 80px;
+    top: 200px;
     z-index: 490;
 }
 
 @media (max-width: 480px) {
-    .view-menu-container {
+    .view-request-draw-container {
         position: fixed;
         left: 10px;
-        top: 70px;
+        top: 200px;
     }
 }
 
@@ -79,7 +78,7 @@ const handleClick = () => {
       -ms-user-select: none;
           user-select: none;
   text-decoration: none;
-  background: white;
+  background: rgba(255, 255, 255, 1);
   cursor: pointer;
   outline: none;
 }

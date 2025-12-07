@@ -37,6 +37,21 @@ class ChineseChessInstruct(Instruct):
     # 自定义指令
     # ==============================
     @staticmethod
+    def create_broadcast_sp_message(conveyor:str,text:str):
+        """创建普通文本消息|字符数量限制800(个)"""
+        limited_text = text[:800] if len(text) > 800 else text
+        return InstructObject("broadcast",instruct_class="sp_message",conveyor=conveyor,data={
+            "text":limited_text
+        })
+    @staticmethod
+    def create_broadcast_response_draw(conveyor:str,status:bool):
+        """创建广播合棋指令"""
+        return InstructObject("broadcast",instruct_class="response_draw",conveyor=conveyor,data=status)
+    @staticmethod
+    def create_broadcast_request_draw(conveyor:str):
+        """创建广播合棋指令"""
+        return InstructObject("broadcast",instruct_class="request_draw",conveyor=conveyor)
+    @staticmethod
     def create_broadcast_user_join_game(conveyor: str) -> InstructObject:
         """创建广播用户加入游戏指令"""
         return InstructObject("broadcast", instruct_class="user_join_game", conveyor=conveyor)
@@ -63,6 +78,28 @@ class ChineseChessInstruct(Instruct):
         """创建广播重置所有棋子指令"""
         return InstructObject("broadcast", instruct_class="reset_all_chess_pieces", conveyor=conveyor)
 
+    @staticmethod
+    def create_switch_camp_poll(conveyor: str,second: int) -> InstructObject:
+        """创建交换阵营投票指令"""
+        return InstructObject("switch_camp_poll",conveyor=conveyor,data={
+            "timeout": second
+        })
+    
+    @staticmethod
+    def create_switch_camp_vote(conveyor: str,status: bool) -> InstructObject:
+        """创建交换阵营投票指令"""
+        return InstructObject("switch_camp_vote",conveyor=conveyor,data=status)
+    
+    @staticmethod
+    def create_switch_camp_result(result:str,total:int,agree:int,disagree:int) -> InstructObject:
+        """创建交换阵营投票结果指令"""
+        return InstructObject("switch_camp_result",data={
+            "result": result,# 'all_pass' | 'partly_pass' | 'timeout' | 'shorthanded'
+            "total": total,
+            "agree": agree,
+            "disagree": disagree
+        })
+    
     @staticmethod
     def create_get_camp_data() -> InstructObject:
         """创建获取阵营数据指令"""
