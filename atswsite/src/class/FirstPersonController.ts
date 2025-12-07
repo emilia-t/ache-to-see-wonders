@@ -1,4 +1,5 @@
 // The relative position of this file: src/class/FirstPersonController.ts
+// 负责第一人称视角的鼠标键盘控制和移动逻辑
 import * as THREE from 'three';
 import { sceneConfig } from '@/config/chineseChessConfig.ts';
 import type GameSettings from '@/interface/CC1GameSetting';

@@ -1,17 +1,21 @@
-// The relative position of this file: src/class/SceneManager.ts
-// 负责Three.js场景、相机、渲染器、灯光等的创建和管理
+// The relative position of this file: src/class/ChessSceneManager.ts
+// 负责Three.js场景、相机、渲染器、灯光、各模型(棋子除外)等的创建和管理
 import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { sceneConfig, cameraConfig, rendererConfig, lightConfig } from '@/config/chineseChessConfig.ts';
 import type Coord3D from '@/interface/Coord3D';
 
-export class SceneManager {
+export class ChessSceneManager {
   public  scene: THREE.Scene = new THREE.Scene;
   public  camera: THREE.PerspectiveCamera = new THREE.PerspectiveCamera;
   public  renderer: THREE.WebGLRenderer = new THREE.WebGLRenderer;
   public  labelRenderer: CSS2DRenderer = new CSS2DRenderer;
   public  ambientLight: THREE.AmbientLight = new THREE.AmbientLight;
+  public  playerRedHeadBox: THREE.Group | null = null;
+  public  playerBlackHeadBox: THREE.Group | null = null;
+
+  public  loadedPlayerHeadsCount = 0;
 
   private directionalLight1: THREE.DirectionalLight = new THREE.DirectionalLight;
   private directionalLight2: THREE.DirectionalLight = new THREE.DirectionalLight;
@@ -22,10 +26,16 @@ export class SceneManager {
   
   private sceneRef: HTMLElement | null = null;
   private onProgressUpdate?: (increment: number, status: string) => void;
+  private onAllPlayerHeadLoaded?: (head1: THREE.Group, head2: THREE.Group) => void;
 
-  constructor(sceneRef: HTMLElement, onProgressUpdate?: (increment: number, status: string) => void) {
+  constructor(
+    sceneRef: HTMLElement,
+    onProgressUpdate?: (increment: number, status: string) => void,
+    onAllPlayerHeadLoaded?: (head1: THREE.Group, head2: THREE.Group) => void
+  ) {
     this.sceneRef = sceneRef;
     this.onProgressUpdate = onProgressUpdate;
+    this.onAllPlayerHeadLoaded = onAllPlayerHeadLoaded;
   }
 
   public init() {
@@ -35,6 +45,10 @@ export class SceneManager {
     this.createLights();
     this.createHelpers();
     this.createGround();
+    this.createGraniteSlate();
+    this.createChessBoard();
+    this.createPlayerRedHead();
+    this.createPlayerBlackHead();
     this.initLabelRenderer();
   }
 
@@ -159,6 +173,62 @@ export class SceneManager {
     
     this.scene.add(this.centerGridHelper);
     this.scene.add(this.centerAxesHelper);
+  }
+
+  private createChessBoard() {
+    this.loadModel(
+      sceneConfig.S_chess_board.modelPath,
+      sceneConfig.S_chess_board.position,
+      sceneConfig.S_chess_board.scale,
+      'S_chess_board'
+    );
+  }
+
+  private createGraniteSlate() {
+    this.loadModel(
+      sceneConfig.S_granite_slate.modelPath,
+      sceneConfig.S_granite_slate.position,
+      sceneConfig.S_granite_slate.scale,
+      'S_granite_slate'
+    );
+  }
+
+  private createPlayerRedHead() {
+    this.loadModel(
+      sceneConfig.V_Player_head_box_1.modelPath,
+      sceneConfig.V_Player_head_box_1.position,
+      sceneConfig.V_Player_head_box_1.scale,
+      'V_Player_head_box_1',
+      (model) => {
+        this.setNonReflectiveMaterial(model);// 设置为非反光材质
+        model.visible = false;// 默认不可见
+        model.traverse(child => child.visible = false);
+        this.loadedPlayerHeadsCount+=1;
+        this.playerRedHeadBox = model;
+        if (this.loadedPlayerHeadsCount === 2 && this.playerBlackHeadBox!==null) {
+          this.onAllPlayerHeadLoaded?.(this.playerRedHeadBox, this.playerBlackHeadBox);
+        }
+      }
+    );
+  }
+
+  private createPlayerBlackHead() {
+    this.loadModel(
+      sceneConfig.V_Player_head_box_2.modelPath,
+      sceneConfig.V_Player_head_box_2.position,
+      sceneConfig.V_Player_head_box_2.scale,
+      'V_Player_head_box_2',
+      (model) => {
+        this.setNonReflectiveMaterial(model);// 设置为非反光材质
+        model.visible = false;// 默认不可见
+        model.traverse(child => child.visible = false);
+        this.loadedPlayerHeadsCount+=1;
+        this.playerBlackHeadBox = model;
+        if (this.loadedPlayerHeadsCount === 2 && this.playerRedHeadBox!==null) {
+          this.onAllPlayerHeadLoaded?.(this.playerRedHeadBox, this.playerBlackHeadBox);
+        }
+      }
+    );
   }
 
   private createGround() {

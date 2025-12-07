@@ -1,60 +1,64 @@
 <script setup lang="ts">
 // The relative position of this file: src/class/PageChineseChess.vue
-import { ref, onMounted, onUnmounted } from 'vue';
-import { SceneManager } from '@/class/SceneManager';
-import { FirstPersonController } from '@/class/FirstPersonController';
-import { ChessPieceManager } from '@/class/ChessPieceManager';
-import { PlayerManager } from '@/class/PlayerManager';
-import { ChessInteractionManager } from '@/class/ChessInteractionManager';
-import { MoveArrowManager } from '@/class/MoveArrowManager';
-import ChineseChessInstruct from '@/class/ChineseChessInstruct';
-import Tool from '@/class/Tool';
+import { ref, onMounted, onUnmounted }    from 'vue';
+import { useGameSettingStore }            from '@/stores/store';
 
-import type Notification from '@/interface/Notification';
-import type NotifyUserLineChange from '@/interface/NotifyUserLineChange';
-import type NotifySimple from '@/interface/NotifySimple';
-import type MessageSimple from '@/interface/MessageSimple';
-import type CampData from '@/interface/CampData';
-import type LogConfig from '@/interface/LogConfig';
-import type InstructObject from '@/interface/InstructObject';
+import { ChessSceneManager }              from '@/class/ChessSceneManager';
+import { FirstPersonController }          from '@/class/FirstPersonController';
+import { ChessPieceManager }              from '@/class/ChessPieceManager';
+import { ChessPlayerManager }             from '@/class/ChessPlayerManager';
+import { ChessInteractionManager }        from '@/class/ChessInteractionManager';
+import { ChessMoveArrowManager }          from '@/class/ChessMoveArrowManager';
+import ChineseChessInstruct               from '@/class/ChineseChessInstruct';
+import Tool                               from '@/class/Tool';
 
-import { sceneConfig, cameraConfig } from '@/config/chineseChessConfig.ts';
-import { CHINESE_CHESS_SERVER_URL } from '@/config/apiConfig.ts';
-import { useGameSettingStore } from '@/stores/store';
+import type Notification                  from '@/interface/Notification';
+import type NotifyUserLineChange          from '@/interface/NotifyUserLineChange';
+import type NotifySimple                  from '@/interface/NotifySimple';
+import type MessageSimple                 from '@/interface/MessageSimple';
+import type CampData                      from '@/interface/CampData';
+import type LogConfig                     from '@/interface/LogConfig';
+import type InstructObject                from '@/interface/InstructObject';
+
+import { sceneConfig, cameraConfig }      from '@/config/chineseChessConfig.ts';
+import { CHINESE_CHESS_SERVER_URL }       from '@/config/apiConfig.ts';
 
 // 导入组件
-import ViewUserLayer from './ViewUserLayer.vue';
-import ViewHeart from './ViewHeart.vue';
-import PartCC1Check from './PartCC1Check.vue';
-import PartCC1Loading from './PartCC1Loading.vue';
-import PartCC1StartMenu from './PartCC1StartMenu.vue';
-import ViewCC1Menu from './ViewCC1Menu.vue';
-import ViewCC1GiveUp from './ViewCC1GiveUp.vue';
-import ViewCC1GiveUpConfirm from './ViewCC1GiveUpConfirm.vue';
-import ViewCC1GiveUpResult from './ViewCC1GiveUpResult.vue';
-import ViewCC1ResetChess from './ViewCC1ResetChess.vue';
-import ViewCC1ResetChessResult from './ViewCC1ResetChessResult.vue';
-import ViewCC1Notifications from './ViewCC1Notifications.vue';
-import ViewCC1DebugInfo from './ViewCC1DebugInfo.vue';
-import ViewCC1RequestDraw from './ViewCC1RequestDraw.vue';
-import ViewCC1ResponDraw from './ViewCC1ResponDraw.vue';
-import ViewCC1Message from './ViewCC1Message.vue';
-import ViewCC1SwitchCamp from './ViewCC1SwitchCamp.vue';
-import ViewCC1SwitchCampResult from './ViewCC1SwitchCampResult.vue';
+import ViewUserLayer                      from '@/components/ViewUserLayer.vue';
+import ViewHeart                          from '@/components/ViewHeart.vue';
+import PartCC1Check                       from '@/components/PartCC1Check.vue';
+import PartCC1Loading                     from '@/components/PartCC1Loading.vue';
+import PartCC1StartMenu                   from '@/components/PartCC1StartMenu.vue';
+import ViewCC1Menu                        from '@/components/ViewCC1Menu.vue';
+import ViewCC1GiveUp                      from '@/components/ViewCC1GiveUp.vue';
+import ViewCC1GiveUpConfirm               from '@/components/ViewCC1GiveUpConfirm.vue';
+import ViewCC1GiveUpResult                from '@/components/ViewCC1GiveUpResult.vue';
+import ViewCC1ResetChess                  from '@/components/ViewCC1ResetChess.vue';
+import ViewCC1ResetChessResult            from '@/components/ViewCC1ResetChessResult.vue';
+import ViewCC1Notifications               from '@/components/ViewCC1Notifications.vue';
+import ViewCC1DebugInfo                   from '@/components/ViewCC1DebugInfo.vue';
+import ViewCC1RequestDraw                 from '@/components/ViewCC1RequestDraw.vue';
+import ViewCC1ResponDraw                  from '@/components/ViewCC1ResponDraw.vue';
+import ViewCC1Message                     from '@/components/ViewCC1Message.vue';
+import ViewCC1SwitchCamp                  from '@/components/ViewCC1SwitchCamp.vue';
+import ViewCC1SwitchCampResult            from '@/components/ViewCC1SwitchCampResult.vue';
 
 // ==============================
 // 管理类实例
 // ==============================
-let sceneManager: SceneManager;
+let sceneManager: ChessSceneManager;
 let firstPersonController: FirstPersonController;
 let chessPieceManager: ChessPieceManager;
-let playerManager: PlayerManager;
+let playerManager: ChessPlayerManager;
 let chessInteractionManager: ChessInteractionManager;
-let moveArrowManager: MoveArrowManager;
+let moveArrowManager: ChessMoveArrowManager;
 
 // ==============================
 // 响应式数据
 // ==============================
+const pendingPiecesData = ref<any>(null);// 待同步的棋子数据
+const pendingRbHeadData = ref<any>(null);// 待同步的头部位置数据
+const pendingCampData = ref<any>(null);// 待同步的阵营数据
 const sceneRef = ref<HTMLDivElement>();
 const heartRef = ref<InstanceType<typeof ViewHeart> | null>(null);
 const startMenuRef = ref<InstanceType<typeof PartCC1StartMenu> | null>(null);
@@ -162,10 +166,6 @@ const initInstructionHandlers = () => {
   };
 };
 
-// ==============================
-// 消息处理函数
-// ==============================
-// 预定义指令处理函数映射表
 const instructionHandlers = {
   // broadcast 类型指令
   broadcast_pick_up_chess: (conveyor: any, data: any) => handleBroadcastPickUpChess(conveyor, data),
@@ -207,10 +207,9 @@ const handleMessage = (instructObj: InstructObject) => {
   }
 };
 
-//////////////////////
-// 各种消息处理函数
-//////////////////////
-
+// ==============================
+// 消息处理函数
+// ==============================
 /**
  * 处理收到投票发起
  */
@@ -242,7 +241,6 @@ const handleSelectCampBlack = () => {
   campMyChoiceC1.value = 'black';
 };
 
-
 /**
  * 服务器返回点赞事件处理
  */
@@ -254,23 +252,19 @@ const handleHeartTk = () => {
 
 const handleRbHeadPositionPitchYaw = (data: any) => {
   const { red, black } = data;
+  if(sceneManager.loadedPlayerHeadsCount<2){
+    pendingRbHeadData.value=data;
+    return;
+  }
   if(red.conveyor !== ''){
-    playerManager.updatePlayerHeadModel(
-      red.conveyor,
-      red.position,
-      red.pitch,
-      red.yaw,
-      'red'
-    );
+    playerManager.updatePlayerData(red.conveyor,{position: red.position, pitch: red.pitch, yaw: red.yaw, camp: 'red'});
+    playerManager.updatePlayerHeadModel(red.conveyor,red.position,red.pitch,red.yaw,'red');
+    setTimeout(()=>playerManager.updatePlayerHeadVisibility(),0);
   }
   if(black.conveyor !== ''){
-    playerManager.updatePlayerHeadModel(
-      black.conveyor,
-      black.position,
-      black.pitch,
-      black.yaw,
-      'black'
-    );
+    playerManager.updatePlayerData(black.conveyor,{position: black.position, pitch: black.pitch, yaw: black.yaw, camp: 'black'});
+    playerManager.updatePlayerHeadModel(black.conveyor,black.position,black.pitch,black.yaw,'black');
+    setTimeout(()=>playerManager.updatePlayerHeadVisibility(),0);
   }
 };
 
@@ -288,7 +282,6 @@ const handleBroadcastSpMessage = (conveyor: string, data: any) =>{
   );
   messageCountSpC1.value += 1;
 };
-
 
 /**
  * 响应请求和棋事件
@@ -407,15 +400,23 @@ const handleCampData = (data: any) => {
     red: { id: data.red.id, name: data.red.name, email: data.red.email },
     black: { id: data.black.id, name: data.black.name, email: data.black.email }
   };
-  
-  playerManager.setCampData(campDataC1.value);
-  playerManager.updatePlayerHeadVisibility();
+  if(playerManager){
+    playerManager.setCampData(campDataC1.value);
+    playerManager.updatePlayerHeadVisibility();
+  }
+  else{
+    pendingCampData.value = campDataC1.value;
+  }
 };
 
 const handleSyncChessPieces = (data: any) => {
   const { pieces } = data;
-  if (pieces && Array.isArray(pieces)) {
-    chessPieceManager.syncPieces(pieces);
+  if (chessPieceManager.allPieceLoadedState) {
+    if (pieces && Array.isArray(pieces)) {
+      chessPieceManager.syncPieces(pieces);
+    }
+  }else{
+    pendingPiecesData.value = data;
   }
 };
 
@@ -641,27 +642,56 @@ onMounted(async () => {
   
   // 初始化指令处理器
   initInstructionHandlers();
-  
+
   // 初始化场景管理器
-  sceneManager = new SceneManager(sceneRef.value, (increment, status) => {
-    loadingState.value.loadedResources += increment;
-    const progress = (loadingState.value.loadedResources / loadingState.value.totalResources) * 100;
-    loadingState.value.progress = Math.min(100, progress);
+  sceneManager = new ChessSceneManager(
+    sceneRef.value,
+    (increment, status) => {
+      loadingState.value.loadedResources += increment;
+      const progress = (loadingState.value.loadedResources / loadingState.value.totalResources) * 100;
+      loadingState.value.progress = Math.min(100, progress);
     
-    if (status) {
-      loadingState.value.statusText = status;
-    }
+      if (status) {
+        loadingState.value.statusText = status;
+      }
     
-    if (loadingState.value.loadedResources >= loadingState.value.totalResources) {
-      setTimeout(() => {
-        loadingState.value.isLoading = false;
-        loadingState.value.statusText = '场景加载完成！';
-      }, 500);
+      if (loadingState.value.loadedResources >= loadingState.value.totalResources) {
+        setTimeout(() => {
+          loadingState.value.isLoading = false;
+          loadingState.value.statusText = '场景加载完成！';
+        }, 500);
+      }
+    },
+    (head1, head2) => {// 所有玩家头部模型加载完成回调
+      playerManager.setPlayerHeads(head1, head2);
+      const { red, black } = pendingRbHeadData.value || {'red':{conveyor:'',position:{x:0,y:0,z:0},pitch:0,yaw:0},'black':{conveyor:'',position:{x:0,y:0,z:0},pitch:0,yaw:0}};
+      if(red.conveyor !== ''){
+        playerManager.updatePlayerData(red.conveyor,{position: red.position, pitch: red.pitch, yaw: red.yaw, camp: 'red'});
+        playerManager.updatePlayerHeadModel(red.conveyor,red.position,red.pitch,red.yaw,'red');
+        setTimeout(()=>playerManager.updatePlayerHeadVisibility(),0);
+      }
+      if(black.conveyor !== ''){
+        playerManager.updatePlayerData(black.conveyor,{position: black.position, pitch: black.pitch, yaw: black.yaw, camp: 'black'});
+        playerManager.updatePlayerHeadModel(black.conveyor,black.position,black.pitch,black.yaw,'black');
+        setTimeout(()=>playerManager.updatePlayerHeadVisibility(),0);
+      }
     }
-  });
-  
+  );
   sceneManager.init();
   
+  // 初始化玩家管理器
+  playerManager = new ChessPlayerManager(
+    sceneManager.scene,
+    campDataC1.value,
+    ()=>{
+      if (pendingCampData.value) {
+        playerManager.setCampData(pendingCampData.value);
+        playerManager.updatePlayerHeadVisibility();
+        pendingCampData.value = null;
+      }
+    }
+  );
+
   // 初始化棋子管理器
   chessPieceManager = new ChessPieceManager(
     sceneManager.scene,
@@ -669,67 +699,21 @@ onMounted(async () => {
       // 更新加载进度
     },
     (pieceName, piece) => {
-      // 棋子加载完成回调
+     // 单个棋子加载完成回调 
+    },
+    () => {
+      // 所有棋子加载完成回调
+      if (pendingPiecesData.value) {
+        const { pieces } = pendingPiecesData.value;
+        if (pieces && Array.isArray(pieces)) {
+          chessPieceManager.syncPieces(pieces);
+        }
+        pendingPiecesData.value = null;
+      }
     }
   );
-  
   await chessPieceManager.createChessPieces();
-  
-  // 初始化玩家管理器
-  playerManager = new PlayerManager(sceneManager.scene, campDataC1.value);
-  
-  // 加载玩家头部模型
-  const head1 = await sceneManager.loadModel(
-    sceneConfig.V_Player_head_box_1.modelPath,
-    sceneConfig.V_Player_head_box_1.position,
-    sceneConfig.V_Player_head_box_1.scale,
-    'V_Player_head_box_1',
-    (model) => {
-      sceneManager.setNonReflectiveMaterial(model);
-      model.visible = false;
-      model.traverse(child => child.visible = false);
-    }
-  );
-  
-  const head2 = await sceneManager.loadModel(
-    sceneConfig.V_Player_head_box_2.modelPath,
-    sceneConfig.V_Player_head_box_2.position,
-    sceneConfig.V_Player_head_box_2.scale,
-    'V_Player_head_box_2',
-    (model) => {
-      sceneManager.setNonReflectiveMaterial(model);
-      model.visible = false;
-      model.traverse(child => child.visible = false);
-    }
-  );
-  
-  playerManager.setPlayerHeads(head1, head2);
-  
-  // 加载其他模型
-  await sceneManager.loadModel(
-    sceneConfig.S_granite_slate.modelPath,
-    sceneConfig.S_granite_slate.position,
-    sceneConfig.S_granite_slate.scale,
-    'S_granite_slate'
-  );
-  
-  await sceneManager.loadModel(
-    sceneConfig.S_chess_board.modelPath,
-    sceneConfig.S_chess_board.position,
-    sceneConfig.S_chess_board.scale,
-    'S_chess_board'
-  );
-  
-  // 初始化第一人称控制器
-  firstPersonController = new FirstPersonController(
-    sceneManager.camera,
-    sceneManager.renderer.domElement,
-    gameSettingStore.gameSettings,
-    () => chessInteractionManager.onClick()
-  );
-  
-  firstPersonController.init();
-  
+
   // 初始化棋子交互管理器
   chessInteractionManager = new ChessInteractionManager(
     sceneManager.scene,
@@ -749,9 +733,18 @@ onMounted(async () => {
       return !!(state && state.isPicked && state.pickedBy);
     }
   );
+
+  // 初始化第一人称控制器
+  firstPersonController = new FirstPersonController(
+    sceneManager.camera,
+    sceneManager.renderer.domElement,
+    gameSettingStore.gameSettings,
+    () => chessInteractionManager.onClick()
+  );
+  firstPersonController.init();
   
   // 初始化移动箭头管理器
-  moveArrowManager = new MoveArrowManager(sceneManager.scene);
+  moveArrowManager = new ChessMoveArrowManager(sceneManager.scene);
   
   // 开始动画循环
   animate();

@@ -1,10 +1,10 @@
-// The relative position of this file: src/class/MoveArrowManager.ts
+// The relative position of this file: src/class/ChessMoveArrowManager.ts
 import * as THREE from 'three';
 import { sceneConfig, type PieceNameKeys } from '@/config/chineseChessConfig.ts';
 import Tool from '@/class/Tool';
 import type Coord3D from '@/interface/Coord3D';
 
-export class MoveArrowManager {
+export class ChessMoveArrowManager {
   private scene: THREE.Scene;
 
   constructor(scene: THREE.Scene) {

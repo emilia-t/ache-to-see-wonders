@@ -1,4 +1,5 @@
 // The relative position of this file: src/class/ChessInteractionManager.ts
+// 负责棋子的拾起、放置、跟随等交互逻辑
 import * as THREE from 'three';
 import { sceneConfig } from '@/config/chineseChessConfig.ts';
 import type Coord3D from '@/interface/Coord3D';

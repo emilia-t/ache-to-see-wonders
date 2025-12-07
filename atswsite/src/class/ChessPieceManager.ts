@@ -1,12 +1,14 @@
 // The relative position of this file: src/class/ChessPieceManager.ts
+// 负责棋子的创建、状态管理、材质管理和轨迹更新
 import * as THREE from 'three';
-import { sceneConfig, piecesConfig, type PieceNameKeys } from '@/config/chineseChessConfig.ts';
+import { sceneConfig, piecesConfig} from '@/config/chineseChessConfig.ts';
 import type Coord3D from '@/interface/Coord3D';
 import type PieceSyncData from '@/interface/PieceSyncData';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 export class ChessPieceManager {
   public  chessPieces: THREE.Group = new THREE.Group;
+  public  allPieceLoadedState = false;
   private pieceOriginalMaterials = new Map<string, THREE.Material | THREE.Material[]>();
   private pieceTrajectories: { [key: string]: {
     points: Coord3D[];
@@ -31,15 +33,18 @@ export class ChessPieceManager {
   private scene: THREE.Scene;
   private onProgressUpdate?: (increment: number, status: string) => void;
   private onPieceLoad?: (pieceName: string, piece: THREE.Object3D) => void;
+  private onAllPieceLoaded?: () => void;
 
   constructor(
     scene: THREE.Scene,
     onProgressUpdate?: (increment: number, status: string) => void,
-    onPieceLoad?: (pieceName: string, piece: THREE.Object3D) => void
+    onPieceLoad?: (pieceName: string, piece: THREE.Object3D) => void,
+    onAllPieceLoaded?: () => void
   ) {
     this.scene = scene;
     this.onProgressUpdate = onProgressUpdate;
     this.onPieceLoad = onPieceLoad;
+    this.onAllPieceLoaded = onAllPieceLoaded;
   }
 
   public async createChessPieces(): Promise<THREE.Group> {
@@ -93,14 +98,16 @@ export class ChessPieceManager {
             this.chessPieces.add(piece);
             loadedPieces++;
             
-            this.onProgressUpdate?.(1, `加载棋子模型... (${loadedPieces}/${totalPieces})`);
-            this.onPieceLoad?.(pieceConfig.name, piece);
-            
             // 所有棋子加载完成
             if (loadedPieces === totalPieces) {
               this.scene.add(this.chessPieces);
+              this.allPieceLoadedState = true;
+              this.onAllPieceLoaded?.();
               resolve(this.chessPieces);
             }
+
+            this.onProgressUpdate?.(1, `加载棋子模型... (${loadedPieces}/${totalPieces})`);
+            this.onPieceLoad?.(pieceConfig.name, piece);
           },
           undefined,
           (error) => {

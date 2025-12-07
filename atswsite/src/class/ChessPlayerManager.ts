@@ -1,12 +1,12 @@
-// The relative position of this file: src/class/PlayerManager.ts
-// 负责第一人称视角的鼠标键盘控制和移动逻辑
+// The relative position of this file: src/class/ChessPlayerManager.ts
+// 负责玩家头部模型、名字标签的管理和更新
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { sceneConfig } from '@/config/chineseChessConfig.ts';
 import type Coord3D from '@/interface/Coord3D';
 import type CampData from '@/interface/CampData';
 
-interface PlayerHeadData {
+interface ChessPlayerHeadData {
   position: Coord3D;
   targetPosition: Coord3D;
   pitch: number;
@@ -18,19 +18,28 @@ interface PlayerHeadData {
   camp: string;
 }
 
-export class PlayerManager {
+export class ChessPlayerManager {
+  public allPlayersHeadLoaded = false;
+
+  private nameTageMarginTop = 0.28;
   private playersNameTag = new Map<string, CSS2DObject>();
-  private playersDataHeadModel: { [key: string]: PlayerHeadData } = {};
-  
+  private playersDataHeadModel: { [key: string]: ChessPlayerHeadData } = {};
+
   private playerHeadBox_1: THREE.Group | null = null;
   private playerHeadBox_2: THREE.Group | null = null;
   private scene: THREE.Scene;
   private campData: CampData;
   private myCamp: string = '';
+  private onInstantiation: () => void;
 
-  constructor(scene: THREE.Scene, campData: CampData) {
+  constructor(
+      scene: THREE.Scene,
+      campData: CampData,
+      onInstantiation: ()=>void = ()=>{}
+    ) {
     this.scene = scene;
     this.campData = campData;
+    this.onInstantiation = onInstantiation;
   }
 
   public setPlayerHeads(head1: THREE.Group, head2: THREE.Group) {
@@ -153,7 +162,7 @@ export class PlayerManager {
     if (!nameTag) {
       nameTag = this.createPlayerNameTag(playerId, position, playerName);
     } else {
-      nameTag.position.set(position.x, position.y + 0.18, position.z);
+      nameTag.position.set(position.x, position.y + this.nameTageMarginTop, position.z);
       
       const nameDiv = nameTag.element as HTMLDivElement;
       if (nameDiv.textContent !== playerName) {
@@ -181,7 +190,7 @@ export class PlayerManager {
     nameTagDiv.style.border = '1px solid rgba(255, 255, 255, 0.3)';
     
     const nameTag = new CSS2DObject(nameTagDiv);
-    nameTag.position.set(position.x, position.y + 0.18, position.z);
+    nameTag.position.set(position.x, position.y + this.nameTageMarginTop, position.z);
     nameTag.name = "player_name_tag";
     this.scene.add(nameTag);
     this.playersNameTag.set(playerId, nameTag);

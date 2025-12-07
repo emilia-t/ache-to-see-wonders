@@ -1,4 +1,5 @@
 // The relative position of this file: src/class/ChineseChessInstruct.ts
+// 负责中国象棋游戏指令的创建发送
 import type InstructObject from '@/interface/InstructObject';
 import Instruct from './Instruct';
 import Tool from './Tool';
