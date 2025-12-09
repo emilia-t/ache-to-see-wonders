@@ -20,7 +20,7 @@ import type CampData                      from '@/interface/CampData';
 import type LogConfig                     from '@/interface/LogConfig';
 import type InstructObject                from '@/interface/InstructObject';
 
-import { sceneConfig, cameraConfig }      from '@/config/chineseChessConfig.ts';
+import { cameraConfig }                   from '@/config/chineseChessConfig.ts';
 import { CHINESE_CHESS_SERVER_URL }       from '@/config/apiConfig.ts';
 
 // 导入组件
@@ -186,7 +186,7 @@ const instructionHandlers = {
   heart_tk: () => handleHeartTk(),
   select_camp_red: () => handleSelectCampRed(),
   select_camp_black: () => handleSelectCampBlack(),
-  switch_camp_poll: (conveyor: any, data: any) => handleSwitchCampPoll(conveyor,data),
+  switch_camp_poll: (data: any) => handleSwitchCampPoll(data),
   switch_camp_result: (data: any) => handleSwitchCampResult(data)
 };
 /**
@@ -213,22 +213,96 @@ const handleMessage = (instructObj: InstructObject) => {
 /**
  * 处理收到投票发起
  */
-const handleSwitchCampPoll = (conveyor:string,data:any) => {
-  // 打开进行投票弹窗
-
-  // 选择并进行投票
-
+const handleSwitchCampPoll = (data: any) => {
+  const { pollConveyor, timeout } = data;
+  // 设置投票相关状态
+  pollCountM1.value += 1;
+  pollConveyorM1.value = pollConveyor;
+  pollCountdownM1.value = timeout;
+  
+  // 开启投票倒计时
+  if (intervalPollM1.value) {
+    clearInterval(intervalPollM1.value);
+  }
+  
+  intervalPollM1.value = setInterval(() => {
+    if (pollCountdownM1.value > 0) {
+      pollCountdownM1.value -= 1;
+    } else {
+      clearInterval(intervalPollM1.value);
+      // 超时后清理状态
+      pollCountdownM1.value = 0;
+    }
+  }, 1000);
+  
+  // 显示投票通知
+  const starterName = pollConveyor.split('&')[0];
+  alertMessage({
+    type: 'simple',
+    text: `${starterName}发起了换边投票，请在${timeout}秒内投票`
+  });
 };
 
 /**
  * 处理交换阵营结果
  */
-const handleSwitchCampResult = (data:any) => {
-  const {result,total,agree,disagree} = data;
-  // 打开投票结果弹窗
+const handleSwitchCampResult = (data: any) => {
+  const { result, total, agree, disagree } = data;
+  
+  resultCountM1.value += 1;
+  pollResultM1.value = result;
+  voteTotalM1.value = total;
+  voteAgreeM1.value = agree;
+  voteDisagreeM1.value = disagree;
+  
+  // 清理投票倒计时
+  if (intervalPollM1.value) {
+    clearInterval(intervalPollM1.value);
+    pollCountdownM1.value = 0;
+  }
+  
+  // 显示结果通知
+  let resultText = '';
+  switch (result) {
+    case 'all_pass':
+      resultText = '换边投票通过，阵营已交换';
+      playerManager.forceRefreshPlayerNameTags();// 换边通过后，强制清理所有玩家的nameTag
+      break;
+    case 'partly_pass':
+      resultText = `换边投票部分通过 (${agree}/${total} 同意)`;
+      break;
+    case 'timeout':
+      resultText = '换边投票超时';
+      break;
+    case 'shorthanded':
+      resultText = '参与投票人数不足';
+      break;
+  }
+  
+  alertMessage({
+    type: 'simple',
+    text: resultText
+  });
+};
 
-  // 确认结果并关闭弹窗
+/**
+ * 处理发送投票
+ */
+const handleSendVote = (status: boolean) => {
+  // 检查是否有进行中的投票
+  if (pollCountdownM1.value <= 0) {
+    alertMessage({ type: 'simple', text: '没有进行中的投票' });
+    return;
+  }
 
+  // 发送投票
+  ccInstruct.switchCampVote('', status);
+  
+  const voteText = status ? '同意' : '反对';
+  alertMessage({
+    type: 'simple',
+    text: `已投票：${voteText}`
+  });
 };
 
 /**
@@ -236,9 +310,45 @@ const handleSwitchCampResult = (data:any) => {
  */
 const handleSelectCampRed = () => {
   campMyChoiceC1.value = 'red';
+  playerManager.setMyCamp('red');
+  firstPersonController.setCameraPosition(//修改相机位置
+    cameraConfig.redStartPos,
+    cameraConfig.redStartPitch,
+    cameraConfig.redStartYaw
+  );
+  // 上传新的初始位置
+  setTimeout(() => {
+    const position = firstPersonController.getPosition();
+    ccInstruct.broadcastHeadPositionPitchYaw(
+      '',
+      position,
+      firstPersonController.pitch,
+      firstPersonController.yaw,
+      campMyChoiceC1.value
+    );
+  }, 0);
+  playerManager.updatePlayerHeadVisibility();
 };
 const handleSelectCampBlack = () => {
   campMyChoiceC1.value = 'black';
+  playerManager.setMyCamp('black');
+  firstPersonController.setCameraPosition(//修改相机位置
+    cameraConfig.blackStartPos,
+    cameraConfig.blackStartPitch,
+    cameraConfig.blackStartYaw
+  );
+  // 上传新的初始位置
+  setTimeout(() => {
+    const position = firstPersonController.getPosition();
+    ccInstruct.broadcastHeadPositionPitchYaw(
+      '',
+      position,
+      firstPersonController.pitch,
+      firstPersonController.yaw,
+      campMyChoiceC1.value
+    );
+  }, 0);
+  playerManager.updatePlayerHeadVisibility();
 };
 
 /**
@@ -541,26 +651,30 @@ const showGiveUpConfirm = ()=>{
 
 // 选择阵营开始游戏
 const clickStartGame = (side: 'red' | 'black') => {
-  campMyChoiceC1.value = side;
-  playerManager.setMyCamp(side);
-  
   if (side === 'red') {
-    firstPersonController.setCameraPosition(
+    firstPersonController.setCameraPosition(//修改相机位置
       cameraConfig.redStartPos,
       cameraConfig.redStartPitch,
       cameraConfig.redStartYaw
     );
-    ccInstruct.getSelectCampRed();
+    if(side !== campMyChoiceC1.value ){
+      ccInstruct.getSelectCampRed();
+    }
   } else {
-    firstPersonController.setCameraPosition(
+    firstPersonController.setCameraPosition(//修改相机位置
       cameraConfig.blackStartPos,
       cameraConfig.blackStartPitch,
       cameraConfig.blackStartYaw
     );
-    ccInstruct.getSelectCampBlack();
+    if(side !== campMyChoiceC1.value ){
+      ccInstruct.getSelectCampBlack();
+    }
   }
   
-  // 首次更新位置
+  campMyChoiceC1.value = side;
+  playerManager.setMyCamp(side);
+
+  // 上传新的初始位置
   setTimeout(() => {
     const position = firstPersonController.getPosition();
     ccInstruct.broadcastHeadPositionPitchYaw(
@@ -770,6 +884,33 @@ onUnmounted(() => {
   <div class="pageBox">
     <div ref="sceneRef" class="chess-container"></div>
     <div class="crosshair"></div>
+
+
+    <!-- 投票组件 -->
+    <div v-if="pollCountdownM1 > 0" class="voting-overlay">
+      <div class="voting-panel">
+        <h3>换边投票</h3>
+        <p>发起者: {{ pollConveyorM1.split('&')[0] }}</p>
+        <p>剩余时间: {{ pollCountdownM1 }}秒</p>
+        <div class="voting-buttons">
+          <button @click="handleSendVote(true)" class="agree-btn">同意换边</button>
+          <button @click="handleSendVote(false)" class="disagree-btn">反对换边</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 显示投票结果的组件 -->
+    <ViewCC1SwitchCampResult 
+      :poll-count="pollCountM1"
+      :poll-conveyor="pollConveyorM1"
+      :result-count="resultCountM1"
+      :poll-result="pollResultM1"
+      :vote-total="voteTotalM1"
+      :vote-agree="voteAgreeM1"
+      :vote-disagree="voteDisagreeM1"
+    />
+
+
     <ViewCC1DebugInfo :enabled-debug="debugEnabled" :debug-info="debugInfoC1"/>
     <ViewUserLayer theme="light" design="C" @click-logout="ccInstruct.closeLink()"/>
     <ViewHeart ref="heartRef" @like-change="handleHeart3" label="Like" />
@@ -803,6 +944,52 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+
+
+
+
+.voting-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  padding: 20px;
+  border-radius: 10px;
+  z-index: 1000;
+  color: white;
+}
+
+.voting-panel {
+  text-align: center;
+}
+
+.voting-buttons {
+  margin-top: 15px;
+}
+
+.voting-buttons button {
+  margin: 0 10px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.agree-btn {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.disagree-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+
+
+
+
 .chess-container {
   width: 100vw;
   height: 100vh;

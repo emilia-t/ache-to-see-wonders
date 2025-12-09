@@ -75,6 +75,19 @@ export class ChessPlayerManager {
         child.visible = visible_2;
       });
     }
+    this.updateNameTagsVisibility();// 更新名字标签的可见性
+  }
+
+  private updateNameTagsVisibility() {
+    this.playersNameTag.forEach((nameTag, playerId) => {
+      const playerData = this.playersDataHeadModel[playerId];
+      if (playerData) {
+        const shouldBeVisible = playerData.camp !== this.myCamp;
+        nameTag.visible = shouldBeVisible;
+        const nameDiv = nameTag.element as HTMLDivElement;
+        nameDiv.style.display = shouldBeVisible ? 'block' : 'none';
+      }
+    });
   }
 
   public updatePlayerData(conveyor: string, data: {
@@ -83,7 +96,10 @@ export class ChessPlayerManager {
     yaw: number;
     camp: string;
   }) {
-    if (!this.playersDataHeadModel[conveyor]) {
+    const oldPlayerData = this.playersDataHeadModel[conveyor];
+    const oldCamp = oldPlayerData?.camp;
+    
+    if (!oldPlayerData) {
       this.playersDataHeadModel[conveyor] = {
         position: data.position,
         targetPosition: data.position,
@@ -96,11 +112,23 @@ export class ChessPlayerManager {
         camp: data.camp
       };
     } else {
+      if (oldCamp !== data.camp) {
+        this.removePlayerNameTag(conveyor);// 阵营改变，移除旧的nameTag并重新创建
+      }
+      
       this.playersDataHeadModel[conveyor].targetPosition = data.position;
       this.playersDataHeadModel[conveyor].targetPitch = data.pitch;
       this.playersDataHeadModel[conveyor].targetYaw = data.yaw;
       this.playersDataHeadModel[conveyor].lastUpdate = Date.now();
       this.playersDataHeadModel[conveyor].camp = data.camp;
+    }
+  }
+
+  private removePlayerNameTag(playerId: string) {
+    const nameTag = this.playersNameTag.get(playerId);
+    if (nameTag) {
+      this.scene.remove(nameTag);
+      this.playersNameTag.delete(playerId);
     }
   }
 
@@ -127,10 +155,12 @@ export class ChessPlayerManager {
 
   public updatePlayerHeadModel(conveyor: string, position: Coord3D, pitch: number, yaw: number, camp: string) {
     if (camp === this.myCamp) return;
-    if(this.playerHeadBox_1 === null) return;
-    if(this.playerHeadBox_2 === null) return;
+    if (this.playerHeadBox_1 === null) return;
+    if (this.playerHeadBox_2 === null) return;
+    
     let headModel: THREE.Group | null = null;
-    let offset: { x: number; y: number; z: number } = {x:0,y:0,z:0};
+    let offset: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
+    
     if (camp === 'red') {
       headModel = this.playerHeadBox_1;
       offset = sceneConfig.playerHeadBoxOffset.rad_1;
@@ -158,6 +188,15 @@ export class ChessPlayerManager {
 
   public updatePlayerNameTag(playerId: string, position: Coord3D, playerName: string) {
     let nameTag = this.playersNameTag.get(playerId);
+    const playerData = this.playersDataHeadModel[playerId];
+    
+    if (playerData?.camp === this.myCamp) {// 如果玩家阵营与我的阵营相同，不创建名字标签
+      if (nameTag) {
+        this.scene.remove(nameTag);
+        this.playersNameTag.delete(playerId);
+      }
+      return;
+    }
     
     if (!nameTag) {
       nameTag = this.createPlayerNameTag(playerId, position, playerName);
@@ -168,6 +207,10 @@ export class ChessPlayerManager {
       if (nameDiv.textContent !== playerName) {
         nameDiv.textContent = playerName;
       }
+      
+      // 确保名字标签可见
+      nameTag.visible = true;
+      nameDiv.style.display = 'block';
     }
   }
 
@@ -196,6 +239,25 @@ export class ChessPlayerManager {
     this.playersNameTag.set(playerId, nameTag);
     
     return nameTag;
+  }
+
+  public forceRefreshPlayerNameTags () {
+    // 移除所有现有的名字标签
+    this.playersNameTag.forEach((nameTag, playerId) => {
+      this.scene.remove(nameTag);
+    });
+    this.playersNameTag.clear();
+    // 重新创建名字标签
+    const allPlayers = this.getAllPlayers();
+    Object.keys(allPlayers).forEach(playerId => {
+      const playerData = allPlayers[playerId];
+      this.updatePlayerNameTag(
+        playerId,
+        playerData.position,
+        playerData.name
+      );
+    });
+    this.updatePlayerHeadVisibility();// 更新可见性
   }
 
   public removePlayer(playerId: string) {

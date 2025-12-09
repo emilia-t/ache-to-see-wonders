@@ -81,8 +81,8 @@ export default class ChineseChessInstruct extends Instruct {
     }>): void {
         this.send(ChineseChessInstruct._syncChessPieces_(pieces));
     }
-    public switchCampPoll(conveyor:string,second:number):void{
-        this.send(ChineseChessInstruct._switchCampPoll_(conveyor,second));
+    public switchCampPoll(pollConveyor:string,second:number):void{
+        this.send(ChineseChessInstruct._switchCampPoll_(pollConveyor,second));
     }
     public switchCampVote(conveyor:string,status:boolean):void{
         this.send(ChineseChessInstruct._switchCampVote_(conveyor,status));
@@ -240,13 +240,14 @@ export default class ChineseChessInstruct extends Instruct {
         };
     }
 
-    public static _switchCampPoll_(conveyor:string,second:number): InstructObject {
+    public static _switchCampPoll_(pollConveyor:string,second:number): InstructObject {
         return {
             "type":"switch_camp_poll",
             "class":"",
-            "conveyor":conveyor,
+            "conveyor":"",
             "time": Tool.getFormatTime(),
             "data": {
+                "pollConveyor":pollConveyor,
                 "timeout":second
             }
         };

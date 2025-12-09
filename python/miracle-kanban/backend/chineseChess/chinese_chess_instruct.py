@@ -79,9 +79,10 @@ class ChineseChessInstruct(Instruct):
         return InstructObject("broadcast", instruct_class="reset_all_chess_pieces", conveyor=conveyor)
 
     @staticmethod
-    def create_switch_camp_poll(conveyor: str,second: int) -> InstructObject:
+    def create_switch_camp_poll(pollConveyor: str,second: int) -> InstructObject:
         """创建交换阵营投票指令"""
-        return InstructObject("switch_camp_poll",conveyor=conveyor,data={
+        return InstructObject("switch_camp_poll",data={
+            "pollConveyor": pollConveyor,
             "timeout": second
         })
     
