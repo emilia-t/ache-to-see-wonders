@@ -399,7 +399,7 @@ const resetToDefaultSettings = () => {
 
         <div class="info-section">
           <h4>版本信息</h4>
-          <p>版本: 1.0.1</p>
+          <p>版本: 1.0.2</p>
           <p>Copyright © 2025 Ache to See Wonders. All rights reserved.</p>
         </div>
       </div>
