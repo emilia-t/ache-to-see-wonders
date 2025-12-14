@@ -109,6 +109,29 @@ class AccountApiService {
     })
   }
 
+  async resetPwd(userEmail: string): Promise<AccountApiResponse> {
+    const formData = new URLSearchParams()
+    formData.append('user_email', userEmail)
+
+    return this.request('/resetpwd', {
+      method: 'POST',
+      body: formData,
+    })
+  }
+
+  async updatePwd(userId:string,userToken:string,oldPwd:string,newPwd:string){
+    const formData = new URLSearchParams()
+    formData.append('user_id', userId);
+    formData.append('user_token', userToken);
+    formData.append('old_pwd', oldPwd);
+    formData.append('new_pwd', newPwd);
+
+    return this.request('/updatepwd', {
+      method: 'POST',
+      body: formData,
+    })
+  }
+
   private formatDate(date=new Date()): string {
     let year = date.getFullYear();
     let month = (date.getMonth() + 1).toString().padStart(2, '0'); // 月份是从0开始的，所以需要+1

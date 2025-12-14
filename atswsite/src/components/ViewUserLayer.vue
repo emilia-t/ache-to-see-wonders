@@ -47,6 +47,10 @@ const showLoginModal = ref(false);           // PC 登录界面
 const showMobileLoginModal = ref(false);     // 移动版 登录界面
 const showRegisterModal = ref(false);        // PC 注册界面
 const showMobileRegisterModal = ref(false);  // 移动版 注册界面
+const showForgetPwdModal = ref(false);       // PC 忘记密码界面
+const showMobileForgetPwdModal = ref(false); // 移动版 忘记密码界面
+const showChangePwdModal = ref(false);       // PC 修改密码界面
+const showMobileChangePwdModal = ref(false); // 移动版 修改密码界面
 const showUserDropdown = ref(false);
 const showMobileUserMenu = ref(false);
 
@@ -63,13 +67,30 @@ const registerForm = ref({
   qq: ''
 });
 
+const forgetPwdForm = ref({
+  email: ''
+});
+
+const changePwdForm = ref({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+});
+
 // 错误信息
 const loginError = ref('');
 const registerError = ref('');
+const forgetPwdError = ref('');
+const forgetPwdSuccess = ref('');
+const changePwdError = ref('');
+const changePwdSuccess = ref('');
 
 // 密码显示状态
 const showLoginPassword = ref(false);
 const showRegisterPassword = ref(false);
+const showOldPassword = ref(false);
+const showNewPassword = ref(false);
+const showConfirmPassword = ref(false);
 
 // 自动登录状态
 const autoLoginInProgress = ref(false);
@@ -121,6 +142,39 @@ const toggleRegister = () => {
   registerError.value = '';
 };
 
+const toggleForgetPwd = () => {
+  if (isMobile.value || isTablet.value) {
+    showMobileForgetPwdModal.value = !showMobileForgetPwdModal.value;
+    showForgetPwdModal.value = false;
+  } else {
+    showForgetPwdModal.value = !showForgetPwdModal.value;
+    showMobileForgetPwdModal.value = false;
+  }
+  // 清空消息
+  forgetPwdError.value = '';
+  forgetPwdSuccess.value = '';
+};
+
+const toggleChangePwd = () => {
+  if (isMobile.value || isTablet.value) {
+    showMobileChangePwdModal.value = !showMobileChangePwdModal.value;
+    showChangePwdModal.value = false;
+  } else {
+    showChangePwdModal.value = !showChangePwdModal.value;
+    showMobileChangePwdModal.value = false;
+  }
+  // 清空消息和表单
+  changePwdError.value = '';
+  changePwdSuccess.value = '';
+  changePwdForm.value = {
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  };
+  // 关闭其他弹窗
+  showMobileUserMenu.value = false;
+};
+
 const toggleUserDropdown = () => {
   showUserDropdown.value = !showUserDropdown.value;
 };
@@ -134,19 +188,34 @@ const closeAllModals = () => {
   showMobileLoginModal.value = false;
   showRegisterModal.value = false;
   showMobileRegisterModal.value = false;
+  showForgetPwdModal.value = false;
+  showMobileForgetPwdModal.value = false;
+  showChangePwdModal.value = false;
+  showMobileChangePwdModal.value = false;
   showUserDropdown.value = false;
   showMobileUserMenu.value = false;
   
   // 清空错误信息
   loginError.value = '';
   registerError.value = '';
+  forgetPwdError.value = '';
+  forgetPwdSuccess.value = '';
+  changePwdError.value = '';
+  changePwdSuccess.value = '';
 
-  // 清空注册表单
+  // 清空表单
+  loginForm.value = { email: '', password: '' };
   registerForm.value = {
     email: '',
     password: '',
     name: '',
     qq: ''
+  };
+  forgetPwdForm.value = { email: '' };
+  changePwdForm.value = {
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: ''
   };
 };
 
@@ -159,6 +228,108 @@ const switchToRegister = () => {
 const switchToLogin = () => {
   closeAllModals();
   toggleLogin();
+};
+
+const switchToRestPwd = () => {
+  closeAllModals();
+  toggleForgetPwd();
+};
+
+const switchToChangePwd = () => {
+  closeAllModals();
+  toggleChangePwd();
+};
+
+// 忘记密码处理方法
+const handleForgetPassword = async () => {
+  forgetPwdError.value = '';
+  forgetPwdSuccess.value = '';
+  userStore.setLoading(true);
+
+  try {
+    // 这里调用重置密码的API
+    const response = await accountApiService.resetPwd(forgetPwdForm.value.email);
+    
+    if (response.success) {
+      forgetPwdSuccess.value = response.message;
+    } else {
+      forgetPwdError.value = response.message || '发送重置邮件失败，请重试';
+    }
+  } catch (error) {
+    forgetPwdError.value = error instanceof Error ? error.message : '发送重置邮件失败，请重试';
+  } finally {
+    userStore.setLoading(false);
+  }
+};
+
+// 修改密码处理方法
+const handleChangePassword = async () => {
+  changePwdError.value = '';
+  changePwdSuccess.value = '';
+  
+  // 验证表单
+  if (!changePwdForm.value.oldPassword || !changePwdForm.value.newPassword || !changePwdForm.value.confirmPassword) {
+    changePwdError.value = '请填写所有密码字段';
+    return;
+  }
+  
+  if (changePwdForm.value.newPassword.length < 8) {
+    changePwdError.value = '新密码长度至少8位';
+    return;
+  }
+  
+  if (changePwdForm.value.newPassword !== changePwdForm.value.confirmPassword) {
+    changePwdError.value = '新密码和确认密码不一致';
+    return;
+  }
+  
+  if (changePwdForm.value.oldPassword === changePwdForm.value.newPassword) {
+    changePwdError.value = '新密码不能和旧密码相同';
+    return;
+  }
+  
+  userStore.setLoading(true);
+
+  try {
+    // 获取当前用户的token和ID
+    const token = localStorage.getItem('user_token');
+    const userId = localStorage.getItem('user_id');
+    
+    if (!token || !userId) {
+      changePwdError.value = '用户未登录或登录已过期';
+      userStore.setLoading(false);
+      return;
+    }
+    
+    // 调用修改密码API
+    const response = await accountApiService.updatePwd(
+      userId,
+      token,
+      changePwdForm.value.oldPassword,
+      changePwdForm.value.newPassword
+    );
+    
+    if (response.success) {
+      changePwdSuccess.value = '密码修改成功！';
+      // 清空表单
+      changePwdForm.value = {
+        oldPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      };
+      // 退出登录
+      userStore.logout();
+      emit('click-logout');
+      // 刷新页面
+      setTimeout(()=>{window.alert("登录失效，即将刷新页面。");window.location.reload()},1000);
+    } else {
+      changePwdError.value = response.message || '密码修改失败，请重试';
+    }
+  } catch (error) {
+    changePwdError.value = error instanceof Error ? error.message : '密码修改失败，请重试';
+  } finally {
+    userStore.setLoading(false);
+  }
 };
 
 // 认证相关方法
@@ -286,7 +457,10 @@ const handleAutoLoginFailure = () => {
 // 工具方法
 const handleClickOutside = (event: Event) => {
   const target = event.target as HTMLElement;
-  if (!target.closest('.user-avatar') && !target.closest('.user-dropdown') && !target.closest('.login-modal') && !target.closest('.mobile-user-menu')) {
+  if (!target.closest('.user-avatar') && 
+      !target.closest('.user-dropdown') && 
+      !target.closest('.login-modal') && 
+      !target.closest('.mobile-user-menu')) {
     closeAllModals();
   }
 };
@@ -304,11 +478,23 @@ const detectDeviceType = () => {
 };
 
 // 密码显示/隐藏切换方法
-const togglePasswordVisibility = (type: 'login' | 'register') => {
-  if (type === 'login') {
-    showLoginPassword.value = !showLoginPassword.value;
-  } else {
-    showRegisterPassword.value = !showRegisterPassword.value;
+const togglePasswordVisibility = (type: 'login' | 'register' | 'old' | 'new' | 'confirm') => {
+  switch (type) {
+    case 'login':
+      showLoginPassword.value = !showLoginPassword.value;
+      break;
+    case 'register':
+      showRegisterPassword.value = !showRegisterPassword.value;
+      break;
+    case 'old':
+      showOldPassword.value = !showOldPassword.value;
+      break;
+    case 'new':
+      showNewPassword.value = !showNewPassword.value;
+      break;
+    case 'confirm':
+      showConfirmPassword.value = !showConfirmPassword.value;
+      break;
   }
 };
 
@@ -357,7 +543,8 @@ defineExpose({
             <div class="user-email">{{ userData.email }}</div>
           </div>
           <div v-if="showUserDropdown" class="user-dropdown">
-            <div class="dropdown-item" @click="handleLogout">退出登录</div>
+            <div class="dropdown-item" @click.stop="switchToChangePwd">修改密码</div>
+            <div class="dropdown-item" @click.stop="handleLogout">退出登录</div>
           </div>
         </div>
         <div v-else class="login-prompt">
@@ -366,7 +553,7 @@ defineExpose({
       </div>
     </div>
 
-    <!-- 样式 B : 非固定悬浮的，跟随父组件的文档流的单一头像+用户名的样式，鼠标悬浮在头像或用户名上会显示用户信息，点击头像或用户名会展开登录弹窗 -->
+    <!-- 样式 B : 非固定悬浮的，跟随父组件的文档流的单一头像+用户名的样式，鼠标悬浮在头像或用户名上会显示账号信息和账号设置(退出登录,修改密码)内容，点击头像或用户名会展开登录弹窗 -->
     <div v-if="props.design == 'B'" class="design-b">
       <div class="user-compact" :class="{ 'logged-in': isLoggedIn }">
         <div v-if="isLoggedIn && userData" class="user-info-hoverable">
@@ -376,18 +563,19 @@ defineExpose({
             <div class="tooltip-content">
               <p>{{ userData.name }}</p>
               <p>{{ userData.email }}</p>
-              <button class="logout-btn" @click="handleLogout">退出</button>
+              <button class="change-pwd-btn" @click.stop="switchToChangePwd">修改密码</button>
+              <button class="logout-btn" @click.stop="handleLogout">退出登录</button>
             </div>
           </div>
         </div>
         <div v-else class="login-compact" @click.stop="toggleLogin">
           <div class="avatar-placeholder"></div>
-          <span class="login-text">登入</span>
+          <span class="login-text">登录</span>
         </div>
       </div>
     </div>
 
-    <!-- 样式 C : 悬浮固定在右上角的单一头像+用户名的样式，鼠标悬浮在头像或用户名上会显示用户信息，点击头像或用户名会展开登录弹窗 -->
+    <!-- 样式 C : 悬浮固定在右上角的单一头像+用户名的样式，鼠标悬浮在头像或用户名上会显示账号信息和账号设置(退出登录,修改密码)内容，点击头像或用户名会展开登录弹窗 -->
     <div v-if="props.design == 'C'" class="design-c">
       <div class="user-fixed" :class="{ 'logged-in': isLoggedIn }">
         <div v-if="isLoggedIn && userData" class="user-info-fixed">
@@ -397,7 +585,8 @@ defineExpose({
             <div class="tooltip-content">
               <p>{{ userData.name }}</p>
               <p>{{ userData.email }}</p>
-              <button class="logout-btn" @click="handleLogout">退出</button>
+              <button class="change-pwd-btn" @click.stop="switchToChangePwd">修改密码</button>
+              <button class="logout-btn" @click.stop="handleLogout">退出登录</button>
             </div>
           </div>
         </div>
@@ -428,7 +617,7 @@ defineExpose({
       </div>
     </div>
 
-    <!-- 样式 F : 非固定悬浮的，跟随父组件的文档流的仅显示用户头像+用户名的样式，专为移动端定制，轻触头像会展开或关闭用户的信息与登出按钮(如果未登录的话会展开登录弹窗) -->
+    <!-- 样式 F : 非固定悬浮的，跟随父组件的文档流的仅显示用户头像+用户名的样式，手指点触会显示账号信息和账号设置(退出登录,修改密码)内容，专为移动端定制 -->
     <div v-if="props.design == 'F'" class="design-f">
       <div class="user-mobile" :class="{ 'logged-in': isLoggedIn }">
         <div v-if="isLoggedIn && userData" class="user-mobile-logged">
@@ -438,12 +627,13 @@ defineExpose({
           </div>
           <div v-if="showMobileUserMenu" class="mobile-user-menu">
             <div class="menu-item">{{ userData.email }}</div>
-            <div class="menu-item" @click="handleLogout">退出登录</div>
+            <div class="menu-item" @click.stop="switchToChangePwd">修改密码</div>
+            <div class="menu-item" @click.stop="handleLogout">退出登录</div>
           </div>
         </div>
-        <div v-else class="user-mobile-anonymous" @click="toggleLogin">
+        <div v-else class="user-mobile-anonymous" @click.stop="toggleLogin">
           <div class="avatar-placeholder"></div>
-          <span class="login-text">登入</span>
+          <span class="login-text">登录</span>
         </div>
       </div>
     </div>
@@ -492,7 +682,8 @@ defineExpose({
             </button>
           </form>
           <div class="register-prompt">
-            没有账号? <a href="#" class="register-link" @click.prevent.stop="switchToRegister">立即注册</a>
+            <a href="#" class="register-link" @click.prevent.stop="switchToRegister">立即注册</a>
+            <a href="#" class="register-link" @click.prevent.stop="switchToRestPwd">忘记密码</a>
           </div>
         </div>
       </div>
@@ -540,8 +731,8 @@ defineExpose({
             </button>
           </form>
           <div class="mobile-login-options">
-            <a href="#" class="mobile-option-link1">没有账号?</a>
-            <a href="#" class="mobile-option-reg" @click.prevent="switchToRegister">立即注册</a>
+            <a href="#" class="mobile-option-reg" @click.prevent.stop="switchToRegister">注册账号</a>
+            <a href="#" class="mobile-option-reg" @click.prevent.stop="switchToRestPwd">忘记密码</a>
           </div>
         </div>
       </div>
@@ -697,6 +888,304 @@ defineExpose({
           <div class="mobile-login-options">
             <a href="#" class="mobile-option-link1">已有账号?</a>
             <a href="#" class="mobile-option-link" @click.prevent="switchToLogin">立即登录</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PC版忘记密码弹窗 -->
+    <div v-if="showForgetPwdModal" class="login-modal pc-forgetpwd-modal">
+      <div class="modal-overlay" @click.stop="closeAllModals"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>重置密码</h3>
+          <button class="close-btn" @click.stop="closeAllModals">×</button>
+        </div>
+        <div class="modal-body">
+          <form @submit.prevent="handleForgetPassword">
+            <div class="form-group">
+              <label for="forget-email">邮箱</label>
+              <input 
+                type="email" 
+                id="forget-email" 
+                v-model="forgetPwdForm.email" 
+                required 
+                placeholder="请输入您注册时使用的邮箱" 
+              />
+            </div>
+            
+            <!-- 显示错误信息 -->
+            <div v-if="forgetPwdError" class="error-message">{{ forgetPwdError }}</div>
+            
+            <!-- 显示成功信息 -->
+            <div v-if="forgetPwdSuccess" class="success-message">
+              {{ forgetPwdSuccess }}
+            </div>
+            
+            <button 
+              type="submit" 
+              class="submit-btn forgetpwd-submit-btn" 
+              :disabled="userStore.loading || forgetPwdSuccess!==''"
+            >
+              {{ userStore.loading ? '发送中...' : '发送重置链接' }}
+            </button>
+          </form>
+          <div class="forgetpwd-prompt">
+            <a href="#" class="back-to-login" @click.prevent="switchToLogin">返回登录</a>
+            <span class="prompt-divider">|</span>
+            <a href="#" class="register-link" @click.prevent="switchToRegister">注册新账号</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 移动版忘记密码弹窗 -->
+    <div v-if="showMobileForgetPwdModal" class="login-modal mobile-forgetpwd-modal">
+      <div class="modal-overlay" @click.stop="closeAllModals"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>重置密码</h3>
+          <button class="close-btn" @click.stop="closeAllModals">×</button>
+        </div>
+        <div class="modal-body">
+          <form @submit.prevent="handleForgetPassword">
+            <div class="form-group">
+              <input 
+                type="email" 
+                id="mobile-forget-email" 
+                v-model="forgetPwdForm.email" 
+                required 
+                placeholder="请输入注册邮箱" 
+              />
+            </div>
+            
+            <!-- 显示错误信息 -->
+            <div v-if="forgetPwdError" class="error-message">{{ forgetPwdError }}</div>
+            
+            <!-- 显示成功信息 -->
+            <div v-if="forgetPwdSuccess" class="success-message">
+              {{ forgetPwdSuccess }}
+              <p class="success-hint">3秒后自动跳转...</p>
+            </div>
+            
+            <button 
+              type="submit" 
+              class="submit-btn forgetpwd-submit-btn" 
+              :disabled="userStore.loading || forgetPwdSuccess!==''"
+            >
+              {{ userStore.loading ? '发送中...' : '发送重置链接' }}
+            </button>
+          </form>
+          <div class="mobile-forgetpwd-options">
+            <a href="#" class="mobile-option-link" @click.prevent="switchToLogin">返回登录</a>
+            <a href="#" class="mobile-option-reg" @click.prevent="switchToRegister">注册账号</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PC版修改密码弹窗 -->
+    <div v-if="showChangePwdModal" class="login-modal pc-changepwd-modal">
+      <div class="modal-overlay" @click.stop="closeAllModals"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>修改密码</h3>
+          <button class="close-btn" @click.stop="closeAllModals">×</button>
+        </div>
+        <div class="modal-body">
+          <form @submit.prevent="handleChangePassword">
+            <div class="form-group password-group">
+              <label for="old-password">原密码</label>
+              <div class="password-input-container">
+                <input 
+                  :type="showOldPassword ? 'text' : 'password'" 
+                  id="old-password" 
+                  v-model="changePwdForm.oldPassword" 
+                  required 
+                  placeholder="请输入原密码" 
+                />
+                <button 
+                  type="button" 
+                  class="password-toggle"
+                  @click="togglePasswordVisibility('old')"
+                >
+                  <div class="icon-wrapper">
+                    <ul class="icon">
+                      <li :class="showOldPassword ? 'eye_close' : 'eye'"></li>
+                    </ul>
+                  </div>
+                </button>
+              </div>
+            </div>
+            
+            <div class="form-group password-group">
+              <label for="new-password">新密码</label>
+              <div class="password-input-container">
+                <input 
+                  :type="showNewPassword ? 'text' : 'password'" 
+                  id="new-password" 
+                  v-model="changePwdForm.newPassword" 
+                  required 
+                  placeholder="请输入新密码（至少8位）" 
+                />
+                <button 
+                  type="button" 
+                  class="password-toggle"
+                  @click="togglePasswordVisibility('new')"
+                >
+                  <div class="icon-wrapper">
+                    <ul class="icon">
+                      <li :class="showNewPassword ? 'eye_close' : 'eye'"></li>
+                    </ul>
+                  </div>
+                </button>
+              </div>
+            </div>
+            
+            <div class="form-group password-group">
+              <label for="confirm-password">确认新密码</label>
+              <div class="password-input-container">
+                <input 
+                  :type="showConfirmPassword ? 'text' : 'password'" 
+                  id="confirm-password" 
+                  v-model="changePwdForm.confirmPassword" 
+                  required 
+                  placeholder="请再次输入新密码" 
+                />
+                <button 
+                  type="button" 
+                  class="password-toggle"
+                  @click="togglePasswordVisibility('confirm')"
+                >
+                  <div class="icon-wrapper">
+                    <ul class="icon">
+                      <li :class="showConfirmPassword ? 'eye_close' : 'eye'"></li>
+                    </ul>
+                  </div>
+                </button>
+              </div>
+            </div>
+            
+            <!-- 显示错误信息 -->
+            <div v-if="changePwdError" class="error-message">{{ changePwdError }}</div>
+            
+            <!-- 显示成功信息 -->
+            <div v-if="changePwdSuccess" class="success-message">
+              {{ changePwdSuccess }}
+            </div>
+            
+            <button 
+              type="submit" 
+              class="submit-btn changepwd-submit-btn" 
+              :disabled="userStore.loading || changePwdSuccess!==''"
+            >
+              {{ userStore.loading ? '修改中...' : '确认修改' }}
+            </button>
+          </form>
+          <div class="changepwd-prompt">
+            <a href="#" class="back-to-login" @click.prevent="closeAllModals">放弃修改</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 移动版修改密码弹窗 -->
+    <div v-if="showMobileChangePwdModal" class="login-modal mobile-changepwd-modal">
+      <div class="modal-overlay" @click.stop="closeAllModals"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>修改密码</h3>
+          <button class="close-btn" @click.stop="closeAllModals">×</button>
+        </div>
+        <div class="modal-body">
+          <form @submit.prevent="handleChangePassword">
+            <div class="form-group password-group">
+              <div class="password-input-container">
+                <input 
+                  :type="showOldPassword ? 'text' : 'password'" 
+                  id="mobile-old-password" 
+                  v-model="changePwdForm.oldPassword" 
+                  required 
+                  placeholder="原密码" 
+                />
+                <button 
+                  type="button" 
+                  class="password-toggle"
+                  @click="togglePasswordVisibility('old')"
+                >
+                  <div class="icon-wrapper">
+                    <ul class="icon">
+                      <li :class="showOldPassword ? 'eye_close' : 'eye'"></li>
+                    </ul>
+                  </div>
+                </button>
+              </div>
+            </div>
+            
+            <div class="form-group password-group">
+              <div class="password-input-container">
+                <input 
+                  :type="showNewPassword ? 'text' : 'password'" 
+                  id="mobile-new-password" 
+                  v-model="changePwdForm.newPassword" 
+                  required 
+                  placeholder="新密码（至少8位）" 
+                />
+                <button 
+                  type="button" 
+                  class="password-toggle"
+                  @click="togglePasswordVisibility('new')"
+                >
+                  <div class="icon-wrapper">
+                    <ul class="icon">
+                      <li :class="showNewPassword ? 'eye_close' : 'eye'"></li>
+                    </ul>
+                  </div>
+                </button>
+              </div>
+            </div>
+            
+            <div class="form-group password-group">
+              <div class="password-input-container">
+                <input 
+                  :type="showConfirmPassword ? 'text' : 'password'" 
+                  id="mobile-confirm-password" 
+                  v-model="changePwdForm.confirmPassword" 
+                  required 
+                  placeholder="确认新密码" 
+                />
+                <button 
+                  type="button" 
+                  class="password-toggle"
+                  @click="togglePasswordVisibility('confirm')"
+                >
+                  <div class="icon-wrapper">
+                    <ul class="icon">
+                      <li :class="showConfirmPassword ? 'eye_close' : 'eye'"></li>
+                    </ul>
+                  </div>
+                </button>
+              </div>
+            </div>
+            
+            <!-- 显示错误信息 -->
+            <div v-if="changePwdError" class="error-message">{{ changePwdError }}</div>
+            
+            <!-- 显示成功信息 -->
+            <div v-if="changePwdSuccess" class="success-message">
+              {{ changePwdSuccess }}
+            </div>
+            
+            <button 
+              type="submit" 
+              class="submit-btn changepwd-submit-btn" 
+              :disabled="userStore.loading || changePwdSuccess!==''"
+            >
+              {{ userStore.loading ? '修改中...' : '确认修改' }}
+            </button>
+          </form>
+          <div class="mobile-changepwd-options">
+            <a href="#" class="mobile-option-link" @click.prevent="closeAllModals">放弃修改</a>
           </div>
         </div>
       </div>
@@ -914,10 +1403,32 @@ defineExpose({
   background: #f44336;
   color: white;
   border: none;
-  padding: 5px 10px;
+  padding: 8px 10px;
   border-radius: 3px;
   cursor: pointer;
-  margin-top: 5px;
+  margin-top: 8px;
+  width: 100%;
+  font-size: 14px;
+}
+
+.design-b .change-pwd-btn {
+  background: #2196F3;
+  color: white;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-top: 8px;
+  width: 100%;
+  font-size: 14px;
+}
+
+.design-b .change-pwd-btn:hover {
+  background: #1976D2;
+}
+
+.design-b .logout-btn:hover {
+  background: #d32f2f;
 }
 
 .design-b .login-compact {
@@ -959,6 +1470,38 @@ defineExpose({
 .design-c .user-info-fixed:hover .user-tooltip {
   opacity: 1;
   visibility: visible;
+}
+
+.design-c .logout-btn {
+  background: #f44336;
+  color: white;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-top: 8px;
+  width: 100%;
+  font-size: 14px;
+}
+
+.design-c .change-pwd-btn {
+  background: #2196F3;
+  color: white;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-top: 8px;
+  width: 100%;
+  font-size: 14px;
+}
+
+.design-c .change-pwd-btn:hover {
+  background: #1976D2;
+}
+
+.design-c .logout-btn:hover {
+  background: #d32f2f;
 }
 
 .design-c .login-fixed {
@@ -1010,8 +1553,14 @@ defineExpose({
 }
 
 .design-f .menu-item {
-  padding: 8px 15px;
+  padding: 10px 15px;
   cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+}
+
+.design-f .menu-item:last-child {
+  border-bottom: none;
 }
 
 .design-f .menu-item:hover {
@@ -1156,6 +1705,10 @@ defineExpose({
 .register-prompt {
   text-align: center;
   color: #666;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  align-items: center;
 }
 
 .register-link {
@@ -1182,11 +1735,6 @@ defineExpose({
   text-decoration: none;
 }
 
-.mobile-option-link1 {
-  color: #666;
-  text-decoration: none;
-}
-
 /* 主题样式 */
 .theme-dark .user-card,
 .theme-dark .user-tooltip,
@@ -1203,6 +1751,22 @@ defineExpose({
   border-color: #555;
   font-size: 16px;
   padding: 14px 12px;
+}
+
+.theme-dark .design-f .menu-item {
+  border-bottom: 1px solid #444;
+}
+
+.theme-dark .design-f .menu-item:hover {
+  background: #444;
+}
+
+.theme-dark .design-a .dropdown-item:hover,
+.theme-dark .design-b .change-pwd-btn:hover,
+.theme-dark .design-c .change-pwd-btn:hover,
+.theme-dark .design-b .logout-btn:hover,
+.theme-dark .design-c .logout-btn:hover {
+  background: #555;
 }
 
 /* 响应式设计 */
@@ -1304,10 +1868,114 @@ defineExpose({
   text-align: center;
 }
 
+/* 成功消息样式 */
+.success-message {
+  color: #4caf50;
+  background: #e8f5e9;
+  padding: 12px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  text-align: center;
+  border-left: 3px solid #4caf50;
+}
+
+.success-hint {
+  font-size: 12px;
+  color: #388e3c;
+  margin-top: 5px;
+  font-style: italic;
+}
+
+.theme-dark .success-message {
+  background: rgba(76, 175, 80, 0.1);
+  color: #81c784;
+}
+
+.theme-dark .success-hint {
+  color: #a5d6a7;
+}
+
 .submit-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none !important;
+}
+
+/* 忘记密码弹窗样式 */
+.pc-forgetpwd-modal .modal-content,
+.mobile-forgetpwd-modal .modal-content {
+  max-width: 400px;
+}
+
+.forgetpwd-submit-btn {
+  background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+  margin-top: 10px;
+}
+
+.forgetpwd-submit-btn:hover {
+  background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+}
+
+.forgetpwd-prompt {
+  text-align: center;
+  margin-top: 20px;
+  color: #666;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+}
+
+.back-to-login {
+  color: #58bd5b;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.back-to-login:hover {
+  text-decoration: underline;
+}
+
+.prompt-divider {
+  color: #ccc;
+}
+
+.mobile-forgetpwd-options {
+  display: flex;
+  justify-content: space-between;
+  margin: 15px 0;
+}
+
+/* 修改密码弹窗样式 */
+.pc-changepwd-modal .modal-content,
+.mobile-changepwd-modal .modal-content {
+  max-width: 400px;
+}
+
+.changepwd-submit-btn {
+  background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+  margin-top: 10px;
+}
+
+.changepwd-submit-btn:hover {
+  background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+.changepwd-prompt {
+  text-align: center;
+  margin-top: 20px;
+  color: #666;
+}
+
+.mobile-changepwd-options {
+  display: flex;
+  justify-content: center;
+  margin: 15px 0;
 }
 
 /** sprites icon **/

@@ -19,8 +19,29 @@ import ssl
 import datetime
 import sys
 
-characters_ = string.digits + string.ascii_letters
-maxcLength = 500 # 记录每个响应内容在日志内的最大长度
+# 表结构（列名和顺序）v1.0.2
+EXPECTED_COLUMNS = [
+    'id',                   # 0
+    'anonymous_user',       # 1
+    'email',                # 2
+    'password',             # 3
+    'name',                 # 4
+    'qq',                   # 5
+    'theme_color',          # 6
+    'head_img',             # 7
+    'token',                # 8
+    'token_expiry',         # 9
+    'email_verified',       # 10
+    'verification_code',    # 11
+    'code_expiry',          # 12
+    'resetpwd_code',        # 13
+    'resetpwd_expiry',      # 14
+    'created_at',           # 15
+    'last_login'            # 16
+]
+
+characters_     = string.digits + string.ascii_letters
+maxWriteLog_    = 500 # 记录每个响应内容在日志内的最大长度
 
 # 创建日志文件
 current_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
@@ -33,7 +54,7 @@ def log_message(message):
     formatted_message = f"[{timestamp}] {message}"
     print(formatted_message)
     log_file.write(formatted_message + '\n')
-    log_file.flush()  # 确保立即写入文件
+    log_file.flush()
 
 class DatabaseManager:
     """数据库管理类"""
@@ -121,6 +142,39 @@ class EmailUtils:
         except Exception as e:
             log_message(f"发送账号激活邮件失败: {email}, 错误: {e}")
             return False
+    
+    @staticmethod
+    def send_reset_password_email(email, name, resetpwd_code, user_id):
+        """发送密码重置邮件"""
+        # 邮件配置 
+        smtp_server = configure._smtp_server_
+        smtp_port = configure._smtp_port_
+        sender_email = configure._sender_email_
+        sender_password = configure._sender_password_
+
+        # 重置密码链接
+        reset_link = f"{configure._server_url_}/resetpwdrun?user_id={user_id}&resetpwd_code={resetpwd_code}"
+        subject = "ATSW密码重置"
+        # 重置密码验证邮件内容 ViewPasswordResetVerify.html
+        body = f"""<html><head><meta charset="UTF-8"><style>body{{color:#333;margin:0;padding:20px}} .h{{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:20px;text-align:center;border-radius:8px 8px 0 0}} .b{{display:inline-block;background:#4CAF50;color:#fff;padding:12px 24px;text-decoration:none;border-radius:5px;margin:15px 0}} .f{{border-top:1px solid #ddd;color:#666;font-size:18px}}</style></head><body><div class="h"><h2>🔐 ATSW密码重置</h2></div><div><p>亲爱的 <strong>{name}</strong>，</p><p>我们收到了您重置密码的请求。请点击下方按钮重置您的密码：</p><div style="text-align:left"><a href="{reset_link}" class="b">🔑 立即重置密码</a></div><p>或者复制以下链接到浏览器中打开：</p><p style="word-break:break-all;background:#eee;padding:10px;border-radius:4px;font-size:12px">{reset_link}</p><p><strong>⚠️ 重要提示：</strong>此链接在 <strong>5分钟</strong> 内有效。</p><p>如果您没有请求重置密码，请忽略此邮件。</p></div><div class="f"><p>谢谢！<br>ATSW网站团队</p></div></body></html>"""
+        try:
+            # 创建HTML邮件
+            msg = MIMEText(body, 'html', 'utf-8')
+            msg['Subject'] = Header(subject, 'utf-8')
+            msg['From'] = sender_email
+            msg['To'] = email
+            
+            # 发送邮件
+            server = smtplib.SMTP_SSL(host=smtp_server, port=smtp_port, timeout=5)
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, [email], msg.as_string())
+            server.quit()
+            
+            log_message(f"密码重置邮件发送成功: {email}")
+            return True
+        except Exception as e:
+            log_message(f"发送密码重置邮件失败: {email}, 错误: {e}")
+            return False
 
 class AccountService:
     """账号服务类"""
@@ -129,6 +183,8 @@ class AccountService:
         self.db = DatabaseManager()
         self.security = SecurityUtils()
         self.email_utils = EmailUtils()
+        self.default_reset_password = 'atsw@top'
+        self.hashed_reset_password = self.security.hash_password(self.default_reset_password)
     
     def create_html_response(self, title, message, is_success=True):
         """创建HTML响应页面"""
@@ -138,6 +194,16 @@ class AccountService:
 
         # 激活返回页面 ViewAccountActivationRespone.html
         html = f"""<html><head><meta charset="UTF-8"><title>{title}</title><style>body{{background:linear-gradient(135deg,#667eea,#764ba2);margin:0;padding:20px;min-height:100vh;display:flex;align-items:center;justify-content:center}} .c{{background:white;padding:30px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.2);text-align:center;width:100%}} .m{{background:{bg_color};border:1px solid {border_color};padding:15px;border-radius:5px;margin:20px 0;color:#155724;font-size:24px}} .i{{font-size:48px;margin-bottom:20px}}</style></head><body><div class="c"><div class="i">{icon}</div><h1>{title}</h1><div class="m">{message}</div></div></body></html>"""
+        return html.encode('utf-8')
+    
+    def create_resetpwd_html_response(self, title, message, is_success=True):
+        """创建密码重置HTML响应页面"""
+        icon = "✅" if is_success else "❌"
+        bg_color = "#d4edda" if is_success else "#f8d7da"
+        border_color = "#c3e6cb" if is_success else "#f5c6cb"
+
+        # 密码重置返回页面 ViewPasswordResetRespone.html
+        html = f"""<html><head><meta charset="UTF-8"><title>{title}</title><style>body{{background:linear-gradient(135deg,#667eea,#764ba2);margin:0;padding:20px;min-height:100vh;display:flex;align-items:center;justify-content:center}} .c{{background:white;padding:30px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.2);text-align:center;width:100%;max-width:600px}} .m{{background:{bg_color};border:1px solid {border_color};padding:15px;border-radius:5px;margin:20px 0;color:#155724;font-size:18px;text-align:left}} .i{{font-size:48px;margin-bottom:20px}} .w{{color:#856404;background-color:#fff3cd;border:1px solid #ffeaa7;padding:10px;border-radius:5px;margin:15px 0;font-size:16px}} .btn{{display:inline-block;background:#4CAF50;color:#fff;padding:12px 24px;text-decoration:none;border-radius:5px;margin:15px 0;border:none;cursor:pointer;font-size:16px}} .btn:hover{{background:#45a049}} input{{width:100%;padding:10px;margin:10px 0;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}}</style></head><body><div class="c"><div class="i">{icon}</div><h1>{title}</h1><div class="m">{message}</div></div></body></html>"""
         return html.encode('utf-8')
 
     def parse_request(self, request_data):
@@ -211,6 +277,12 @@ class AccountService:
         safe_params = params.copy()
         if 'password' in safe_params:
             safe_params['password'] = '***hidden***'
+        if 'old_pwd' in safe_params:
+            safe_params['old_pwd'] = '***hidden***'
+        if 'new_pwd' in safe_params:
+            safe_params['new_pwd'] = '***hidden***'
+        if 'base64_img' in safe_params:
+            safe_params['base64_img'] = '***base64 image data***'
         
         log_message(f"请求来自 {addr}: {method} {path}")
         log_message(f"请求参数: {safe_params}")
@@ -238,7 +310,7 @@ class AccountService:
                 log_message(f"响应内容: {json.dumps(safe_body, ensure_ascii=False)}")
             except:
                 log_message(f"响应给 {addr}: {status_line}")
-                log_message(f"响应内容: {body[:maxcLength]}...")
+                log_message(f"响应内容: {body[:maxWriteLog_]}...")
         except:
             log_message(f"响应给 {addr}: [二进制数据，长度: {len(response_data)}]")
     
@@ -272,15 +344,15 @@ class AccountService:
             
             # 准备数据
             hashed_password = self.security.hash_password(password)
-            verification_code = self.security.generate_random_code(18)
+            verification_code = self.security.generate_random_code(20)
             code_expiry = int(time.time()) + 300  # 5分钟有效
             qq_value = float(qq) if qq and qq != '0' else 0
             
             # 插入用户数据
             user_id = self.db.execute_query('''
                 INSERT INTO users 
-                (email, password, name, qq, verification_code, code_expiry, email_verified)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (email, password, name, qq, verification_code, code_expiry, email_verified, resetpwd_code, resetpwd_expiry)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)
             ''', (email, hashed_password, name, qq_value, verification_code, code_expiry, 0))
             
             # 发送验证邮件
@@ -335,7 +407,7 @@ class AccountService:
             
             # 查询用户
             user = self.db.execute_query('''
-                SELECT id, email, password, name, qq, theme_color, head_img, email_verified, token, token_expiry, anonymous_user
+                SELECT id, anonymous_user, email, password, name, qq, theme_color, head_img, email_verified, token, token_expiry
                 FROM users 
                 WHERE email = ?
             ''', (email,))
@@ -347,12 +419,12 @@ class AccountService:
             user_data = user[0]
             
             # 验证密码
-            if not self.security.verify_password(password, user_data[2]):
+            if not self.security.verify_password(password, user_data[3]):
                 response["message"] = "邮箱或密码错误"
                 return response, []
             
             # 检查邮箱是否已验证
-            if not user_data[7]:
+            if not user_data[8]:
                 response["message"] = "请先激活您的账户"
                 return response, []
             
@@ -377,13 +449,13 @@ class AccountService:
             # 准备返回的用户数据
             user_data_info = {
                 "id": user_data[0],
-                "anonymous_user": bool(user_data[10]),
-                "email": user_data[1],
+                "anonymous_user": bool(user_data[1]),
+                "email": user_data[2],
                 "password": "",
-                "name": user_data[3],
-                "qq": user_data[4],
-                "theme_color": user_data[5],
-                "head_img": user_data[6],
+                "name": user_data[4],
+                "qq": user_data[5],
+                "theme_color": user_data[6],
+                "head_img": user_data[7],
                 "token": token
             }
             
@@ -495,7 +567,7 @@ class AccountService:
             
             # 查询用户
             user = self.db.execute_query('''
-                SELECT id, email, name, qq, theme_color, head_img, token, token_expiry, anonymous_user
+                SELECT id, anonymous_user, email, name, qq, theme_color, head_img, token, token_expiry
                 FROM users 
                 WHERE id = ? AND token = ?
             ''', (user_id, token))
@@ -508,20 +580,20 @@ class AccountService:
             current_time = int(time.time())
             
             # 检查token是否过期
-            if user_data[7] and user_data[7] < current_time:
+            if user_data[8] and user_data[8] < current_time:
                 response["message"] = "token已过期，请重新登录"
                 return response
             
             # 准备返回的用户数据
             user_data_info = {
                 "id": user_data[0],
-                "anonymous_user": bool(user_data[8]),
-                "email": user_data[1],
+                "anonymous_user": bool(user_data[1]),
+                "email": user_data[2],
                 "password": "",
-                "name": user_data[2],
-                "qq": user_data[3],
-                "theme_color": user_data[4],
-                "head_img": user_data[5]
+                "name": user_data[3],
+                "qq": user_data[4],
+                "theme_color": user_data[5],
+                "head_img": user_data[6]
             }
             
             response["success"] = True
@@ -561,7 +633,7 @@ class AccountService:
             
             # 查询用户
             user = self.db.execute_query('''
-                SELECT id, email, password, name, qq, theme_color, head_img, token, token_expiry, anonymous_user, email_verified
+                SELECT id, anonymous_user, email, password, name, qq, theme_color, head_img, token, token_expiry, email_verified
                 FROM users 
                 WHERE id = ? AND token = ?
             ''', (user_id, token))
@@ -574,7 +646,7 @@ class AccountService:
             current_time = int(time.time())
             
             # 检查token是否过期
-            if user_data[8] and user_data[8] < current_time:
+            if user_data[9] and user_data[9] < current_time:
                 response["message"] = "token已过期，请重新登录"
                 return response
             
@@ -586,13 +658,13 @@ class AccountService:
             # 准备返回的用户数据
             user_data_info = {
                 "id": user_data[0],
-                "anonymous_user": bool(user_data[9]),
-                "email": user_data[1],
+                "anonymous_user": bool(user_data[1]),
+                "email": user_data[2],
                 "password": "",
-                "name": user_data[3],
-                "qq": user_data[4],
-                "theme_color": user_data[5],
-                "head_img": user_data[6]
+                "name": user_data[4],
+                "qq": user_data[5],
+                "theme_color": user_data[6],
+                "head_img": user_data[7]
             }
             
             response["success"] = True
@@ -604,6 +676,275 @@ class AccountService:
         except Exception as e:
             response["message"] = f"自动登录过程中发生错误: {str(e)}"
             return response, []
+    
+    def handle_setheadimg(self, params):
+        """设置用户自定义头像"""
+        response = {"success": False, "message": ""}
+        
+        try:
+            user_id = params.get('user_id', '').strip()
+            token = params.get('user_token', '').strip()
+            base64_img = params.get('base64_img', '').strip()
+            
+            # 验证参数
+            if not user_id or not token or not base64_img:
+                response["message"] = "参数不完整"
+                return response
+            
+            # 验证用户和token
+            user = self.db.execute_query('''
+                SELECT id, token, token_expiry
+                FROM users 
+                WHERE id = ? AND token = ?
+            ''', (user_id, token))
+            
+            if not user:
+                response["message"] = "用户不存在或token无效"
+                return response
+            
+            user_data = user[0]
+            current_time = int(time.time())
+            
+            # 检查token是否过期
+            if user_data[2] and user_data[2] < current_time:
+                response["message"] = "token已过期，请重新登录"
+                return response
+            
+            # 验证base64图片数据
+            if not base64_img.startswith('data:image/'):
+                response["message"] = "图片格式不正确"
+                return response
+            
+            # 更新头像
+            self.db.execute_query('''
+                UPDATE users 
+                SET head_img = ?
+                WHERE id = ?
+            ''', (base64_img, user_id))
+            
+            response["success"] = True
+            response["message"] = "更新头像成功！"
+            
+        except Exception as e:
+            response["message"] = f"更新头像失败: {str(e)}"
+        
+        return response
+    
+    def handle_resetpwd(self, params):
+        """处理重置密码请求(POST)"""
+        response = {"success": False, "message": ""}
+        
+        try:
+            user_email = params.get('user_email', '').strip().lower()
+            
+            if not user_email or '@' not in user_email:
+                response["message"] = "请输入有效的邮箱地址。"
+                return response
+            
+            # 查询用户
+            user = self.db.execute_query('''
+                SELECT id, name, email_verified, resetpwd_expiry
+                FROM users 
+                WHERE email = ?
+            ''', (user_email,))
+            
+            if not user:
+                response["message"] = "抱歉！此账户还未注册。"
+                return response
+            
+            user_data = user[0]
+            
+            # 检查邮箱是否已验证
+            if not user_data[2]:
+                response["message"] = "抱歉！此账户还未激活。"
+                return response
+            
+            # 检查是否存在未失效的resetpwd_code
+            current_time = int(time.time())
+            if user_data[3] and user_data[3] > current_time:
+                remaining_time = user_data[3] - current_time
+                response["message"] = f"操作频繁，请{remaining_time}秒后再试！"
+                return response
+            
+            # 生成重置码和失效时间
+            resetpwd_code = self.security.generate_random_code(18)
+            resetpwd_expiry = current_time + 300  # 5分钟有效
+            
+            # 更新数据库
+            self.db.execute_query('''
+                UPDATE users 
+                SET resetpwd_code = ?, resetpwd_expiry = ?
+                WHERE id = ?
+            ''', (resetpwd_code, resetpwd_expiry, user_data[0]))
+            
+            # 发送重置邮件
+            email_sent = self.email_utils.send_reset_password_email(
+                user_email, user_data[1], resetpwd_code, user_data[0]
+            )
+            
+            if email_sent:
+                response["success"] = True
+                response["message"] = "重置邮件发送成功，请查收邮件以重置密码！"
+            else:
+                response["message"] = "抱歉！我们无法向您发送邮件，请联系管理员。"
+            
+        except Exception as e:
+            response["message"] = f"重置密码过程中发生错误: {str(e)}"
+        
+        return response
+    
+    def handle_resetpwdrun(self, params):
+        """处理重置密码执行请求(GET)"""
+        
+        try:
+            user_id = params.get('user_id', '').strip()
+            resetpwd_code = params.get('resetpwd_code', '').strip()
+            
+            if not user_id or not resetpwd_code:
+                return self.create_resetpwd_html_response(
+                    "重置失败", 
+                    "重置参数不完整，请检查链接是否正确。",
+                    is_success=False
+                )
+            
+            # 查询用户
+            user = self.db.execute_query('''
+                SELECT id, resetpwd_code, resetpwd_expiry, email
+                FROM users 
+                WHERE id = ? AND resetpwd_code = ?
+            ''', (user_id, resetpwd_code))
+            
+            if not user:
+                return self.create_resetpwd_html_response(
+                    "重置失败", 
+                    "重置链接无效或已过期，请重新请求重置密码。",
+                    is_success=False
+                )
+            
+            user_data = user[0]
+            current_time = int(time.time())
+            
+            # 检查重置码是否过期
+            if user_data[2] and user_data[2] < current_time:
+                return self.create_resetpwd_html_response(
+                    "重置失败", 
+                    "重置链接已过期，请重新请求重置密码。",
+                    is_success=False
+                )
+            
+            # 重置密码并更新重置码过期时间
+            self.db.execute_query('''
+                UPDATE users 
+                SET password = ?, resetpwd_expiry = ?
+                WHERE id = ?
+            ''', (self.hashed_reset_password, current_time - 1, user_id))  # 设置过期时间为过去时间
+            
+            success_message = f"""
+            您的密码已重置成功！<br><br>
+            <strong>新密码：{self.default_reset_password}</strong><br><br>
+            请使用此密码登录，并尽快修改为新的密码以确保账户安全。<br><br>
+            <div class="w">⚠️ 安全提示：登录后请立即前往账号设置页面修改密码！</div>
+            """
+            
+            return self.create_resetpwd_html_response(
+                "密码重置成功", 
+                success_message,
+                is_success=True
+            )
+            
+        except Exception as e:
+            return self.create_resetpwd_html_response(
+                "重置失败", 
+                f"重置过程中发生错误。<br>请联系管理员。",
+                is_success=False
+            )
+    
+    def handle_updatepwd(self, params, cookies):
+        """处理更新密码请求(POST)"""
+        response = {"success": False, "message": ""}
+        
+        try:
+            user_id = params.get('user_id', '').strip()
+            user_token = params.get('user_token', '').strip()
+            old_pwd = params.get('old_pwd', '')
+            new_pwd = params.get('new_pwd', '')
+            
+            # 从Cookie中提取token和user_id（如果参数中没有提供）
+            cookie_dict = {}
+            for cookie in cookies:
+                parts = cookie.split('=')
+                if len(parts) == 2:
+                    cookie_dict[parts[0].strip()] = parts[1].strip()
+            
+            # 优先使用参数中的值，如果没有则使用Cookie中的值
+            if not user_id:
+                user_id = cookie_dict.get('user_id', '')
+            if not user_token:
+                user_token = cookie_dict.get('user_token', '')
+            
+            # 验证参数
+            if not user_id or not user_token:
+                response["message"] = "请登录后再试！"
+                return response
+            
+            if not old_pwd or not new_pwd:
+                response["message"] = "旧密码和新密码不能为空"
+                return response
+            
+            # 检查新密码长度
+            if len(new_pwd) < 8:
+                response["message"] = "新密码太短(小于8个字符)！"
+                return response
+            
+            # 检查新旧密码是否相同
+            if old_pwd == new_pwd:
+                response["message"] = "新密码不能和旧密码一致！"
+                return response
+            
+            # 查询用户
+            user = self.db.execute_query('''
+                SELECT id, password, token, token_expiry, email_verified
+                FROM users 
+                WHERE id = ? AND token = ?
+            ''', (user_id, user_token))
+            
+            if not user:
+                response["message"] = "请登录后再试！"
+                return response
+            
+            user_data = user[0]
+            current_time = int(time.time())
+            
+            # 检查token是否过期
+            if user_data[3] and user_data[3] < current_time:
+                response["message"] = "登录已过期，请重新登录后再试。"
+                return response
+            
+            # 检查邮箱是否已验证
+            if not user_data[4]:
+                response["message"] = "账户未激活，请先激活账户后再试。"
+                return response
+            
+            # 验证旧密码
+            if not self.security.verify_password(old_pwd, user_data[1]):
+                response["message"] = "旧密码错误！"
+                return response
+            
+            # 更新密码
+            hashed_new_password = self.security.hash_password(new_pwd)
+            self.db.execute_query('''
+                UPDATE users 
+                SET password = ?
+                WHERE id = ?
+            ''', (hashed_new_password, user_id))
+            
+            response["success"] = True
+            response["message"] = "密码更新成功！"
+            
+        except Exception as e:
+            response["message"] = f"更新密码过程中发生错误: {str(e)}"
+        
+        return response
 
     def handle_request(self, request_data, addr):
         """处理HTTP请求"""
@@ -626,16 +967,16 @@ class AccountService:
             return self.create_response({})
 
         # 路由处理
-        if path == '/register' and method == 'POST':
+        if   path == '/register'        and method == 'POST':
             result = self.handle_register(params)
             response = self.create_response(result)
-        elif path == '/tokenlogin' and method == 'POST':
+        elif path == '/tokenlogin'      and method == 'POST':
             result = self.handle_tokenlogin(params, cookies)
             response = self.create_response(result)
-        elif path == '/login' and method == 'POST':
+        elif path == '/login'           and method == 'POST':
             result, cookie_list = self.handle_login(params)
             response = self.create_response(result, cookies=cookie_list)
-        elif path == '/activate' and method == 'GET':
+        elif path == '/activate'        and method == 'GET':
             # 直接返回HTML响应
             html_content = self.handle_activate(params)
             # 创建完整的HTTP响应
@@ -647,9 +988,31 @@ class AccountService:
                 html_content.decode('utf-8')  # 转换为字符串
             ]
             response = "\r\n".join(response_lines).encode('utf-8')
-        elif path == '/getuserdata' and method == 'POST':
+        elif path == '/getuserdata'     and method == 'POST':
             result = self.handle_getuserdata(params, cookies)
             response = self.create_response(result)
+        elif path == '/resetpwd'        and method == 'POST':
+            result = self.handle_resetpwd(params)
+            response = self.create_response(result)
+        elif path == '/resetpwdrun'     and method == 'GET':
+            # 直接返回HTML响应
+            html_content = self.handle_resetpwdrun(params)
+            # 创建完整的HTTP响应
+            response_lines = [
+                "HTTP/1.1 200 OK",
+                "Content-Type: text/html; charset=utf-8",
+                "Content-Length: " + str(len(html_content)),
+                "",
+                html_content.decode('utf-8')  # 转换为字符串
+            ]
+            response = "\r\n".join(response_lines).encode('utf-8')
+        elif path == '/updatepwd'       and method == 'POST':
+            result = self.handle_updatepwd(params, cookies)
+            response = self.create_response(result)
+        # 设置头像功能还未实装
+        # elif path == '/setheadimg'      and method == 'POST':
+        #     result = self.handle_setheadimg(params)
+        #     response = self.create_response(result)
         else:
             response = self.create_response({"error": "Not found"}, 404)
         
@@ -776,6 +1139,8 @@ def init_database():
                 email_verified BOOLEAN DEFAULT 0,
                 verification_code TEXT,
                 code_expiry INTEGER,
+                resetpwd_code TEXT,
+                resetpwd_expiry INTEGER,
                 created_at INTEGER DEFAULT (strftime('%s', 'now')),
                 last_login INTEGER DEFAULT (strftime('%s', 'now'))
             )
@@ -785,6 +1150,7 @@ def init_database():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_email ON users(email)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_token ON users(token)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_verification_code ON users(verification_code)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_resetpwd_code ON users(resetpwd_code)')
         
         conn.commit()
         log_message(f"数据库初始化成功！数据库文件: {db_path}")

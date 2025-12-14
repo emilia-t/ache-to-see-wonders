@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# The relative position of this file: /backend/accountServer/clean_inactive_accounts.py
+# The relative position of this file: /backend/accountServer/database_clean_inactive_accounts.py
 # 用于手动清理未激活的账户
 
 # 1.试运行（查看哪些账户会被删除） 超过 24 小时未激活的账户
-# python clean_inactive_accounts.py --hours 24
+# python database_clean_inactive_accounts.py --hours 24
 
 # 2.清理超过 60秒 未激活的账户
-# python clean_inactive_accounts.py --second 60 --execute
+# python database_clean_inactive_accounts.py --second 60 --execute
 
 # 3.实际执行删除操作
-# python clean_inactive_accounts.py --hours 24 --execute
+# python database_clean_inactive_accounts.py --hours 24 --execute
 
 # 4.查看数据库统计信息
-# python clean_inactive_accounts.py --stats
+# python database_clean_inactive_accounts.py --stats
 
 # 5.自定义数据库路径
-# python clean_inactive_accounts.py --db-path /path/to/your/database.db --hours 48 --execute
-
+# python database_clean_inactive_accounts.py --db-path /path/to/your/database.db --hours 48 --execute
 
 import sqlite3
 import time
@@ -25,6 +24,27 @@ import os
 import argparse
 import logging
 from datetime import datetime
+
+# 表结构（列名和顺序）v1.0.2
+EXPECTED_COLUMNS = [
+    'id',                   # 0
+    'anonymous_user',       # 1
+    'email',                # 2
+    'password',             # 3
+    'name',                 # 4
+    'qq',                   # 5
+    'theme_color',          # 6
+    'head_img',             # 7
+    'token',                # 8
+    'token_expiry',         # 9
+    'email_verified',       # 10
+    'verification_code',    # 11
+    'code_expiry',          # 12
+    'resetpwd_code',        # 13
+    'resetpwd_expiry',      # 14
+    'created_at',           # 15
+    'last_login'            # 16
+]
 
 # 配置日志
 def setup_logging():
