@@ -24,6 +24,18 @@
         "online_state": false,
         "visit_count": 0,
         "heart_count": 0
+      },
+      {
+        "key": "rh3",
+        "title": "3D娱乐厅",
+        "description": "在线观看电影，欣赏音乐，自由的聊天~",
+        "cover": "/cover/empty_cover.png",
+        "targetUrl": "/recreation-hall",
+        "mode": "online_multiplayer",
+        "online_count": 0,
+        "online_state": false,
+        "visit_count": 0,
+        "heart_count": 0
       }
     ]
   },
