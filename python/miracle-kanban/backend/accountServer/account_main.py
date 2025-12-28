@@ -185,6 +185,16 @@ class AccountService:
         self.email_utils = EmailUtils()
         self.default_reset_password = 'atsw@top'
         self.hashed_reset_password = self.security.hash_password(self.default_reset_password)
+        self.allowed_paths = {
+            '/register',
+            '/tokenlogin',
+            '/login',
+            '/activate',
+            '/getuserdata',
+            '/resetpwd',
+            '/resetpwdrun',
+            '/updatepwd'
+        }
     
     def create_html_response(self, title, message, is_success=True):
         """创建HTML响应页面"""
@@ -208,46 +218,66 @@ class AccountService:
 
     def parse_request(self, request_data):
         """解析HTTP请求"""
-        lines = request_data.split('\r\n')
-        if not lines:
-            return None, None, {}
-        
-        # 解析请求行
-        request_line = lines[0].split()
-        if len(request_line) < 2:
-            return None, None, {}
-        
-        method = request_line[0]
-        path = request_line[1]
-        
-        # 解析查询参数
-        parsed_url = urlparse(path)
-        path = parsed_url.path
-        query_params = parse_qs(parsed_url.query)
-        
-        # 解析POST数据
-        post_data = {}
-        if method == 'POST':
-            # 找到空行后的请求体
-            body_start = False
-            for i, line in enumerate(lines):
-                if line == '':
-                    body_start = i + 1
-                    break
+        try:
+            if not request_data or not isinstance(request_data, str):
+                return None, None, {}
             
-            if body_start and body_start < len(lines):
-                body = lines[body_start]
-                post_data = parse_qs(body)
-        
-        # 简化参数格式（从列表转为单个值）
-        params = {}
-        for key, value in query_params.items():
-            params[key] = value[0] if value else ''
-        
-        for key, value in post_data.items():
-            params[key] = value[0] if value else ''
-        
-        return method, path, params
+            # 限制请求大小
+            if len(request_data) > 8192:  # 8KB限制
+                log_message("请求数据过大")
+                return None, None, {}
+            
+            lines = request_data.split('\r\n')
+            if not lines:
+                return None, None, {}
+            
+            # 验证请求行格式
+            request_line = lines[0].strip()
+            if not request_line:
+                return None, None, {}
+            
+            parts = request_line.split()
+            if len(parts) < 2:
+                return None, None, {}
+            
+            method = parts[0] # GET OR POST
+            path = parts[1] # 包含路径和参数
+            
+            # 验证路径格式
+            parsed_url = urlparse(path)
+            path = parsed_url.path
+            query_params = parse_qs(parsed_url.query)
+            
+            # 解析POST数据
+            post_data = {}
+            if method == 'POST':
+                # 找到空行后的请求体
+                body_start = False
+                for i, line in enumerate(lines):
+                    if line == '':
+                        body_start = i + 1
+                        break
+                
+                if body_start and body_start < len(lines):
+                    try:
+                        body = lines[body_start]
+                        post_data = parse_qs(body)
+                    except:
+                        post_data = {}
+            
+            # 简化参数格式
+            params = {}
+            for key, value in query_params.items():
+                params[key] = value[0] if value else ''
+            
+            for key, value in post_data.items():
+                params[key] = value[0] if value else ''
+            
+            return method, path, params
+            
+        except Exception as e:
+            log_message(f"解析请求时出错: {e}")
+            return None, None, {}
     
     def create_response(self, data, status_code=200, content_type='application/json', cookies=None):
         """创建HTTP响应"""
@@ -953,6 +983,11 @@ class AccountService:
         if not method or not path:
             return self.create_response({"error": "Invalid request"}, 400)
         
+        # 检查路径是否在允许列表中
+        if path not in self.allowed_paths:
+            log_message(f"拒绝访问未允许的路径: {path} 来自 {addr}")
+            return self.create_response({"error": "Not found"}, 404)
+
         # 记录请求信息
         self.log_request(method, path, params, addr)
         
@@ -1031,26 +1066,107 @@ class AccountServer:
         self.ssl_enabled = configure._ssl_enable_
         self.ssl_crt_file = configure._ssl_crt_file_
         self.ssl_key_file = configure._ssl_key_file_
+        self.connection_tracker = {}        # 追踪连接
+        self.max_connections_per_ip = 20    # 每个IP最大连接数
+        self.connection_timeout = 30        # 连接超时秒数
+        self.blacklisted_ips = set()
+        self.suspicious_patterns = [
+            '/.env',
+            '/wp-admin',
+            '/phpmyadmin',
+            '/admin',
+            '/config',
+            '/debug',
+            '/test',
+            '/shell',
+            't3 12.1.2',   # WebLogic攻击
+            'miner1',      # 矿机连接
+            'jsonrpc'      # JSON-RPC攻击
+        ]
     
+    def is_malicious_request(self, request_data, path):
+        """检测恶意请求"""
+        # 检查可疑路径
+        for pattern in self.suspicious_patterns:
+            if pattern in request_data or pattern in path:
+                return True
+        
+        # 检查异常请求方法
+        if ' HTTP/' not in request_data.split('\r\n')[0]:
+            return True
+        
+        return False
+
+    def check_connection_rate(self, client_ip):
+        """检查IP连接频率"""
+        current_time = time.time()
+        
+        # 清理过期记录
+        if client_ip in self.connection_tracker:
+            self.connection_tracker[client_ip] = [
+                ts for ts in self.connection_tracker[client_ip]
+                if current_time - ts < 60  # 只保留最近60秒的记录
+            ]
+        
+        # 添加当前连接
+        if client_ip not in self.connection_tracker:
+            self.connection_tracker[client_ip] = []
+        
+        self.connection_tracker[client_ip].append(current_time)
+        
+        # 检查是否超过限制
+        if len(self.connection_tracker[client_ip]) > self.max_connections_per_ip:
+            log_message(f"IP {client_ip} 连接频率过高，已限制")
+            return False
+        
+        return True
+
     def handle_client(self, client_socket, addr):
         """处理客户端连接"""
+        client_ip = addr[0]
+        
+        # 检查黑名单
+        if client_ip in self.blacklisted_ips:
+            client_socket.close()
+            return
+        
+        # 检查连接频率
+        if not self.check_connection_rate(client_ip):
+            client_socket.close()
+            self.blacklisted_ips.add(client_ip)
+            log_message(f"IP {client_ip} 已被加入黑名单")
+            return
+        
         try:
+            # 设置超时
+            client_socket.settimeout(self.connection_timeout)
+            
             # 接收请求数据
-            request_data = client_socket.recv(1024).decode('utf-8')
+            request_data = client_socket.recv(8192).decode('utf-8', errors='ignore') # 8KB限制
             if not request_data:
                 return
             
-            # 处理请求并生成响应
+            # 检测恶意请求
+            method, path, params = self.account_service.parse_request(request_data)
+            if self.is_malicious_request(request_data, path or ''):
+                log_message(f"检测到恶意请求来自 {addr}: {request_data[:100]}")
+                self.blacklisted_ips.add(client_ip)
+                client_socket.close()
+                return
+            
+            # 处理请求
             response = self.account_service.handle_request(request_data, addr)
             
             # 发送响应
             try:
                 client_socket.send(response)
-            except BrokenPipeError:
-                log_message(f"客户端 {addr} 在发送响应前关闭了连接")
-            except ConnectionResetError:
-                log_message(f"客户端 {addr} 重置了连接")
-                
+            except (BrokenPipeError, ConnectionResetError, socket.timeout) as e:
+                log_message(f"发送响应到 {addr} 失败: {e}")    
+        except socket.timeout:
+            log_message(f"客户端 {addr} 连接超时")
+        except UnicodeDecodeError as e:
+            log_message(f"客户端 {addr} 发送非UTF-8数据: {e}")
+            self.blacklisted_ips.add(client_ip)
         except Exception as e:
             log_message(f"处理客户端 {addr} 请求时出错: {e}")
         finally:
@@ -1078,6 +1194,13 @@ class AccountServer:
                     context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
                     context.load_cert_chain(certfile=self.ssl_crt_file, keyfile=self.ssl_key_file)
                     
+                    # 增强SSL配置
+                    context.set_ciphers('HIGH:!aNULL:!eNULL:!MD5:!3DES:!CAMELLIA:!AES128')
+                    context.minimum_version = ssl.TLSVersion.TLSv1_2
+                    context.options |= ssl.OP_NO_COMPRESSION
+                    context.options |= ssl.OP_SINGLE_DH_USE
+                    context.options |= ssl.OP_SINGLE_ECDH_USE
+
                     # 包装socket
                     server_socket = context.wrap_socket(server_socket, server_side=True)
                     log_message(f"账号服务器已启动（SSL加密），监听端口 {self.host}:{self.port}")
