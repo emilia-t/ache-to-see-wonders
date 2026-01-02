@@ -53,6 +53,14 @@ const routes =[
     meta:{
       title:"3D娱乐厅"
     }
+  },
+  {
+    path: '/rendering-stress-test',
+    name: 'rendering-stress-test',
+    component: () => import('@/components/PageRenderingStressTest.vue'),
+    meta:{
+      title:"3D性能测试"
+    }
   }
 ];
 

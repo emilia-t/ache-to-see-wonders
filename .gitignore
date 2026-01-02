@@ -12,6 +12,7 @@ lerna-debug.log*
 
 .github
 node_modules
+movie
 .DS_Store
 dist
 dist-ssr

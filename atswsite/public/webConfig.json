@@ -36,6 +36,18 @@
         "online_state": false,
         "visit_count": 0,
         "heart_count": 0
+      },
+      {
+        "key": "rt3",
+        "title": "3D性能测试",
+        "description": "测试项目",
+        "cover": "/cover/empty_cover.png",
+        "targetUrl": "/rendering-stress-test",
+        "mode": "single_person",
+        "online_count": 0,
+        "online_state": false,
+        "visit_count": 0,
+        "heart_count": 0
       }
     ]
   },

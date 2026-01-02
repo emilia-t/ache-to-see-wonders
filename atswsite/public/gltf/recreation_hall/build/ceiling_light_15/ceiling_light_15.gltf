@@ -1,0 +1,296 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 112,
+      "max": [
+        50.0,
+        50.0,
+        8.0
+      ],
+      "min": [
+        -50.0,
+        -50.0,
+        0.0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 112,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5125,
+      "count": 324,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 336,
+      "max": [
+        56.543121337890625,
+        56.543121337890625,
+        6.5
+      ],
+      "min": [
+        -56.543121337890625,
+        -56.543121337890625,
+        -6.5
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 336,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5125,
+      "count": 2016,
+      "type": "SCALAR"
+    }
+  ],
+  "asset": {
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 2688,
+      "byteStride": 24,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1296,
+      "byteOffset": 2688,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 8064,
+      "byteOffset": 3984,
+      "byteStride": 24,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 8064,
+      "byteOffset": 12048,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 20112,
+      "uri": "ceiling_light_15.bin"
+    }
+  ],
+  "images": [
+    {
+      "uri": "Material__2147433349basecolortexture.png"
+    },
+    {
+      "uri": "Material__2147433348basecolortexture.png"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Material__2147433349",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.5,
+          0.5,
+          0.5,
+          1.0
+        ],
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.0
+      }
+    },
+    {
+      "name": "Material__2147433348",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.5,
+          0.5,
+          0.5,
+          1.0
+        ],
+        "baseColorTexture": {
+          "index": 1
+        },
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "ceiling_light_cover_15",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 1,
+            "POSITION": 0
+          },
+          "indices": 2,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "ceiling_light_hoop_15",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 4,
+            "POSITION": 3
+          },
+          "indices": 5,
+          "material": 1,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "matrix": [
+        0.001,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.001,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.001,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "mesh": 0,
+      "name": "ceiling_light_cover_15"
+    },
+    {
+      "children": [
+        0
+      ],
+      "matrix": [
+        -4.371138828673793e-08,
+        0.0,
+        -1.0,
+        0.0,
+        -1.0,
+        0.0,
+        4.371138828673793e-08,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        -6.755830078125,
+        3.9945410156250003,
+        5.446904296875,
+        1.0
+      ]
+    },
+    {
+      "matrix": [
+        0.001,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.001,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.001,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "mesh": 1,
+      "name": "ceiling_light_hoop_15"
+    },
+    {
+      "children": [
+        2
+      ],
+      "matrix": [
+        -4.371138828673793e-08,
+        0.0,
+        -1.0,
+        0.0,
+        -1.0,
+        0.0,
+        4.371138828673793e-08,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        -6.755830078125,
+        3.998541015625,
+        5.446904296875,
+        1.0
+      ]
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9729,
+      "wrapS": 10497,
+      "wrapT": 10497
+    },
+    {
+      "magFilter": 9729,
+      "minFilter": 9729,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "scenes": [
+    {
+      "nodes": [
+        1,
+        3
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "name": "texture_source0_sampler0",
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "name": "texture_source1_sampler1",
+      "sampler": 1,
+      "source": 1
+    }
+  ]
+}

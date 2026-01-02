@@ -65,6 +65,9 @@ export default class CameraController {
     this.domElement.addEventListener('mousemove', this.onMouseMove.bind(this));
     this.domElement.addEventListener('contextmenu', this.onContextMenu.bind(this));
     
+    // 添加指针锁定状态变化监听 - 简化处理
+    document.addEventListener('pointerlockchange', this.onPointerLockChange.bind(this));
+    
     // F8切换视角
     document.addEventListener('keydown', (e) => {
       if (e.key === 'F8') {
@@ -72,6 +75,18 @@ export default class CameraController {
         e.preventDefault();
       }
     });
+  }
+
+  // 简化指针锁定状态变化处理方法
+  private onPointerLockChange(): void {
+    this.isLocked = document.pointerLockElement === this.domElement;
+    
+    // 可选：更新光标样式
+    if (this.isLocked) {
+      this.domElement.style.cursor = 'none';
+    } else {
+      this.domElement.style.cursor = 'default';
+    }
   }
 
   private onKeyDown(event: KeyboardEvent): void {
@@ -82,24 +97,33 @@ export default class CameraController {
       this.velocity.y = this.config.jumpForce;
       this.canJump = false;
     }
+    
+    // ESC键退出指针锁定
+    if (event.key === 'Escape') {
+      if (document.pointerLockElement === this.domElement) {
+        document.exitPointerLock();
+      }
+    }
   }
 
   private onKeyUp(event: KeyboardEvent): void {
     this.keys[event.key.toLowerCase()] = false;
   }
 
+  // 简化的鼠标点击处理，参考 FirstPersonController 的实现
   private onMouseClick(event: MouseEvent): void {
+    // 如果是右键点击，不进行指针锁定（保留右键菜单功能）
+    if (event.button === 2) return;
+    
+    // 简化逻辑：如果没有锁定就尝试锁定
     if (!this.isLocked) {
       this.domElement.requestPointerLock();
     }
   }
 
   private onMouseMove(event: MouseEvent): void {
-    if (!this.isLocked && document.pointerLockElement === this.domElement) {
-      this.isLocked = true;
-    }
-    
-    if (this.isLocked && document.pointerLockElement === this.domElement) {
+    // 只在锁定状态下处理鼠标移动
+    if (this.isLocked) {
       const movementX = event.movementX || 0;
       const movementY = event.movementY || 0;
       
@@ -283,6 +307,7 @@ export default class CameraController {
   public dispose(): void {
     document.removeEventListener('keydown', this.onKeyDown.bind(this));
     document.removeEventListener('keyup', this.onKeyUp.bind(this));
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange.bind(this));
     
     if (this.domElement) {
       this.domElement.removeEventListener('click', this.onMouseClick.bind(this));

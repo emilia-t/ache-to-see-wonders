@@ -4,24 +4,29 @@
 import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { sceneConfig, cameraConfig, rendererConfig, lightConfig } from '@/config/recreationHallConfig';
+import { sceneConfig, cameraConfig, rendererConfig, lightConfig, modelPathList, videoList } from '@/config/recreationHallConfig';
 import type Coord3D from '@/interface/Coord3D';
 import CameraController from './CameraController';
+import { VideoTextureManager } from './VideoTextureManager';
 
-export default class ChessSceneManager {
+export interface VideoAspectRatio {
+  width: number;
+  height: number;
+  ratio: number;
+}
+
+export default class SceneManager {
   public  scene: THREE.Scene = new THREE.Scene;
   public  camera: THREE.PerspectiveCamera = new THREE.PerspectiveCamera;
   public  renderer: THREE.WebGLRenderer = new THREE.WebGLRenderer;
   public  labelRenderer: CSS2DRenderer = new CSS2DRenderer;
   public  ambientLight: THREE.AmbientLight = new THREE.AmbientLight;
 
-  private directionalLight1: THREE.DirectionalLight = new THREE.DirectionalLight;
-  private directionalLight2: THREE.DirectionalLight = new THREE.DirectionalLight;
   private fillLight: THREE.DirectionalLight = new THREE.DirectionalLight;
   private centerGridHelper: THREE.GridHelper = new THREE.GridHelper;
   private centerAxesHelper: THREE.AxesHelper = new THREE.AxesHelper;
   private ground: THREE.Mesh = new THREE.Mesh;
-  
+  private loadedModels: THREE.Group[] = [];  // 存储已加载的模型
   private sceneRef: HTMLElement | null = null;
   private onProgressUpdate?: (increment: number, status: string) => void;
 
@@ -29,12 +34,24 @@ export default class ChessSceneManager {
   private clock: THREE.Clock = new THREE.Clock();
   private animationId: number | null = null;
 
+  // 视频纹理管理器
+  private videoTextureManager: VideoTextureManager | null = null;
+  private screenMesh: THREE.Mesh | null = null;
+  private screenAspectRatio: number = 16 / 9; // 默认16:9
+
   constructor(
     sceneRef: HTMLElement,
     onProgressUpdate?: (increment: number, status: string) => void
   ) {
     this.sceneRef = sceneRef;
     this.onProgressUpdate = onProgressUpdate;
+    // 初始化视频纹理管理器
+    this.videoTextureManager = new VideoTextureManager();
+    
+    // 设置元数据加载回调
+    this.videoTextureManager.setOnMetadataLoadedCallback(
+      this.handleVideoMetadataLoaded.bind(this)
+    );
   }
 
   public init() {
@@ -94,83 +111,6 @@ export default class ChessSceneManager {
     this.ambientLight.name = "ambient_light";
     this.scene.add(this.ambientLight);
 
-    // 创建6个顶灯（定向光）
-    const topLightConfigs = [
-      // 原有的2个定向光配置
-      {
-        color: lightConfig.directional.color,
-        intensity: lightConfig.directional.intensity * 1.5, // 增强强度
-        position: { x: 3, y: 5, z: 2 }, // 提高Y轴高度
-        name: "top_light_1"
-      },
-      {
-        color: lightConfig.directional2.color,
-        intensity: lightConfig.directional2.intensity * 1.5, // 增强强度
-        position: { x: -3, y: 5, z: -2 }, // 提高Y轴高度
-        name: "top_light_2"
-      },
-      // 新增4个顶灯
-      {
-        color: 0xffffff,
-        intensity: 3.0,
-        position: { x: 0, y: 5, z: 4 },
-        name: "top_light_3"
-      },
-      {
-        color: 0xffffff,
-        intensity: 3.0,
-        position: { x: 0, y: 5, z: -4 },
-        name: "top_light_4"
-      },
-      {
-        color: 0xffffff,
-        intensity: 2.5,
-        position: { x: 4, y: 5, z: 0 },
-        name: "top_light_5"
-      },
-      {
-        color: 0xffffff,
-        intensity: 2.5,
-        position: { x: -4, y: 5, z: 0 },
-        name: "top_light_6"
-      }
-    ];
-
-    // 创建并添加所有顶灯
-    topLightConfigs.forEach((config, index) => {
-      const topLight = new THREE.DirectionalLight(
-        config.color,
-        config.intensity
-      );
-      
-      topLight.position.set(
-        config.position.x,
-        config.position.y,
-        config.position.z
-      );
-      
-      // 只有前两个主灯光投射阴影，避免性能开销过大
-      if (index < 2) {
-        topLight.castShadow = true;
-        const shadowConfig = index === 0 ? lightConfig.directional.shadow : lightConfig.directional2.shadow;
-        this.configureShadow(topLight, shadowConfig);
-      } else {
-        topLight.castShadow = false; // 其他灯光不投射阴影
-      }
-      
-      topLight.name = config.name;
-      
-      // 设置灯光朝向地面
-      topLight.target.position.set(0, 0, 0);
-      this.scene.add(topLight.target);
-      
-      this.scene.add(topLight);
-      
-      // 保存到对应属性
-      if (index === 0) this.directionalLight1 = topLight;
-      else if (index === 1) this.directionalLight2 = topLight;
-    });
-
     // 补光光源 - 增强强度
     this.fillLight = new THREE.DirectionalLight(
       lightConfig.fillLight.color,
@@ -185,7 +125,7 @@ export default class ChessSceneManager {
     this.fillLight.name = "fill_light";
     this.scene.add(this.fillLight);
 
-    // 额外添加一个半球光（HemisphereLight）来模拟天光和地面反射
+    // 半球光（HemisphereLight）来模拟天光和地面反射
     const hemisphereLight = new THREE.HemisphereLight(
       0x87CEEB, // 天空颜色（浅蓝色）
       0x8B7355, // 地面颜色（棕色）
@@ -208,221 +148,157 @@ export default class ChessSceneManager {
     this.scene.add(pointLight);
   }
 
+  private createCeilingLight(position:Coord3D,name:string) {
+      const topLight = new THREE.DirectionalLight(
+        0xffffff,
+        1.0
+      );
+      
+      topLight.position.set(
+        position.x,
+        position.y,
+        position.z
+      );
+      
+      topLight.name = name;
+      
+      // 设置灯光朝向地面
+      topLight.target.position.set(0, 0, 0);
+      this.scene.add(topLight.target);
+      
+      this.scene.add(topLight);
+  }
 
   private createStaticModel(): void {
-    // 定义静态模型路径
-    const modelPath = "/gltf/recreation_hall/build/recreation_hall.gltf";
+    const totalModels = modelPathList.length;
+    const isCeilingLight = /^ceiling_light/;
+    let loadedCount = 0;
+    this.onProgressUpdate?.(0, `开始加载${totalModels}个模型...`);
     
-    // 创建GLTFLoader实例
-    const loader = new GLTFLoader();
+    // 使用递归函数按顺序加载模型
+    const loadNextModel = (index: number) => {
+      if (index >= totalModels) {// 所有模型加载完成
+        //重新调整灯光位置
+        //this.adjustLightsToModels();
+        this.onProgressUpdate?.(1, `所有模型加载完成 (${loadedCount}/${totalModels})`);
+        console.log(`所有静态模型加载完成: ${loadedCount}/${totalModels} 个模型`);
+        return;
+      }
+      
+      const modelName = modelPathList[index].name;
+      const modelPath = modelPathList[index].path;
     
-    // 显示加载进度
-    this.onProgressUpdate?.(0, "正在加载休闲大厅模型...");
-    
-    // 加载模型
-    loader.load(
-      modelPath,
-      (gltf) => {
-        const model = gltf.scene;
-        
-        // 设置模型位置、旋转和缩放
-        model.position.set(0, 0, 0);
-        model.rotation.set(0, 0, 0);
-        model.scale.set(1, 1, 1);
-        model.name = "recreation_hall_static";
-        
-        // 遍历模型的所有子对象，设置阴影和优化材质
-        model.traverse((child) => {
+      const loader = new GLTFLoader();
+      
+      // 更新加载状态
+      this.onProgressUpdate?.(
+        index / totalModels, 
+        `正在加载 ${modelName}... (${index + 1}/${totalModels})`
+      );
+      
+      loader.load(
+        modelPath,
+        (gltf) => {
+          const model = gltf.scene;
+          
+          model.position.set(0, 0, 0);
+          model.rotation.set(0, 0, 0);
+          model.scale.set(1, 1, 1);
+          
+          // 如果是屏幕模型，应用视频材质
+          if (modelName === 'screen') {
+            this.applyVideoMaterialToScreen(model);
+          }
+
+          model.name = modelName;
+          // 如果是天花板灯光模型，创建对应的灯光
+          if(isCeilingLight.test(modelName)){
+            const Box = new THREE.Box3().setFromObject(model);
+            const center = new THREE.Vector3();
+            Box.getCenter(center);
+            this.createCeilingLight(center,modelName);
+          }
+          // 遍历模型的所有子对象，设置阴影和优化材质
+          model.traverse((child) => {
           if (child instanceof THREE.Mesh) {
             // 启用阴影
             child.castShadow = true;
             child.receiveShadow = true;
             
             // 优化材质性能
-            if (child.material) {
+            if(modelName === 'screen'){
+              // 屏幕材质已特殊处理，跳过
+            }else{
+              if(child.material) {
               // 如果是标准或物理材质，转换为兰伯特材质以提高性能
               if (child.material instanceof THREE.MeshStandardMaterial || 
                   child.material instanceof THREE.MeshPhysicalMaterial) {
-                const lambertMaterial = new THREE.MeshLambertMaterial();
+                  const lambertMaterial = new THREE.MeshLambertMaterial();
+                  
+                  // 复制基础属性
+                  if (child.material.map) lambertMaterial.map = child.material.map;
+                  if (child.material.color) lambertMaterial.color = child.material.color.clone();
+                  if (child.material.transparent !== undefined) lambertMaterial.transparent = child.material.transparent;
+                  if (child.material.opacity !== undefined) lambertMaterial.opacity = child.material.opacity;
+                  
+                  // 更新纹理
+                  if (lambertMaterial.map) {
+                    lambertMaterial.map.needsUpdate = true;
+                  }
                 
-                // 复制基础属性
-                if (child.material.map) lambertMaterial.map = child.material.map;
-                if (child.material.color) lambertMaterial.color = child.material.color.clone();
-                if (child.material.transparent !== undefined) lambertMaterial.transparent = child.material.transparent;
-                if (child.material.opacity !== undefined) lambertMaterial.opacity = child.material.opacity;
-                
-                // 更新纹理
-                if (lambertMaterial.map) {
-                  lambertMaterial.map.needsUpdate = true;
+                  child.material = lambertMaterial;
                 }
-                
-                child.material = lambertMaterial;
-              }
               
-              // 确保材质启用阴影
-              child.material.needsUpdate = true;
+                // 确保材质启用阴影
+                child.material.needsUpdate = true;
+              }
             }
           }
-        });
-        
-        // 将模型添加到场景
-        this.scene.add(model);
-        
-        // 更新进度
-        this.onProgressUpdate?.(1, "休闲大厅模型加载完成");
-        
-        // 输出模型信息（调试用）
-        console.log("静态模型加载完成:", model);
-        
-        // 如果模型有动画，可以在这里设置
-        if (gltf.animations && gltf.animations.length > 0) {
-          console.log("模型包含动画:", gltf.animations.length, "个动画片段");
-        }
-        
-        // 可选：调整模型位置使其与地面对齐
-        this.adjustModelPosition(model);
-      },
-      // 加载进度回调
-      (xhr) => {
-        if (xhr.lengthComputable) {
-          const percentComplete = (xhr.loaded / xhr.total) * 100;
-          this.onProgressUpdate?.(
-            percentComplete / 100, 
-            `正在加载模型... ${Math.round(percentComplete)}%`
-          );
-        }
-      },
-      // 错误处理
-      (error) => {
-        console.error("静态模型加载失败:", error);
-        this.onProgressUpdate?.(1, "模型加载失败，将使用默认场景");
-        
-        // 加载失败时创建简单的替代场景
-        this.createFallbackScene();
-      }
-    );
-  }
-
-  private createFallbackScene(): void {
-    console.log("创建备用场景...");
-    
-    // 创建一些简单的几何体作为备用场景
-    const geometries = [
-      // 舞台
-      {
-        type: 'box' as const,
-        position: { x: 0, y: 0.5, z: -5 },
-        size: { width: 10, height: 1, depth: 5 },
-        color: 0x8B4513,
-        name: 'stage'
-      },
-      // 电影院屏幕
-      {
-        type: 'plane' as const,
-        position: { x: 0, y: 3, z: -8 },
-        size: { width: 8, height: 4.5 },
-        color: 0x000000,
-        name: 'screen'
-      },
-      // 椅子组
-      {
-        type: 'chairGroup' as const,
-        position: { x: 0, y: 0, z: 5 },
-        count: 4,
-        spacing: 2.5,
-        color: 0x2E8B57,
-        name: 'chairs'
-      },
-      // 桌子
-      {
-        type: 'box' as const,
-        position: { x: 5, y: 0.75, z: 0 },
-        size: { width: 2, height: 1.5, depth: 1 },
-        color: 0xD2691E,
-        name: 'table'
-      }
-    ];
-    
-    geometries.forEach((geo) => {
-      if (geo.type === 'box') {
-        const geometry = new THREE.BoxGeometry(
-          geo.size.width, 
-          geo.size.height, 
-          geo.size.depth
-        );
-        const material = new THREE.MeshLambertMaterial({ color: geo.color });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(geo.position.x, geo.position.y, geo.position.z);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.name = geo.name;
-        this.scene.add(mesh);
-      } 
-      else if (geo.type === 'plane') {
-        const geometry = new THREE.PlaneGeometry(geo.size.width, geo.size.height);
-        const material = new THREE.MeshLambertMaterial({ 
-          color: geo.color,
-          side: THREE.DoubleSide
-        });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(geo.position.x, geo.position.y, geo.position.z);
-        mesh.rotation.y = Math.PI;
-        mesh.name = geo.name;
-        this.scene.add(mesh);
-      }
-      else if (geo.type === 'chairGroup') {
-        // 创建一组简单的椅子
-        for (let i = 0; i < geo.count; i++) {
-          const chairGeometry = new THREE.BoxGeometry(0.5, 1, 0.5);
-          const chairMaterial = new THREE.MeshLambertMaterial({ color: geo.color });
-          const chair = new THREE.Mesh(chairGeometry, chairMaterial);
+          });
           
-          const x = geo.position.x + (i - (geo.count - 1) / 2) * geo.spacing;
-          chair.position.set(x, geo.position.y + 0.5, geo.position.z);
-          chair.castShadow = true;
-          chair.receiveShadow = true;
-          chair.name = `${geo.name}_${i}`;
-          this.scene.add(chair);
+          // 将模型添加到场景
+          this.scene.add(model);
+          this.loadedModels.push(model);
+          
+          loadedCount++;
+          this.calculateModelOffset(model, modelName);
+          console.log(`模型加载完成: ${modelName}`);
+          
+          // 加载下一个模型
+          loadNextModel(index + 1);
+        },
+        // 加载进度回调
+        (xhr) => {
+          if (xhr.lengthComputable) {
+            const percentComplete = (xhr.loaded / xhr.total) * 100;
+            this.onProgressUpdate?.(
+              (index + percentComplete / 100) / totalModels, 
+              `正在加载 ${modelName}... ${Math.round(percentComplete)}%`
+            );
+          }
+        },
+        // 错误处理
+        (error) => {
+          console.error(`模型 ${modelName} 加载失败:`, error);
+          console.warn(`跳过模型: ${modelName}`);
+          
+          // 继续加载下一个模型
+          loadNextModel(index + 1);
         }
-      }
-    });
+      );
+    };
     
-    // 添加一些人物占位符
-    this.createPlaceholderCharacters();
-    
-    console.log("备用场景创建完成");
+    // 开始加载第一个模型
+    loadNextModel(0);
   }
 
-  private createPlaceholderCharacters(): void {
-    // 创建简单的人物占位符（圆柱体）
-    const characters = [
-      { position: { x: 2, y: 0, z: -2 }, color: 0xFF6B6B, name: 'person_1' },
-      { position: { x: -2, y: 0, z: -2 }, color: 0x4ECDC4, name: 'person_2' },
-      { position: { x: 3, y: 0, z: 3 }, color: 0x45B7D1, name: 'person_3' },
-      { position: { x: -3, y: 0, z: 3 }, color: 0x96CEB4, name: 'person_4' },
-    ];
-    
-    characters.forEach((char) => {
-      // 身体
-      const bodyGeometry = new THREE.CylinderGeometry(0.2, 0.2, 1.5, 8);
-      const bodyMaterial = new THREE.MeshLambertMaterial({ color: char.color });
-      const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-      body.position.set(char.position.x, 0.75, char.position.z);
-      body.castShadow = true;
-      body.receiveShadow = true;
-      body.name = char.name;
-      this.scene.add(body);
-      
-      // 头部
-      const headGeometry = new THREE.SphereGeometry(0.25, 8, 8);
-      const headMaterial = new THREE.MeshLambertMaterial({ color: 0xF5DEB3 }); // 肤色
-      const head = new THREE.Mesh(headGeometry, headMaterial);
-      head.position.set(char.position.x, 1.65, char.position.z);
-      head.castShadow = true;
-      head.receiveShadow = true;
-      head.name = `${char.name}_head`;
-      this.scene.add(head);
-    });
+  private calculateModelOffset(model: THREE.Object3D, modelName: string): void {
+      const Box = new THREE.Box3().setFromObject(model);
+      const center = new THREE.Vector3();
+      Box.getCenter(center);
+      // 存储模型中心点相对于世界坐标原点的偏移
+      const offset = sceneConfig.offset as { [key: string]: { x: number; y: number; z: number } };
+      offset[modelName] = { x: center.x, y: center.y, z: center.z };
   }
 
   private createHelpers() {
@@ -609,36 +485,209 @@ export default class ChessSceneManager {
     });
   }
 
-  private adjustModelPosition(model: THREE.Group): void {
-    // 计算模型的包围盒
-    const box = new THREE.Box3().setFromObject(model);
-    const size = new THREE.Vector3();
-    box.getSize(size);
+
+
+  /**
+   * 处理视频元数据加载
+   */
+  private handleVideoMetadataLoaded(aspectRatio: VideoAspectRatio): void {
+    console.log(`视频宽高比: ${aspectRatio.width}x${aspectRatio.height} (${aspectRatio.ratio.toFixed(2)})`);
     
-    // 计算中心点
-    const center = new THREE.Vector3();
-    box.getCenter(center);
+    // 应用UV变换以保持宽高比
+    this.adjustVideoTextureToScreen();
+  }
+
+  /**
+   * 计算屏幕模型的宽高比
+   */
+  private calculateScreenAspectRatio(screenMesh: THREE.Mesh): number {
+    const geometry = screenMesh.geometry;
     
-    console.log(`模型尺寸: ${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`);
-    console.log(`模型中心: (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})`);
+    // 方法1: 使用边界框计算
+    geometry.computeBoundingBox();
+    const bbox = geometry.boundingBox;
     
-    // 如果模型中心不在原点，调整位置
-    if (Math.abs(center.y) > 0.1) {
-      // 将模型底部对齐到地面
-      model.position.y -= (box.min.y);
-      console.log("已将模型底部对齐到地面");
+    if (bbox) {
+      const width = bbox.max.x - bbox.min.x;
+      const height = bbox.max.y - bbox.min.y;
+      const aspectRatio = Math.abs(width / height);
+      
+      console.log(`屏幕边界框尺寸: ${width.toFixed(2)} x ${height.toFixed(2)}, 宽高比: ${aspectRatio.toFixed(2)}`);
+      return aspectRatio;
     }
     
-    // 调整模型缩放（可选）
-    const targetSize = 10; // 目标最大尺寸
-    const maxDimension = Math.max(size.x, size.y, size.z);
+    // 方法2: 使用位置数组计算（备选）
+    const positions = geometry.attributes.position.array;
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
     
-    if (maxDimension > targetSize) {
-      const scale = targetSize / maxDimension;
-      model.scale.multiplyScalar(scale);
-      console.log(`已将模型缩放到原尺寸的 ${(scale * 100).toFixed(0)}%`);
+    for (let i = 0; i < positions.length; i += 3) {
+      const x = positions[i];
+      const y = positions[i + 1];
+      
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+    
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const aspectRatio = Math.abs(width / height);
+    
+    console.log(`屏幕计算尺寸: ${width.toFixed(2)} x ${height.toFixed(2)}, 宽高比: ${aspectRatio.toFixed(2)}`);
+    return aspectRatio;
+  }
+
+  /**
+   * 调整视频纹理以适配屏幕
+   */
+  private adjustVideoTextureToScreen(): void {
+    if (!this.videoTextureManager || !this.screenMesh) return;
+    
+    // 计算屏幕宽高比
+    const screenAspect = this.calculateScreenAspectRatio(this.screenMesh);
+    this.screenAspectRatio = screenAspect;
+    
+    // 计算UV变换
+    const transform = this.videoTextureManager.calculateUVTransform(screenAspect);
+    
+    // 应用变换到纹理
+    this.videoTextureManager.applyUVTransformToTexture(transform);
+    
+    console.log(`已调整视频纹理适配屏幕 (屏幕宽高比: ${screenAspect.toFixed(2)})`);
+  }
+
+
+  /**
+   * 为屏幕模型应用视频材质
+   */
+  private applyVideoMaterialToScreen(screenModel: THREE.Group): void {
+    // 遍历屏幕模型的子对象，找到网格
+    screenModel.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        this.screenMesh = child;
+        
+        // 计算屏幕宽高比
+        this.screenAspectRatio = this.calculateScreenAspectRatio(child);
+
+        // 创建视频材质
+        const videoTexture = this.videoTextureManager!.createVideoTexture(
+          videoList[0].url
+        );
+        
+        // 等待一段时间后调整纹理（确保视频元数据已加载）
+        setTimeout(() => {
+          this.adjustVideoTextureToScreen();
+        }, 1000);
+
+        // 创建自发光材质，使视频看起来更亮
+        const videoMaterial = new THREE.MeshBasicMaterial({
+          map: videoTexture,
+          side: THREE.DoubleSide, // 双面显示
+          transparent: false,
+          toneMapped: false, // 避免色调映射，保持视频原色
+        });
+        
+        // 保存原始材质以便切换
+        (child as any).originalMaterial = child.material;
+        child.material = videoMaterial;
+        
+        // 存储屏幕网格引用
+        this.screenMesh = child;
+        
+        console.log('已为屏幕应用视频材质');
+      }
+    });
+  }
+
+  /**
+   * 播放屏幕视频
+   */
+  public async playScreenVideo(videoUrl?: string): Promise<void> {
+    if (!this.videoTextureManager) {
+      console.error('视频纹理管理器未初始化');
+      return;
+    }
+    
+    if (videoUrl) {
+      this.videoTextureManager.updateVideoSource(videoUrl);
+    }
+    
+    try {
+      await this.videoTextureManager.play();
+      console.log('屏幕视频开始播放');
+    } catch (error) {
+      console.error('播放视频失败:', error);
+      // 提示用户可能需要交互才能播放
     }
   }
+
+  /**
+   * 暂停屏幕视频
+   */
+  public pauseScreenVideo(): void {
+    if (this.videoTextureManager) {
+      this.videoTextureManager.pause();
+      console.log('屏幕视频已暂停');
+    }
+  }
+
+  /**
+   * 停止屏幕视频
+   */
+  public stopScreenVideo(): void {
+    if (this.videoTextureManager) {
+      this.videoTextureManager.stop();
+      console.log('屏幕视频已停止');
+    }
+  }
+
+  /**
+   * 切换视频静音
+   */
+  public toggleVideoMute(): boolean {
+    if (this.videoTextureManager) {
+      return this.videoTextureManager.toggleMute();
+    }
+    return false;
+  }
+
+  /**
+   * 设置视频音量
+   */
+  public setVideoVolume(volume: number): void {
+    if (this.videoTextureManager) {
+      this.videoTextureManager.setVolume(volume);
+    }
+  }
+
+  /**
+   * 获取视频状态
+   */
+  public getVideoStatus() {
+    if (this.videoTextureManager) {
+      return this.videoTextureManager.getVideoStatus();
+    }
+    return null;
+  }
+
+  /**
+   * 更换视频源
+   */
+  public changeVideoSource(videoUrl: string): void {
+    if (this.videoTextureManager) {
+      this.videoTextureManager.updateVideoSource(videoUrl);
+      
+      // 等待视频加载后重新调整纹理
+      setTimeout(() => {
+        this.adjustVideoTextureToScreen();
+      }, 500);
+      
+      console.log(`已更换视频源: ${videoUrl}`);
+    }
+  }
+
 
   public resize() {
     if (!this.camera || !this.renderer) return;
@@ -674,8 +723,12 @@ export default class ChessSceneManager {
       this.cameraController.dispose();
       this.cameraController = null;
     }
-    
-    // 原有的清理代码...
+    // 清理视频纹理管理器
+    if (this.videoTextureManager) {
+      this.videoTextureManager.dispose();
+      this.videoTextureManager = null;
+    }
+    // 清理代码
     if (this.renderer) {
       this.renderer.dispose();
       if (this.renderer.domElement.parentNode) {
