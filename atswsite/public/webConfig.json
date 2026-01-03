@@ -28,10 +28,10 @@
       {
         "key": "rh3",
         "title": "3D娱乐厅",
-        "description": "在线观看电影，欣赏音乐，自由的聊天~",
-        "cover": "/cover/empty_cover.png",
+        "description": "在线观看电影，欣赏音乐。",
+        "cover": "/cover/recreation_hall_3d.jpg",
         "targetUrl": "/recreation-hall",
-        "mode": "online_multiplayer",
+        "mode": "single_person",
         "online_count": 0,
         "online_state": false,
         "visit_count": 0,

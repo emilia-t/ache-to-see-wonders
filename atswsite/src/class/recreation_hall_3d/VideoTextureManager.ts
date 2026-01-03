@@ -171,8 +171,6 @@ export class VideoTextureManager {
       }
     } catch (error) {
       console.error('播放视频失败:', error);
-      // 如果自动播放被阻止，可能是由于浏览器的自动播放策略
-      // 我们可以等待用户交互后再次尝试
     }
   }
 
@@ -232,18 +230,69 @@ export class VideoTextureManager {
   /**
    * 更新视频源
    */
-  public updateVideoSource(videoUrl: string): void {
+  public updateVideoSource(videoUrl: string, keepCurrentTime: boolean = false): void {
     if (!this.videoElement) return;
     
-    const wasPlaying = this.isPlaying;
-    this.pause();
+    // 检查是否是相同的视频源
+    if (this.currentVideoUrl === videoUrl) {
+      console.log('视频源未改变，跳过更新');
+      return;
+    }
     
+    // 保存当前状态
+    const wasPlaying = this.isPlaying;
+    const currentTime = this.videoElement.currentTime;
+    
+    // 暂停视频（但不重置时间）
+    if (wasPlaying) {
+      this.videoElement.pause();
+    }
+    
+    // 设置新的视频源
     this.videoElement.src = videoUrl;
     this.currentVideoUrl = videoUrl;
     this.videoElement.load();
     
-    if (wasPlaying) {
-      this.play();
+    // 监听新视频的加载完成事件
+    const onCanPlay = () => {
+      // 恢复之前的时间位置
+      if (keepCurrentTime && currentTime > 0) {
+        this.videoElement!.currentTime = currentTime;
+      }
+      
+      // 如果之前正在播放，则继续播放
+      if (wasPlaying) {
+        this.play().catch(error => {
+          console.warn('恢复播放失败:', error);
+        });
+      }
+      
+      // 移除事件监听
+      this.videoElement!.removeEventListener('canplay', onCanPlay);
+    };
+    
+    this.videoElement.addEventListener('canplay', onCanPlay);
+    
+    console.log(`视频源已更新: ${videoUrl}`);
+  }
+
+  /**
+   * 继续播放视频（从当前时间继续）
+   */
+  public async resume(): Promise<void> {
+    if (!this.videoElement) return;
+    
+    try {
+      this.playPromise = this.videoElement.play();
+      await this.playPromise;
+      this.isPlaying = true;
+      
+      if (this.onPlayCallback) {
+        this.onPlayCallback(true);
+      }
+      console.log('视频继续播放');
+    } catch (error) {
+      console.error('继续播放视频失败:', error);
     }
   }
 

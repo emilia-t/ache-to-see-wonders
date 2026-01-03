@@ -26,14 +26,11 @@ const videoControl = reactive({
   isMuted: false,
   currentTime: 0,
   duration: 0,
-  videoUrl: '/video/default.mp4' // 默认视频路径
+  videoUrl: '/video/movie/default.mp4' // 默认视频路径
 });
 
 const videoUrls = [
-  { name: '默认演示', url: '/videos/default.mp4' },
-  { name: '自然风光', url: '/videos/nature.mp4' },
-  { name: '城市夜景', url: '/videos/city_night.mp4' },
-  { name: '抽象艺术', url: '/videos/abstract.mp4' }
+  { name: '默认演示', url: '/video/movie/default.mp4' }
 ];
 
 // ==============================
@@ -104,16 +101,17 @@ const handleKeyDown = (e: KeyboardEvent) => {
 const toggleVideoPlay = async () => {
   if (!sceneManager) return;
   
-  if (videoControl.isPlaying) {
-    sceneManager.pauseScreenVideo();
-  } else {
-    await sceneManager.playScreenVideo(videoControl.videoUrl);
-  }
-  
-  // 更新状态
+  // 获取当前视频状态
   const status = sceneManager.getVideoStatus();
-  if (status) {
-    videoControl.isPlaying = status.isPlaying;
+  
+  if (status && status.isPlaying) {
+    // 如果正在播放，则暂停
+    sceneManager.pauseScreenVideo();
+    videoControl.isPlaying = false;
+  } else {
+    // 如果已暂停，则继续播放
+    await sceneManager.resumeScreenVideo();
+    videoControl.isPlaying = true;
   }
 }
 
@@ -123,11 +121,12 @@ const toggleVideoMute = () => {
   videoControl.isMuted = sceneManager.toggleVideoMute();
 }
 
+// 更换视频时，默认不保持当前时间（从头播放）
 const changeVideo = async (url: string) => {
   videoControl.videoUrl = url;
   
   if (sceneManager) {
-    sceneManager.changeVideoSource(url);
+    sceneManager.changeVideoSource(url, false); // false 表示从头播放
     
     // 如果正在播放，重新播放
     if (videoControl.isPlaying) {
@@ -135,6 +134,7 @@ const changeVideo = async (url: string) => {
     }
   }
 }
+
 const handleVolumeChange = (event: Event) => {
   const target = event.target as HTMLInputElement;
   if (target) {

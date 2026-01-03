@@ -673,18 +673,44 @@ export default class SceneManager {
   }
 
   /**
+   * 继续播放屏幕视频
+   */
+  public async resumeScreenVideo(): Promise<void> {
+    if (!this.videoTextureManager) {
+      console.error('视频纹理管理器未初始化');
+      return;
+    }
+    
+    try {
+      await this.videoTextureManager.resume();
+      console.log('屏幕视频继续播放');
+    } catch (error) {
+      console.error('继续播放视频失败:', error);
+    }
+  }
+
+  /**
    * 更换视频源
    */
-  public changeVideoSource(videoUrl: string): void {
+  public changeVideoSource(videoUrl: string, keepCurrentTime: boolean = false): void {
     if (this.videoTextureManager) {
-      this.videoTextureManager.updateVideoSource(videoUrl);
+      // 保存当前播放状态
+      const currentStatus = this.getVideoStatus();
+      
+      // 更新视频源，可选保持当前播放时间
+      this.videoTextureManager.updateVideoSource(videoUrl, keepCurrentTime);
       
       // 等待视频加载后重新调整纹理
       setTimeout(() => {
         this.adjustVideoTextureToScreen();
+        
+        // 如果之前正在播放，且没有保持当前时间，则从头播放
+        if (currentStatus && currentStatus.isPlaying && !keepCurrentTime) {
+          this.playScreenVideo(videoUrl);
+        }
       }, 500);
       
-      console.log(`已更换视频源: ${videoUrl}`);
+      console.log(`已更换视频源: ${videoUrl}, 保持时间: ${keepCurrentTime}`);
     }
   }
 

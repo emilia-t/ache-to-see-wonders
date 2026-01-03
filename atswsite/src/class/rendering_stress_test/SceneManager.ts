@@ -19,6 +19,17 @@ interface FPSCounter {
   frameCount: number;
 }
 
+// 扩展Performance接口以支持memory属性
+interface PerformanceMemory {
+  usedJSHeapSize: number;
+  totalJSHeapSize: number;
+  jsHeapSizeLimit: number;
+}
+
+interface PerformanceWithMemory extends Performance {
+  memory?: PerformanceMemory;
+}
+
 export default class SceneManager {
   public  scene: THREE.Scene = new THREE.Scene;
   public  camera: THREE.PerspectiveCamera = new THREE.PerspectiveCamera;
@@ -40,7 +51,6 @@ export default class SceneManager {
   private clock: THREE.Clock = new THREE.Clock();
   private animationId: number | null = null;
 
-
   // 调试信息相关
   private debugPanel: HTMLElement | null = null;
   private fpsCounter: FPSCounter = {
@@ -54,7 +64,6 @@ export default class SceneManager {
   };
   private lastFrameTime: number = 0;
   private isDebugPanelVisible: boolean = true;
-
 
   constructor(
     sceneRef: HTMLElement,
@@ -74,6 +83,7 @@ export default class SceneManager {
     this.createStaticModel();
     this.initLabelRenderer();
     this.initCameraController();
+    this.createDebugPanel(); // 添加调试面板创建
     this.startAnimation();
   }
 
@@ -123,19 +133,6 @@ export default class SceneManager {
 
     // 创建6个顶灯（定向光）
     const topLightConfigs = [
-      // 原有的2个定向光配置
-      {
-        color: lightConfig.directional.color,
-        intensity: lightConfig.directional.intensity * 1.5, // 增强强度
-        position: { x: 3, y: 5, z: 2 }, // 提高Y轴高度
-        name: "top_light_1"
-      },
-      {
-        color: lightConfig.directional2.color,
-        intensity: lightConfig.directional2.intensity * 1.5, // 增强强度
-        position: { x: -3, y: 5, z: -2 }, // 提高Y轴高度
-        name: "top_light_2"
-      },
       // 新增4个顶灯
       {
         color: 0xffffff,
@@ -175,15 +172,6 @@ export default class SceneManager {
         config.position.y,
         config.position.z
       );
-      
-      // 只有前两个主灯光投射阴影，避免性能开销过大
-      if (index < 2) {
-        topLight.castShadow = true;
-        const shadowConfig = index === 0 ? lightConfig.directional.shadow : lightConfig.directional2.shadow;
-        this.configureShadow(topLight, shadowConfig);
-      } else {
-        topLight.castShadow = false; // 其他灯光不投射阴影
-      }
       
       topLight.name = config.name;
       
@@ -234,7 +222,6 @@ export default class SceneManager {
     pointLight.castShadow = false;
     this.scene.add(pointLight);
   }
-
 
   private createStaticModel(): void {
     // 定义静态模型路径
@@ -313,10 +300,7 @@ export default class SceneManager {
       (xhr) => {
         if (xhr.lengthComputable) {
           const percentComplete = (xhr.loaded / xhr.total) * 100;
-          this.onProgressUpdate?.(
-            percentComplete / 100, 
-            `正在加载模型... ${Math.round(percentComplete)}%`
-          );
+          this.onProgressUpdate?.(percentComplete / 100, `正在加载模型... ${Math.round(percentComplete)}%`);
         }
       },
       // 错误处理
@@ -752,7 +736,7 @@ export default class SceneManager {
     toggleButton.addEventListener('click', () => {
       this.isDebugPanelVisible = !this.isDebugPanelVisible;
       if (this.debugPanel) {
-        const content = this.debugPanel.querySelector('.debug-content');
+        const content = this.debugPanel.querySelector('.debug-content') as HTMLElement | null;
         if (content) {
           content.style.display = this.isDebugPanelVisible ? 'block' : 'none';
         }
@@ -796,7 +780,6 @@ export default class SceneManager {
     
     // 添加键盘快捷键：按F1显示/隐藏调试面板
     document.addEventListener('keydown', (e) => {
-      console.log(e.key);
       if (e.key === 'F1') {
         e.preventDefault();
         this.toggleDebugPanel();
@@ -850,10 +833,10 @@ export default class SceneManager {
     if (!this.debugPanel || !this.isDebugPanelVisible) return;
     
     // 更新FPS信息
-    const fpsCurrent = this.debugPanel.querySelector('.fps-current');
-    const fpsMax = this.debugPanel.querySelector('.fps-max');
-    const fpsMin = this.debugPanel.querySelector('.fps-min');
-    const fpsAvg = this.debugPanel.querySelector('.fps-avg');
+    const fpsCurrent = this.debugPanel.querySelector('.fps-current') as HTMLElement | null;
+    const fpsMax = this.debugPanel.querySelector('.fps-max') as HTMLElement | null;
+    const fpsMin = this.debugPanel.querySelector('.fps-min') as HTMLElement | null;
+    const fpsAvg = this.debugPanel.querySelector('.fps-avg') as HTMLElement | null;
     
     if (fpsCurrent) fpsCurrent.textContent = this.fpsCounter.current.toString();
     if (fpsMax) fpsMax.textContent = this.fpsCounter.max.toString();
@@ -861,9 +844,9 @@ export default class SceneManager {
     if (fpsAvg) fpsAvg.textContent = this.fpsCounter.avg.toString();
     
     // 更新相机信息
-    const cameraMode = this.debugPanel.querySelector('.camera-mode');
-    const cameraPosition = this.debugPanel.querySelector('.camera-position');
-    const cameraRotation = this.debugPanel.querySelector('.camera-rotation');
+    const cameraMode = this.debugPanel.querySelector('.camera-mode') as HTMLElement | null;
+    const cameraPosition = this.debugPanel.querySelector('.camera-position') as HTMLElement | null;
+    const cameraRotation = this.debugPanel.querySelector('.camera-rotation') as HTMLElement | null;
     
     if (cameraMode && this.cameraController) {
       const isFirstPerson = (this.cameraController as any).isFirstPerson;
@@ -880,9 +863,9 @@ export default class SceneManager {
     }
     
     // 更新性能信息
-    const drawCalls = this.debugPanel.querySelector('.draw-calls');
-    const triangles = this.debugPanel.querySelector('.triangles');
-    const memory = this.debugPanel.querySelector('.memory');
+    const drawCalls = this.debugPanel.querySelector('.draw-calls') as HTMLElement | null;
+    const triangles = this.debugPanel.querySelector('.triangles') as HTMLElement | null;
+    const memory = this.debugPanel.querySelector('.memory') as HTMLElement | null;
     
     if (drawCalls && this.renderer.info) {
       drawCalls.textContent = this.renderer.info.render.calls.toString();
@@ -895,7 +878,9 @@ export default class SceneManager {
     if (memory) {
       // 注意：由于浏览器安全限制，我们无法直接获取准确的内存使用量
       // 这里使用一个近似的估计值
-      const estimatedMemory = Math.round(performance.memory?.usedJSHeapSize / (1024 * 1024)) || 0;
+      const performanceWithMemory = performance as PerformanceWithMemory;
+      const estimatedMemory = performanceWithMemory.memory ? 
+        Math.round(performanceWithMemory.memory.usedJSHeapSize / (1024 * 1024)) : 0;
       memory.textContent = `${estimatedMemory} MB`;
     }
     
@@ -905,7 +890,7 @@ export default class SceneManager {
 
   // 根据FPS值更新颜色
   private updateFPSColor(): void {
-    const fpsCurrent = this.debugPanel?.querySelector('.fps-current');
+    const fpsCurrent = this.debugPanel?.querySelector('.fps-current') as HTMLElement | null;
     if (!fpsCurrent) return;
     
     const fps = this.fpsCounter.current;
@@ -930,13 +915,13 @@ export default class SceneManager {
   private toggleDebugPanel(): void {
     this.isDebugPanelVisible = !this.isDebugPanelVisible;
     if (this.debugPanel) {
-      const content = this.debugPanel.querySelector('.debug-content');
+      const content = this.debugPanel.querySelector('.debug-content') as HTMLElement | null;
       if (content) {
         content.style.display = this.isDebugPanelVisible ? 'block' : 'none';
       }
       
       // 更新切换按钮文本
-      const toggleButton = this.debugPanel.querySelector('button');
+      const toggleButton = this.debugPanel.querySelector('button') as HTMLButtonElement | null;
       if (toggleButton) {
         toggleButton.textContent = this.isDebugPanelVisible ? '隐藏' : '显示';
       }
@@ -955,7 +940,13 @@ export default class SceneManager {
       this.cameraController = null;
     }
     
-    // 清理代码
+    // 清理调试面板
+    if (this.debugPanel && this.debugPanel.parentNode) {
+      this.debugPanel.parentNode.removeChild(this.debugPanel);
+      this.debugPanel = null;
+    }
+    
+    // 清理渲染器
     if (this.renderer) {
       this.renderer.dispose();
       if (this.renderer.domElement.parentNode) {

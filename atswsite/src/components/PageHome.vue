@@ -33,7 +33,8 @@ const logsPartBoxList = computed(() => configStore.homePageLogsBox.list);
 
 watch(trialPartBoxList, (newVlue, oldValue) => {
   if (newVlue.length!==oldValue.length) {
-    for(let i=0;i<newVlue.length;i++){
+    console.log(newVlue);
+    for(let i=0;i<newVlue.length;i++){//只遍历在线多人项目(例如cc1)，获取在线状态等信息
       let key = newVlue[i].key;
       switch (key){
         case "cc1":{
@@ -398,7 +399,7 @@ onUnmounted(() => {
                 <div class="crd-info">
                   <h3 class="crd-title">{{ value.title }}</h3>
                   <!-- 统计信息 -->
-                  <div class="crd-stats">
+                  <div class="crd-stats" v-if="value.mode!=='single_person'">
                     <div class="stat-item">
                       <span class="stat-icon">👁️</span>
                       <span class="stat-value">{{ value.visit_count || 0 }}</span>
@@ -410,6 +411,11 @@ onUnmounted(() => {
                     <div v-if="value.online_state" class="stat-item online">
                       <span class="stat-icon">🟢</span>
                       <span class="stat-value">{{ value.online_count || 0 }}在线</span>
+                    </div>
+                  </div>
+                  <div class="crd-stats" v-if="value.mode==='single_person'">
+                    <div>
+                      🏃单人项目
                     </div>
                   </div>
                 </div>
