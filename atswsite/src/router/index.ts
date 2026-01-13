@@ -61,6 +61,14 @@ const routes =[
     meta:{
       title:"3D性能测试"
     }
+  },
+  {
+    path: '/collision-detection-test',
+    name: 'collision-detection-test',
+    component: () => import('@/components/PageCollisionDetectionTest.vue'),
+    meta:{
+      title:"3D碰撞检测测试"
+    }
   }
 ];
 
