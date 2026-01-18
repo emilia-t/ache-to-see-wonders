@@ -8,6 +8,7 @@ import type CameraControllerCallbacks from '@/interface/CameraControllerCallback
 import { sceneConfig , cameraConfig , rendererConfig , lightConfig} from '@/config/collisionDetectionTestConfig';
 import CameraController from '@/class/collision_detection_test/CameraController';
 import PlayerEntity from '@/class/collision_detection_test/PlayerEntity';
+import Octree from './Octree';
 
 export default class SceneManager {
     /**ss
@@ -213,6 +214,9 @@ export default class SceneManager {
                 if (this.playerEntity) {
                     this.playerEntity.addCollisionObject(model);
                 }
+                debugger;
+                console.log(model)
+                debugger;
             }
         })
         .catch((error) => {

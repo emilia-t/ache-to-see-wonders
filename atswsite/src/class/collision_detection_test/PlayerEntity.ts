@@ -26,7 +26,7 @@ export default class PlayerEntity {
     domElement: HTMLElement,
     callbacks: any = {}
   ) {
-    // 创建相机控制器
+    // 创建相机控制器创建相机控制器
     this.cameraController = new CameraController(camera, domElement, callbacks);
     
     // 绑定事件
