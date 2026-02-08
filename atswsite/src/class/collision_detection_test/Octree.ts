@@ -3,6 +3,222 @@
 import type Coord3D from "@/interface/Coord3D"
 import type Rotation3D from "@/interface/Rotation3D"
 import type Coord2D from "@/interface/Coord2D"
+import type Line2D from "@/interface/Line2D"
+
+
+interface Segment {
+    id: number;
+    start: Coord2D;
+    end: Coord2D;
+}
+
+// 简单的AVL树实现用于维护状态
+class AVLNode {
+    segment: Segment;
+    height: number;
+    left: AVLNode | null;
+    right: AVLNode | null;
+    parent: AVLNode | null;
+
+    constructor(segment: Segment) {
+        this.segment = segment;
+        this.height = 1;
+        this.left = null;
+        this.right = null;
+        this.parent = null;
+    }
+}
+
+class AVLTree {
+    private root: AVLNode | null = null;
+    private currentX: number = 0;
+
+    setCurrentX(x: number): void {
+        this.currentX = x;
+    }
+
+    private getHeight(node: AVLNode | null): number {
+        return node ? node.height : 0;
+    }
+
+    private getYAtX(segment: Segment): number {
+        if (Math.abs(segment.end.x - segment.start.x) < 1e-10) {
+            return segment.start.y;
+        }
+        const slope = (segment.end.y - segment.start.y) / (segment.end.x - segment.start.x);
+        return segment.start.y + slope * (this.currentX - segment.start.x);
+    }
+
+    private compareSegments(seg1: Segment, seg2: Segment): number {
+        const y1 = this.getYAtX(seg1);
+        const y2 = this.getYAtX(seg2);
+        
+        if (Math.abs(y1 - y2) < 1e-10) {
+            // 如果y坐标相同，比较斜率
+            const slope1 = (seg1.end.y - seg1.start.y) / (seg1.end.x - seg1.start.x);
+            const slope2 = (seg2.end.y - seg2.start.y) / (seg2.end.x - seg2.start.x);
+            return slope1 - slope2;
+        }
+        return y1 - y2;
+    }
+
+    insert(segment: Segment): void {
+        this.root = this.insertNode(this.root, segment);
+    }
+
+    private insertNode(node: AVLNode | null, segment: Segment): AVLNode {
+        if (!node) {
+            return new AVLNode(segment);
+        }
+
+        const comparison = this.compareSegments(segment, node.segment);
+        
+        if (comparison < 0) {
+            node.left = this.insertNode(node.left, segment);
+            node.left.parent = node;
+        } else if (comparison > 0) {
+            node.right = this.insertNode(node.right, segment);
+            node.right.parent = node;
+        } else {
+            return node; // 相等的情况
+        }
+
+        // 更新高度
+        node.height = 1 + Math.max(
+            this.getHeight(node.left),
+            this.getHeight(node.right)
+        );
+
+        // 平衡因子
+        const balance = this.getHeight(node.left) - this.getHeight(node.right);
+
+        // 平衡操作
+        if (balance > 1) {
+            if (this.compareSegments(segment, node.left!.segment) < 0) {
+                return this.rightRotate(node);
+            } else {
+                node.left = this.leftRotate(node.left!);
+                return this.rightRotate(node);
+            }
+        }
+
+        if (balance < -1) {
+            if (this.compareSegments(segment, node.right!.segment) > 0) {
+                return this.leftRotate(node);
+            } else {
+                node.right = this.rightRotate(node.right!);
+                return this.leftRotate(node);
+            }
+        }
+
+        return node;
+    }
+
+    private leftRotate(z: AVLNode): AVLNode {
+        const y = z.right!;
+        const T2 = y.left;
+
+        y.left = z;
+        z.right = T2;
+
+        if (T2) T2.parent = z;
+        y.parent = z.parent;
+        z.parent = y;
+
+        z.height = 1 + Math.max(
+            this.getHeight(z.left),
+            this.getHeight(z.right)
+        );
+        y.height = 1 + Math.max(
+            this.getHeight(y.left),
+            this.getHeight(y.right)
+        );
+
+        return y;
+    }
+
+    private rightRotate(z: AVLNode): AVLNode {
+        const y = z.left!;
+        const T3 = y.right;
+
+        y.right = z;
+        z.left = T3;
+
+        if (T3) T3.parent = z;
+        y.parent = z.parent;
+        z.parent = y;
+
+        z.height = 1 + Math.max(
+            this.getHeight(z.left),
+            this.getHeight(z.right)
+        );
+        y.height = 1 + Math.max(
+            this.getHeight(y.left),
+            this.getHeight(y.right)
+        );
+
+        return y;
+    }
+
+    // 获取中序遍历（按y坐标排序）
+    inOrder(): Segment[] {
+        const result: Segment[] = [];
+        this.inOrderTraversal(this.root, result);
+        return result;
+    }
+
+    private inOrderTraversal(node: AVLNode | null, result: Segment[]): void {
+        if (node) {
+            this.inOrderTraversal(node.left, result);
+            result.push(node.segment);
+            this.inOrderTraversal(node.right, result);
+        }
+    }
+
+    // 查找线段的前驱和后继
+    findNeighbors(segment: Segment): { predecessor: Segment | null, successor: Segment | null } {
+        const neighbors = { predecessor: null as Segment | null, successor: null as Segment | null };
+        this.findNeighborsRecursive(this.root, segment, neighbors);
+        return neighbors;
+    }
+
+    private findNeighborsRecursive(
+        node: AVLNode | null, 
+        segment: Segment, 
+        neighbors: { predecessor: Segment | null, successor: Segment | null }
+    ): void {
+        if (!node) return;
+
+        const comparison = this.compareSegments(segment, node.segment);
+
+        if (comparison < 0) {
+            neighbors.successor = node.segment;
+            this.findNeighborsRecursive(node.left, segment, neighbors);
+        } else if (comparison > 0) {
+            neighbors.predecessor = node.segment;
+            this.findNeighborsRecursive(node.right, segment, neighbors);
+        } else {
+            // 找到当前节点
+            if (node.left) {
+                let current = node.left;
+                while (current.right) {
+                    current = current.right;
+                }
+                neighbors.predecessor = current.segment;
+            }
+            if (node.right) {
+                let current = node.right;
+                while (current.left) {
+                    current = current.left;
+                }
+                neighbors.successor = current.segment;
+            }
+        }
+    }
+}
+
+
+
 
 // define interface
 interface Object3D {
@@ -42,29 +258,146 @@ export default class Octree {
     }
 
 
+    /**********************************
+     * TEST AREA START ↓ ↓ ↓ ↓
+     **********************************/
+
     /**
-     * TEST AREA START
+     * 慢速凸包算法实现
+     * 返回顺时针方向的凸包顶点列表
      */
+    public slowConvexHull(P: Coord2D[]): Coord2D[] {
+      // 如果点少于3个，直接返回所有点（退化情况）
+      if (P.length <= 3) {
+        return P;
+      }
 
-    //////计算任意平面点集的凸包节点 slowConvexHull(P) start
-    
-    public slowConvexHull(P:Array<Coord2D>):Array<Coord2D>{
-      let E:Array<Coord2D> = []
-      let Len = P.length;
+      let E: Line2D[] = [];
+      const Len = P.length;
+      const epsilon = 1e-10; // 浮点数精度容差
 
-      // 便利全部
-      // for(){
+      // 遍历所有有序对 (p, q)
+      for (let i = 0; i < Len; i++) {
+        const p = P[i];
+        
+        for (let j = 0; j < Len; j++) {
+          if (i !== j) {
+            const q = P[j];
+            let valid = true;
+            
+            // 检查所有其他点 r
+            for (let k = 0; k < Len; k++) {
+              if (k !== i && k !== j) {
+                const r = P[k];
+                const position = this.pointRelativeToLine(p, q, r, epsilon);
+                
+                // 如果任何点在直线左侧，该边无效
+                if (position === -1) {
+                  valid = false;
+                  break;
+                }
+              }
+            }
+            
+            if (valid) {
+              E.push({ start: p, end: q });
+            }
+          }
+        }
+      }
 
-      // }
+      // 从边集 E 中提取顶点并排序
+      return this.buildConvexHullFromEdges(E);
+    }
 
-      return E;
+    /**
+     * 从边集构建凸包并顺时针排序顶点
+     */
+    private buildConvexHullFromEdges(E: Line2D[]): Coord2D[] {
+      if (E.length === 0) return [];
+      
+      // 1. 收集所有顶点
+      const vertexMap = new Map<string, Coord2D>();
+      for (const edge of E) {
+        vertexMap.set(this.coordToString(edge.start), edge.start);
+        vertexMap.set(this.coordToString(edge.end), edge.end);
+      }
+      
+      const vertices = Array.from(vertexMap.values());
+      
+      // 2. 计算几何中心（用于角度排序）
+      const center = this.calculateCentroid(vertices);
+      
+      // 3. 按相对于中心的极角排序（顺时针）
+      vertices.sort((a, b) => {
+        const angleA = Math.atan2(a.y - center.y, a.x - center.x);
+        const angleB = Math.atan2(b.y - center.y, b.x - center.x);
+        
+        // 转换为顺时针排序（atan2默认返回[-π, π]，逆时针增加）
+        // 顺时针需要角度递减
+        return angleB - angleA;
+      });
+      
+      return vertices;
+    }
+
+    /**
+     * 计算多边形的几何中心（质心）
+     */
+    private calculateCentroid(vertices: Coord2D[]): Coord2D {
+      let sumX = 0;
+      let sumY = 0;
+      
+      for (const vertex of vertices) {
+        sumX += vertex.x;
+        sumY += vertex.y;
+      }
+      
+      return {
+        x: sumX / vertices.length,
+        y: sumY / vertices.length
+      };
+    }
+
+    /**
+     * 判断点 X 相对于直线 PQ 的位置
+     * @param p 点 P 的坐标
+     * @param q 点 Q 的坐标
+     * @param x 点 X 的坐标
+     * @param epsilon 浮点数精度容差
+     * @returns 
+     *   -1: 点 X 在直线 PQ 的左侧
+     *    0: 点 X 在直线 PQ 上（或非常接近）
+     *    1: 点 X 在直线 PQ 的右侧
+     */
+    private pointRelativeToLine(
+      p: Coord2D, 
+      q: Coord2D, 
+      x: Coord2D, 
+      epsilon: number = 1e-10
+    ): number {
+      // 计算向量叉积：(Q - P) × (X - P)
+      const crossProduct = (q.x - p.x) * (x.y - p.y) - (q.y - p.y) * (x.x - p.x);
+      
+      // 使用 epsilon 处理浮点数精度问题
+      if (Math.abs(crossProduct) < epsilon) {
+        return 0;  // 点在直线上
+      }
+      
+      return crossProduct > 0 ? 1 : -1;  // 注意：这里的方向定义
+    }
+
+    /**
+     * 将坐标转换为字符串键
+     */
+    private coordToString(coord: Coord2D): string {
+      return `${coord.x.toFixed(8)},${coord.y.toFixed(8)}`; // 使用固定精度避免浮点误差
     }
 
 
-
-    /**
-     * TEST AREA END
-     */
+    /**********************************
+     * TEST AREA END ↑ ↑ ↑ ↑
+     **********************************/
 
 
 
