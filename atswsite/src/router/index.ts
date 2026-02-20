@@ -70,6 +70,15 @@ const routes =[
       title:"3D碰撞检测测试"
     }
   }
+  ,
+  {
+    path: '/test2d',
+    name: 'test2d',
+    component: () => import('@/components/PageTest2d.vue'),
+    meta:{
+      title:"2D测试"
+    }
+  }
 ];
 
 const router = createRouter({

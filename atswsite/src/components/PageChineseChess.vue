@@ -26,22 +26,22 @@ import { CHINESE_CHESS_SERVER_URL }       from '@/config/apiConfig.ts';
 // 导入组件
 import ViewUserLayer                      from '@/components/ViewUserLayer.vue';
 import ViewHeart                          from '@/components/ViewHeart.vue';
-import PartCC1Check                       from '@/components/PartCC1Check.vue';
-import PartCC1Loading                     from '@/components/PartCC1Loading.vue';
-import PartCC1StartMenu                   from '@/components/PartCC1StartMenu.vue';
-import ViewCC1Menu                        from '@/components/ViewCC1Menu.vue';
-import ViewCC1GiveUp                      from '@/components/ViewCC1GiveUp.vue';
-import ViewCC1GiveUpConfirm               from '@/components/ViewCC1GiveUpConfirm.vue';
-import ViewCC1GiveUpResult                from '@/components/ViewCC1GiveUpResult.vue';
-import ViewCC1ResetChess                  from '@/components/ViewCC1ResetChess.vue';
-import ViewCC1ResetChessResult            from '@/components/ViewCC1ResetChessResult.vue';
-import ViewCC1Notifications               from '@/components/ViewCC1Notifications.vue';
-import ViewCC1DebugInfo                   from '@/components/ViewCC1DebugInfo.vue';
-import ViewCC1RequestDraw                 from '@/components/ViewCC1RequestDraw.vue';
-import ViewCC1ResponDraw                  from '@/components/ViewCC1ResponDraw.vue';
-import ViewCC1Message                     from '@/components/ViewCC1Message.vue';
-import ViewCC1SwitchCamp                  from '@/components/ViewCC1SwitchCamp.vue';
-import ViewCC1SwitchCampResult            from '@/components/ViewCC1SwitchCampResult.vue';
+import PartCC1Check                       from '@/components/chinese_chess/PartCC1Check.vue';
+import PartCC1Loading                     from '@/components/chinese_chess/PartCC1Loading.vue';
+import PartCC1StartMenu                   from '@/components/chinese_chess/PartCC1StartMenu.vue';
+import ViewCC1Menu                        from '@/components/chinese_chess/ViewCC1Menu.vue';
+import ViewCC1GiveUp                      from '@/components/chinese_chess/ViewCC1GiveUp.vue';
+import ViewCC1GiveUpConfirm               from '@/components/chinese_chess/ViewCC1GiveUpConfirm.vue';
+import ViewCC1GiveUpResult                from '@/components/chinese_chess/ViewCC1GiveUpResult.vue';
+import ViewCC1ResetChess                  from '@/components/chinese_chess/ViewCC1ResetChess.vue';
+import ViewCC1ResetChessResult            from '@/components/chinese_chess/ViewCC1ResetChessResult.vue';
+import ViewCC1Notifications               from '@/components/chinese_chess/ViewCC1Notifications.vue';
+import ViewCC1DebugInfo                   from '@/components/chinese_chess/ViewCC1DebugInfo.vue';
+import ViewCC1RequestDraw                 from '@/components/chinese_chess/ViewCC1RequestDraw.vue';
+import ViewCC1ResponDraw                  from '@/components/chinese_chess/ViewCC1ResponDraw.vue';
+import ViewCC1Message                     from '@/components/chinese_chess/ViewCC1Message.vue';
+import ViewCC1SwitchCamp                  from '@/components/chinese_chess/ViewCC1SwitchCamp.vue';
+import ViewCC1SwitchCampResult            from '@/components/chinese_chess/ViewCC1SwitchCampResult.vue';
 
 // ==============================
 // 管理类实例

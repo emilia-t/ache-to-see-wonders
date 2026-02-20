@@ -60,6 +60,18 @@
         "online_state": false,
         "visit_count": 0,
         "heart_count": 0
+      },
+      {
+        "key": "t2",
+        "title": "2d测试",
+        "description": "测试项目",
+        "cover": "/cover/empty_cover.png",
+        "targetUrl": "/test2d",
+        "mode": "single_person",
+        "online_count": 0,
+        "online_state": false,
+        "visit_count": 0,
+        "heart_count": 0
       }
     ]
   },
@@ -67,6 +79,12 @@
     "annotation": "Some logs", 
     "version": "2",
     "list": [
+      {
+        "id":9,
+        "time": "2026-01-03",
+        "title": "增加2d测试",
+        "descript": "增加2d测试，测试几何图形算法"
+      },
       {
         "id":8,
         "time": "2026-01-03",
