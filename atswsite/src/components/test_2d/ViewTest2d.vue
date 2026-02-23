@@ -104,6 +104,7 @@ const buttons = [
     }
   }
 ];
+const STORAGE_KEY = 'viewTest2dState';
 ////////////////////
 //<--常量区
 ////////////////////
@@ -115,12 +116,12 @@ let ctx: CanvasRenderingContext2D | null = null;
 let isDragging = false;
 let lastX = 0;
 let lastY = 0;
-let offsetX = 0;  // 原点在x轴上的偏移
-let offsetY = 0;  // 原点在y轴上的偏移
+let offsetXX = 0;  // 原点在x轴上的偏移
+let offsetYY = 0;  // 原点在y轴上的偏移
 let scale = 1;    // 缩放比例
 let elementIdIndex = 1;
-let renderList: Array<Element> = [];  // 
-let hiddenList: Array<Element> = [];  // 
+let renderElementList: Array<Element> = [];  // 
+let hiddenElementList: Array<Element> = [];  // 
 let eventArea: Array<EventArea> = []; // 事件触发区域列表
 let mouseX = 0;
 let mouseY = 0;
@@ -151,8 +152,8 @@ const emptyComputed = computed(() => {
 const startSetting = () => {
   // 初始化原点偏移量为画布中心
   if (canvas.value) {
-    offsetX = canvas.value.width / 2;
-    offsetY = canvas.value.height / 2;
+    offsetXX = canvas.value.width / 2;
+    offsetYY = canvas.value.height / 2;
   }
 
   // 测试元素
@@ -164,7 +165,6 @@ const startSetting = () => {
 
   const segmentProp: InherentProp = { name: 'S1', color: { r: 0, g: 0, b: 255 }, opacity: 0.6 };
   createSegment([{ x: -50, y: 50 }, { x: 50, y: 50 }, { x: 50, y: -50 }, { x: -50, y: -50 }, { x: -50, y: 50 }], segmentProp, {});
-  createEventArea()
   // 渲染元素
   drawElement();
 };
@@ -301,7 +301,7 @@ const createAxisMark = () => {
   const canvasRightBottom = screenToCanvas(width, height);
 
   // X轴刻度（在X轴上绘制）
-  if (offsetY >= 0 && offsetY <= height) {
+  if (offsetYY >= 0 && offsetYY <= height) {
     // 计算X轴可见区域的坐标范围
     const minX = Math.min(canvasLeftTop.x, canvasRightBottom.x);
     const maxX = Math.max(canvasLeftTop.x, canvasRightBottom.x);
@@ -317,20 +317,20 @@ const createAxisMark = () => {
       if (screenPos.x >= 0 && screenPos.x <= width) {
         // 绘制刻度线
         ctx.beginPath();
-        ctx.moveTo(screenPos.x, offsetY - tickSize / 2);
-        ctx.lineTo(screenPos.x, offsetY + tickSize / 2);
+        ctx.moveTo(screenPos.x, offsetYY - tickSize / 2);
+        ctx.lineTo(screenPos.x, offsetYY + tickSize / 2);
         ctx.strokeStyle = '#666';
         ctx.lineWidth = 1;
         ctx.stroke();
 
         // 绘制刻度数值
-        ctx.fillText(x.toString(), screenPos.x, offsetY + 15);
+        ctx.fillText(x.toString(), screenPos.x, offsetYY + 15);
       }
     }
   }
 
   // Y轴刻度（在Y轴上绘制）
-  if (offsetX >= 0 && offsetX <= width) {
+  if (offsetXX >= 0 && offsetXX <= width) {
     // 计算Y轴可见区域的坐标范围
     const minY = Math.min(canvasLeftTop.y, canvasRightBottom.y);
     const maxY = Math.max(canvasLeftTop.y, canvasRightBottom.y);
@@ -346,14 +346,14 @@ const createAxisMark = () => {
       if (screenPos.y >= 0 && screenPos.y <= height) {
         // 绘制刻度线
         ctx.beginPath();
-        ctx.moveTo(offsetX - tickSize / 2, screenPos.y);
-        ctx.lineTo(offsetX + tickSize / 2, screenPos.y);
+        ctx.moveTo(offsetXX - tickSize / 2, screenPos.y);
+        ctx.lineTo(offsetXX + tickSize / 2, screenPos.y);
         ctx.strokeStyle = '#666';
         ctx.lineWidth = 1;
         ctx.stroke();
 
         // 绘制刻度数值
-        ctx.fillText(y.toString(), offsetX - 20, screenPos.y);
+        ctx.fillText(y.toString(), offsetXX - 20, screenPos.y);
       }
     }
   }
@@ -381,64 +381,64 @@ const createAxis = (xColor: RGB, yColor: RGB) => {
   ctx.beginPath();
   ctx.strokeStyle = `rgb(${xColor.r}, ${xColor.g}, ${xColor.b})`;
   ctx.lineWidth = 2;
-  ctx.moveTo(0, offsetY);
-  ctx.lineTo(width, offsetY);
+  ctx.moveTo(0, offsetYY);
+  ctx.lineTo(width, offsetYY);
   ctx.stroke();
 
   // 绘制Y轴（绿色）
   ctx.beginPath();
   ctx.strokeStyle = `rgb(${yColor.r}, ${yColor.g}, ${yColor.b})`;
   ctx.lineWidth = 2;
-  ctx.moveTo(offsetX, 0);
-  ctx.lineTo(offsetX, height);
+  ctx.moveTo(offsetXX, 0);
+  ctx.lineTo(offsetXX, height);
   ctx.stroke();
 
   // 绘制箭头（X轴箭头）
   ctx.beginPath();
   ctx.fillStyle = `rgb(${xColor.r}, ${xColor.g}, ${xColor.b})`;
   // 右箭头
-  ctx.moveTo(width - 10, offsetY - 5);
-  ctx.lineTo(width, offsetY);
-  ctx.lineTo(width - 10, offsetY + 5);
+  ctx.moveTo(width - 10, offsetYY - 5);
+  ctx.lineTo(width, offsetYY);
+  ctx.lineTo(width - 10, offsetYY + 5);
   ctx.fill();
 
   // 左箭头
   ctx.beginPath();
-  ctx.moveTo(10, offsetY - 5);
-  ctx.lineTo(0, offsetY);
-  ctx.lineTo(10, offsetY + 5);
+  ctx.moveTo(10, offsetYY - 5);
+  ctx.lineTo(0, offsetYY);
+  ctx.lineTo(10, offsetYY + 5);
   ctx.fill();
 
   // 绘制箭头（Y轴箭头）
   ctx.beginPath();
   ctx.fillStyle = `rgb(${yColor.r}, ${yColor.g}, ${yColor.b})`;
   // 上箭头
-  ctx.moveTo(offsetX - 5, 10);
-  ctx.lineTo(offsetX, 0);
-  ctx.lineTo(offsetX + 5, 10);
+  ctx.moveTo(offsetXX - 5, 10);
+  ctx.lineTo(offsetXX, 0);
+  ctx.lineTo(offsetXX + 5, 10);
   ctx.fill();
 
   // 下箭头
   ctx.beginPath();
-  ctx.moveTo(offsetX - 5, height - 10);
-  ctx.lineTo(offsetX, height);
-  ctx.lineTo(offsetX + 5, height - 10);
+  ctx.moveTo(offsetXX - 5, height - 10);
+  ctx.lineTo(offsetXX, height);
+  ctx.lineTo(offsetXX + 5, height - 10);
   ctx.fill();
 
   // 标注坐标轴文字
   ctx.font = "14px Arial";
   ctx.fillStyle = "#000";
-  ctx.fillText("X", width - 20, offsetY - 10);
-  ctx.fillText("Y", offsetX + 10, 20);
+  ctx.fillText("X", width - 20, offsetYY - 10);
+  ctx.fillText("Y", offsetXX + 10, 20);
 
   // 原点标注
   ctx.beginPath();
-  ctx.arc(offsetX, offsetY, 4, 0, Math.PI * 2);
+  ctx.arc(offsetXX, offsetYY, 4, 0, Math.PI * 2);
   ctx.fillStyle = '#333';
   ctx.fill();
   ctx.fillStyle = '#000';
   ctx.font = 'bold 12px Arial';
-  ctx.fillText("O", offsetX + 8, offsetY - 8);
+  ctx.fillText("O", offsetXX + 8, offsetYY - 8);
 
   // 恢复上下文状态
   ctx.restore();
@@ -517,7 +517,7 @@ const createGrid = () => {
   ctx.lineWidth = 0.5;
 
   // 绘制垂直网格线
-  for (let x = offsetX % gridSize; x < width; x += gridSize) {
+  for (let x = offsetXX % gridSize; x < width; x += gridSize) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, height);
@@ -525,7 +525,7 @@ const createGrid = () => {
   }
 
   // 绘制水平网格线
-  for (let y = offsetY % gridSize; y < height; y += gridSize) {
+  for (let y = offsetYY % gridSize; y < height; y += gridSize) {
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(width, y);
@@ -547,7 +547,7 @@ const createPoint = (point: Point, inherentProp: InherentProp, customProp: Objec
     customProp: customProp
   };
 
-  renderList.push(element);
+  renderElementList.push(element);
 
   return element;
 };
@@ -565,7 +565,7 @@ const createLine = (points: Array<Point>, inherentProp: InherentProp, customProp
     customProp: customProp
   };
 
-  renderList.push(element);
+  renderElementList.push(element);
 
   return element;
 };
@@ -583,7 +583,7 @@ const createSegment = (points: Array<Point>, inherentProp: InherentProp, customP
     customProp: customProp
   };
 
-  renderList.push(element);
+  renderElementList.push(element);
 
   return element;
 };
@@ -598,6 +598,75 @@ const createSegment = (points: Array<Point>, inherentProp: InherentProp, customP
 ////////////////////
 
 /**
+ * 清空画布所有内容
+ */
+const clearCanvas = () => {
+  // 清空元素列表
+  renderElementList = [];
+  hiddenElementList = [];
+
+  // 重置绘制状态
+  drawStatusPoint = false;
+  drawStatusLine = false;
+  drawStatusSegment = false;
+  drawTempPoints = [];
+  drawStartPoint = null;
+  isDrawing = false;
+
+  // 恢复鼠标样式
+  if (canvas.value) {
+    canvas.value.style.cursor = 'default';
+  }
+
+  // 重绘画布
+  redraw();
+};
+
+/**
+ * 保存数据到本地存储
+ */
+const saveToLocalStorage = () => {
+  const state = {
+    offsetXX,
+    offsetYY,
+    renderElementList,
+    elementIdIndex,
+  };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    console.log('状态已保存');
+  } catch (e) {
+    console.error('保存失败', e);
+  }
+};
+
+/**
+ * 加载本地存储到数据
+ */
+const loadFromLocalStorage = (): boolean => {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return false;
+  try {
+    const state = JSON.parse(saved);
+    if (state.offsetXX !== undefined) offsetXX = state.offsetXX;
+    if (state.offsetYY !== undefined) offsetYY = state.offsetYY;
+    if (state.renderElementList) renderElementList = state.renderElementList;
+    if (state.elementIdIndex) {
+      elementIdIndex = state.elementIdIndex;
+    } else {
+      // 兼容旧数据：计算最大id
+      let maxId = 0;
+      renderElementList.forEach(e => { if (e.id > maxId) maxId = e.id; });
+      elementIdIndex = maxId + 1;
+    }
+    return true;
+  } catch (e) {
+    console.error('加载失败', e);
+    return false;
+  }
+};
+
+/**
  * 将屏幕坐标转换为画布坐标
  * @param screenX 屏幕X坐标
  * @param screenY 屏幕Y坐标
@@ -605,8 +674,8 @@ const createSegment = (points: Array<Point>, inherentProp: InherentProp, customP
  */
 const screenToCanvas = (screenX: number, screenY: number) => {
   return {
-    x: screenX - offsetX,
-    y: offsetY - screenY  // 因为屏幕Y轴向下，画布Y轴向上
+    x: screenX - offsetXX,
+    y: offsetYY - screenY  // 因为屏幕Y轴向下，画布Y轴向上
   };
 };
 
@@ -618,8 +687,8 @@ const screenToCanvas = (screenX: number, screenY: number) => {
  */
 const canvasToScreen = (canvasX: number, canvasY: number) => {
   return {
-    x: canvasX + offsetX,
-    y: offsetY - canvasY
+    x: canvasX + offsetXX,
+    y: offsetYY - canvasY
   };
 };
 
@@ -630,7 +699,7 @@ const drawElement = () => {
   if (!ctx || !canvas.value) return;
 
   // 遍历渲染列表中的所有元素
-  renderList.forEach(element => {
+  renderElementList.forEach(element => {
     if (ctx === null) return;
     // 保存当前上下文状态
     ctx.save();
@@ -839,7 +908,7 @@ const drawSegmentElement = (element: SegmentElement) => {
  * 清空渲染列表
  */
 const clearRenderList = () => {
-  renderList = [];
+  renderElementList = [];
   redraw();
 };
 
@@ -847,7 +916,7 @@ const clearRenderList = () => {
  * 从渲染列表中移除元素
  */
 const removeFromRenderList = (id: number) => {
-  renderList = renderList.filter(element => element.id !== id);
+  renderElementList = renderElementList.filter(element => element.id !== id);
   redraw();
 };
 
@@ -855,7 +924,7 @@ const removeFromRenderList = (id: number) => {
  * 更新元素属性
  */
 const updateElementProperty = (id: number, newProps: Partial<InherentProp>) => {
-  const element = renderList.find(e => e.id === id);
+  const element = renderElementList.find(e => e.id === id);
   if (element) {
     element.inherentProp = { ...element.inherentProp, ...newProps };
     redraw();
@@ -918,6 +987,103 @@ const redraw = () => {
   // 绘制交互按钮
   createAddBt();
 };
+
+/**
+ * 显示临时点（用于绘制中的预览）
+ */
+const showTempPoint = (point: Point) => {
+  if (!ctx || !canvas.value) return;
+  
+  const screenPos = canvasToScreen(point.x, point.y);
+  
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(screenPos.x, screenPos.y, 5, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.fill();
+  ctx.strokeStyle = '#ff9900';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+};
+
+/**
+ * 绘制临时线段（预览）
+ */
+const drawTempSegment = () => {
+  if (!ctx || !canvas.value || drawTempPoints.length < 2) return;
+  
+  ctx.save();
+  ctx.beginPath();
+  
+  const firstScreen = canvasToScreen(drawTempPoints[0].x, drawTempPoints[0].y);
+  ctx.moveTo(firstScreen.x, firstScreen.y);
+  
+  for (let i = 1; i < drawTempPoints.length; i++) {
+    const screenPos = canvasToScreen(drawTempPoints[i].x, drawTempPoints[i].y);
+    ctx.lineTo(screenPos.x, screenPos.y);
+  }
+  
+  ctx.strokeStyle = '#ff9900';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 3]); // 虚线表示预览
+  ctx.stroke();
+  
+  // 绘制临时点
+  drawTempPoints.forEach(point => {
+    showTempPoint(point);
+  });
+  
+  ctx.restore();
+};
+
+/**
+ * 显示点击效果
+ */
+const showClickEffect = (x: number, y: number) => {
+  if (!ctx || !canvas.value) return;
+
+  // 保存当前上下文状态
+  ctx.save();
+
+  // 绘制点击波纹效果
+  let radius = 0;
+  const maxRadius = 20;
+  const startTime = performance.now();
+
+  const animateRipple = () => {
+    const currentTime = performance.now();
+    const progress = (currentTime - startTime) / 300; // 300ms动画
+    if (ctx === null) return;
+    if (progress < 1) {
+      radius = maxRadius * progress;
+
+      // 重绘整个画布（需要触发完整重绘）
+      redraw();
+
+      // 在顶部绘制点击效果
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 0.7, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(100, 100, 255, 0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      requestAnimationFrame(animateRipple);
+    } else {
+      // 动画结束，重绘清除效果
+      redraw();
+    }
+  };
+
+  requestAnimationFrame(animateRipple);
+};
+
 ////////////////////
 //<--其他函数区
 ////////////////////
@@ -925,6 +1091,121 @@ const redraw = () => {
 ////////////////////
 //事件处理函数区-->
 ////////////////////
+
+/**
+ * 全局键盘快捷键处理
+ * Ctrl+S 保存；Ctrl+S 清空画布
+ */
+const onGlobalKeyDown = (e: KeyboardEvent) => {
+  // 仅当按下 Ctrl 或 Command 时才处理
+  if (e.ctrlKey || e.metaKey) {
+    switch (e.key) {
+      case 's':
+        e.preventDefault();
+        saveToLocalStorage();
+        break;
+      case 'f':
+        e.preventDefault();
+        clearCanvas();
+        break;
+      // 可在此扩展其他快捷键
+    }
+  }
+};
+
+/**
+ * 处理绘制点
+ */
+const handleDrawPoint = (canvasPos: Point) => {
+  const pointProp: InherentProp = { 
+    name: `P${renderElementList.filter(e => e.type === 'point').length + 1}`, 
+    color: { r: 66, g: 133, b: 244 }, 
+    opacity: 1 
+  };
+  
+  createPoint(canvasPos, pointProp, {});
+  showClickEffect(canvasToScreen(canvasPos.x, canvasPos.y).x, canvasToScreen(canvasPos.x, canvasPos.y).y);
+  
+  // 点创建后不退出绘制状态，可以继续创建点
+  redraw();
+};
+
+/**
+ * 处理绘制线
+ */
+const handleDrawLine = (canvasPos: Point) => {
+  if (!drawStartPoint) {
+    // 第一个点
+    drawStartPoint = canvasPos;
+    drawTempPoints = [canvasPos];
+    
+    // 在点击位置显示临时标记
+    showTempPoint(canvasPos);
+  } else {
+    // 第二个点，创建直线
+    const lineProp: InherentProp = { 
+      name: `L${renderElementList.filter(e => e.type === 'line').length + 1}`, 
+      color: { r: 52, g: 168, b: 83 }, 
+      opacity: 0.8 
+    };
+    
+    createLine([drawStartPoint, canvasPos], lineProp, {});
+    
+    // 显示创建动画
+    showClickEffect(canvasToScreen(canvasPos.x, canvasPos.y).x, canvasToScreen(canvasPos.x, canvasPos.y).y);
+    
+    // 重置状态，准备画下一条线
+    drawStartPoint = null;
+    drawTempPoints = [];
+    
+    redraw();
+  }
+};
+
+/**
+ * 处理绘制线段
+ */
+const handleDrawSegment = (canvasPos: Point) => {
+  // 添加点到临时数组
+  drawTempPoints.push(canvasPos);
+  
+  // 显示临时点
+  showTempPoint(canvasPos);
+  
+  // 如果已经有至少两个点，显示临时线段
+  if (drawTempPoints.length >= 2) {
+    drawTempSegment();
+  }
+  
+  // 如果点击了第一个点附近（闭合线段），自动完成
+  if (drawTempPoints.length >= 3) {
+    const firstPoint = drawTempPoints[0];
+    const distance = Math.sqrt(
+      Math.pow(canvasPos.x - firstPoint.x, 2) + 
+      Math.pow(canvasPos.y - firstPoint.y, 2)
+    );
+    
+    // 如果距离<=3单位，认为是闭合操作
+    if (distance <= 3) {
+      drawTempPoints.pop();
+      // 闭合线段，将第一个点作为最后一个点
+      drawTempPoints.push(firstPoint);
+      
+      // 创建线段
+      const segmentProp: InherentProp = { 
+        name: `S${renderElementList.filter(e => e.type === 'segment').length + 1}`, 
+        color: { r: 251, g: 188, b: 5 }, 
+        opacity: 0.6 
+      };
+      
+      createSegment(drawTempPoints, segmentProp, {});
+      
+      // 重置状态
+      drawTempPoints = [];
+      redraw();
+    }
+  }
+};
 
 /**
  * 进入绘制点事件
@@ -936,7 +1217,6 @@ const onInventPoint = () => {
     onCancelSegment();
   }
   
-  console.log("触发进入创建点状态");
   drawStatusPoint = true;
   drawTempPoints = [];
   isDrawing = false;
@@ -954,7 +1234,6 @@ const onInventPoint = () => {
  * 退出绘制点事件
  */
 const onCancelPoint = () => {
-  console.log("触发退出创建点状态");
   drawStatusPoint = false;
   drawTempPoints = [];
   
@@ -977,7 +1256,6 @@ const onInventLine = () => {
     onCancelSegment();
   }
   
-  console.log("触发进入创建线状态");
   drawStatusLine = true;
   drawTempPoints = [];
   drawStartPoint = null;
@@ -996,7 +1274,6 @@ const onInventLine = () => {
  * 退出绘制线事件
  */
 const onCancelLine = () => {
-  console.log("触发退出创建线状态");
   drawStatusLine = false;
   drawTempPoints = [];
   drawStartPoint = null;
@@ -1021,7 +1298,6 @@ const onInventSegment = () => {
     onCancelLine();
   }
   
-  console.log("触发进入创建线段状态");
   drawStatusSegment = true;
   drawTempPoints = [];
   isDrawing = true;
@@ -1039,7 +1315,6 @@ const onInventSegment = () => {
  * 退出绘制线段事件
  */
 const onCancelSegment = () => {
-  console.log("触发退出创建线段状态");
   drawStatusSegment = false;
   drawTempPoints = [];
   isDrawing = false;
@@ -1058,8 +1333,6 @@ const onCancelSegment = () => {
  */
 const onKeyDown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
-    console.log("ESC pressed, exiting draw mode");
-    
     if (drawStatusPoint) {
       onCancelPoint();
     } else if (drawStatusLine) {
@@ -1116,200 +1389,23 @@ const onCanvasClick = (e: MouseEvent) => {
   }
 };
 
-/**
- * 处理绘制点
- */
-const handleDrawPoint = (canvasPos: Point) => {
-  const pointProp: InherentProp = { 
-    name: `P${renderList.filter(e => e.type === 'point').length + 1}`, 
-    color: { r: 66, g: 133, b: 244 }, 
-    opacity: 1 
-  };
-  
-  createPoint(canvasPos, pointProp, {});
-  showClickEffect(canvasToScreen(canvasPos.x, canvasPos.y).x, canvasToScreen(canvasPos.x, canvasPos.y).y);
-  
-  // 点创建后不退出绘制状态，可以继续创建点
-  redraw();
-};
-
-/**
- * 处理绘制线
- */
-const handleDrawLine = (canvasPos: Point) => {
-  if (!drawStartPoint) {
-    // 第一个点
-    drawStartPoint = canvasPos;
-    drawTempPoints = [canvasPos];
-    
-    // 在点击位置显示临时标记
-    showTempPoint(canvasPos);
-    console.log("Line: first point selected", canvasPos);
-  } else {
-    // 第二个点，创建直线
-    const lineProp: InherentProp = { 
-      name: `L${renderList.filter(e => e.type === 'line').length + 1}`, 
-      color: { r: 52, g: 168, b: 83 }, 
-      opacity: 0.8 
+const onCanvasDoubleClick = (e: MouseEvent) => {
+  if(drawTempPoints.length >= 4){
+    drawTempPoints.pop();//删除双击造成得多余的一个点
+    // 创建线段
+    const segmentProp: InherentProp = { 
+      name: `S${renderElementList.filter(e => e.type === 'segment').length + 1}`, 
+      color: { r: 251, g: 188, b: 5 }, 
+      opacity: 0.6 
     };
     
-    createLine([drawStartPoint, canvasPos], lineProp, {});
-    
-    // 显示创建动画
-    showClickEffect(canvasToScreen(canvasPos.x, canvasPos.y).x, canvasToScreen(canvasPos.x, canvasPos.y).y);
-    
-    // 重置状态，准备画下一条线
-    drawStartPoint = null;
+    createSegment(drawTempPoints, segmentProp, {});
+      
+    // 重置状态
     drawTempPoints = [];
-    
     redraw();
-    console.log("Line created");
   }
 };
-
-/**
- * 处理绘制线段
- */
-const handleDrawSegment = (canvasPos: Point) => {
-  // 添加点到临时数组
-  drawTempPoints.push(canvasPos);
-  
-  // 显示临时点
-  showTempPoint(canvasPos);
-  
-  console.log(`Segment: point ${drawTempPoints.length} added`, canvasPos);
-  
-  // 如果已经有至少两个点，显示临时线段
-  if (drawTempPoints.length >= 2) {
-    drawTempSegment();
-  }
-  
-  // 如果点击了第一个点附近（闭合线段），自动完成
-  if (drawTempPoints.length >= 3) {
-    const firstPoint = drawTempPoints[0];
-    const distance = Math.sqrt(
-      Math.pow(canvasPos.x - firstPoint.x, 2) + 
-      Math.pow(canvasPos.y - firstPoint.y, 2)
-    );
-    
-    // 如果距离小于20单位，认为是闭合操作
-    if (distance < 20) {
-      // 闭合线段，将第一个点作为最后一个点
-      drawTempPoints.push(firstPoint);
-      
-      // 创建线段
-      const segmentProp: InherentProp = { 
-        name: `S${renderList.filter(e => e.type === 'segment').length + 1}`, 
-        color: { r: 251, g: 188, b: 5 }, 
-        opacity: 0.6 
-      };
-      
-      createSegment(drawTempPoints, segmentProp, {});
-      
-      // 重置状态
-      drawTempPoints = [];
-      redraw();
-      console.log("Segment created (closed)");
-    }
-  }
-};
-
-/**
- * 显示临时点（用于绘制中的预览）
- */
-const showTempPoint = (point: Point) => {
-  if (!ctx || !canvas.value) return;
-  
-  const screenPos = canvasToScreen(point.x, point.y);
-  
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(screenPos.x, screenPos.y, 5, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-  ctx.fill();
-  ctx.strokeStyle = '#ff9900';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-};
-
-/**
- * 绘制临时线段（预览）
- */
-const drawTempSegment = () => {
-  if (!ctx || !canvas.value || drawTempPoints.length < 2) return;
-  
-  ctx.save();
-  ctx.beginPath();
-  
-  const firstScreen = canvasToScreen(drawTempPoints[0].x, drawTempPoints[0].y);
-  ctx.moveTo(firstScreen.x, firstScreen.y);
-  
-  for (let i = 1; i < drawTempPoints.length; i++) {
-    const screenPos = canvasToScreen(drawTempPoints[i].x, drawTempPoints[i].y);
-    ctx.lineTo(screenPos.x, screenPos.y);
-  }
-  
-  ctx.strokeStyle = '#ff9900';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([5, 3]); // 虚线表示预览
-  ctx.stroke();
-  
-  // 绘制临时点
-  drawTempPoints.forEach(point => {
-    showTempPoint(point);
-  });
-  
-  ctx.restore();
-};
-
-/**
- * 显示点击效果（可选）
- */
-const showClickEffect = (x: number, y: number) => {
-  if (!ctx || !canvas.value) return;
-
-  // 保存当前上下文状态
-  ctx.save();
-
-  // 绘制点击波纹效果
-  let radius = 0;
-  const maxRadius = 20;
-  const startTime = performance.now();
-
-  const animateRipple = () => {
-    const currentTime = performance.now();
-    const progress = (currentTime - startTime) / 300; // 300ms动画
-    if (ctx === null) return;
-    if (progress < 1) {
-      radius = maxRadius * progress;
-
-      // 重绘整个画布（需要触发完整重绘）
-      redraw();
-
-      // 在顶部绘制点击效果
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(x, y, radius * 0.7, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(100, 100, 255, 0.6)';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      requestAnimationFrame(animateRipple);
-    } else {
-      // 动画结束，重绘清除效果
-      redraw();
-    }
-  };
-
-  requestAnimationFrame(animateRipple);
-};
-
 
 /**
  * 调整画布大小以适应窗口
@@ -1324,9 +1420,9 @@ const onResizeCanvas = () => {
   ctx = canvas.value.getContext('2d');
   if (ctx) {
     // 如果还没有设置偏移量，初始化为画布中心
-    if (offsetX === 0 && offsetY === 0) {
-      offsetX = canvas.value.width / 2;
-      offsetY = canvas.value.height / 2;
+    if (offsetXX === 0 && offsetYY === 0) {
+      offsetXX = canvas.value.width / 2;
+      offsetYY = canvas.value.height / 2;
     }
 
     // 重新绘制所有内容
@@ -1344,6 +1440,9 @@ const onMousedown = (e: MouseEvent) => {
 
   // 改变鼠标样式
   if (canvas.value) {
+    if(drawStatusPoint || drawStatusLine || drawStatusSegment){
+      return;
+    }
     canvas.value.style.cursor = 'grabbing';
   }
 };
@@ -1369,8 +1468,8 @@ const onMouseMove = (e: MouseEvent) => {
   const deltaY = e.clientY - lastY;
 
   // 更新偏移量（实现画布拖动）
-  offsetX += deltaX;
-  offsetY += deltaY;
+  offsetXX += deltaX;
+  offsetYY += deltaY;
 
   // 更新最后位置
   lastX = e.clientX;
@@ -1388,8 +1487,18 @@ const onMouseUp = () => {
 
   // 恢复鼠标样式
   if (canvas.value) {
+    if(drawStatusPoint || drawStatusLine || drawStatusSegment){
+      return;
+    }
     canvas.value.style.cursor = 'default';
   }
+};
+
+/**
+ * 清空事件
+ */
+const onClearAll = () => {
+  clearCanvas();  
 };
 
 ////////////////////
@@ -1402,8 +1511,16 @@ const onMouseUp = () => {
 
 onMounted(() => {
   onResizeCanvas();
-  startSetting();
-
+  createEventArea();
+  const loaded = loadFromLocalStorage();
+  if (!loaded) {
+    if (canvas.value) {
+      offsetXX = canvas.value.width / 2;
+      offsetYY = canvas.value.height / 2;
+    }
+    startSetting();
+  }
+  redraw();
   // 添加事件监听
   if (canvas.value) {
     canvas.value.addEventListener('mousedown', onMousedown);
@@ -1411,9 +1528,11 @@ onMounted(() => {
     canvas.value.addEventListener('mouseup', onMouseUp);
     canvas.value.addEventListener('mouseleave', onMouseUp); // 鼠标离开画布时取消拖动
     canvas.value.addEventListener('click', onCanvasClick);
+    canvas.value.addEventListener('dblclick', onCanvasDoubleClick);
   }
 
   window.addEventListener('resize', onResizeCanvas);
+  window.addEventListener('keydown', onGlobalKeyDown); // 添加快捷键监听
 });
 
 onUnmounted(() => {
@@ -1423,9 +1542,12 @@ onUnmounted(() => {
     canvas.value.removeEventListener('mousemove', onMouseMove);
     canvas.value.removeEventListener('mouseup', onMouseUp);
     canvas.value.removeEventListener('mouseleave', onMouseUp);
+    canvas.value.removeEventListener('click', onCanvasClick);
+    canvas.value.removeEventListener('dblclick', onCanvasDoubleClick);
   }
 
   window.removeEventListener('resize', onResizeCanvas);
+  window.removeEventListener('keydown', onGlobalKeyDown); // 移除快捷键监听
 });
 
 ////////////////////
@@ -1437,6 +1559,9 @@ onUnmounted(() => {
 <template>
   <div class="view-test2d-container">
     <canvas id="canvas" ref="canvas"></canvas>
+    <div id="Instructions">
+      Ctrl + S = Save&nbsp;&nbsp;&nbsp;&nbsp;Ctrl + F = Clear 
+    </div>
   </div>
 </template>
 
@@ -1455,5 +1580,18 @@ canvas {
   width: 100%;
   height: 100%;
   cursor: default;
+}
+
+#Instructions{
+  width: 260px;
+  height: auto;
+  position: fixed;
+  left: calc(50% - 130px);
+  top: 0px;
+  pointer-events: none;
+  text-align: center;
+  background: rgba(208, 208, 208, 0.697);
+  color: rgb(78, 78, 78);
+  border-radius: 0 0 5px 5px;
 }
 </style>
