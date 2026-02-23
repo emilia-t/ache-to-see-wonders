@@ -127,7 +127,7 @@ watch(props,(newValue,oldValue)=>{
 
 <style scoped lang="scss">
 /* 导入路径根据实际情况编写 */
-@import '../sprite/style/sprite.scss';
+@import '@/sprite/style/sprite.scss';
 
 .modal-overlay {
   position: fixed;

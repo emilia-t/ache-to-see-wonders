@@ -45,7 +45,7 @@ defineExpose({
 
 <style scoped lang="scss">
 /* 导入路径根据实际情况编写 */
-@import '../sprite/style/sprite.scss';
+@import '@/sprite/style/sprite.scss';
 .view-request-draw-container {
     position: fixed;
     left: 20px;
