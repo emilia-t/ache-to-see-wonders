@@ -4,6 +4,62 @@ import { defineStore } from 'pinia'
 import type UserData from '@/interface/UserData'
 import type CC1GameSetting from '@/interface/CC1GameSetting.ts'
 
+interface HomePageVideoConfig {
+  title: string
+  description: string
+  cover: string
+  video: string
+  targetUrl: string
+  button_name: string
+}
+
+interface HomePageTrialCardConfig {
+  key: string
+  title: string
+  description: string
+  cover: string
+  targetUrl: string
+  mode: string
+  online_count: number
+  online_state: boolean
+  visit_count: number
+  heart_count: number
+}
+
+interface HomePageTrialBoxConfig {
+  annotation: string
+  version: string
+  list: HomePageTrialCardConfig[]
+}
+
+interface HomePageLogItemConfig{
+  id: number
+  time: string
+  title: string
+  descript: string
+}
+
+interface HomePageLogsConfig{
+  annotation: string
+  version: string
+  list: HomePageLogItemConfig[]
+}
+
+interface ApiConfig{
+  ACCOUNT_SERVER_URL: string
+  [key: string]: string
+}
+
+interface WebConfig {
+  annotation?: string
+  version?: string
+  api?: ApiConfig
+  homePageCurrentVideo?: HomePageVideoConfig
+  homePageTrialBox?: HomePageTrialBoxConfig
+  homePageLogs?: HomePageLogsConfig
+  [key: string]: any
+}
+
 export const useUserStore = defineStore('user', () => {
   const user = ref<UserData | null>(null)
   const token = ref<string | null>(null)
@@ -75,62 +131,6 @@ export const useUserStore = defineStore('user', () => {
     restoreAuth
   }
 })
-
-interface HomePageVideoConfig {
-  title: string
-  description: string
-  cover: string
-  video: string
-  targetUrl: string
-  button_name: string
-}
-
-interface HomePageTrialCardConfig {
-  key: string
-  title: string
-  description: string
-  cover: string
-  targetUrl: string
-  mode: string
-  online_count: number
-  online_state: boolean
-  visit_count: number
-  heart_count: number
-}
-
-interface HomePageTrialBoxConfig {
-  annotation: string
-  version: string
-  list: HomePageTrialCardConfig[]
-}
-
-interface HomePageLogItemConfig{
-  id: number
-  time: string
-  title: string
-  descript: string
-}
-
-interface HomePageLogsConfig{
-  annotation: string
-  version: string
-  list: HomePageLogItemConfig[]
-}
-
-interface ApiConfig{
-  ACCOUNT_SERVER_URL: string
-  [key: string]: string
-}
-
-interface WebConfig {
-  annotation?: string
-  version?: string
-  api?: ApiConfig
-  homePageCurrentVideo?: HomePageVideoConfig
-  homePageTrialBox?: HomePageTrialBoxConfig
-  homePageLogs?: HomePageLogsConfig
-  [key: string]: any
-}
 
 export const useConfigStore = defineStore('config', () => {
   const config = ref<WebConfig | null>(null)
