@@ -1,0 +1,2 @@
+The following file is the default demo video file:
+default.mp4
