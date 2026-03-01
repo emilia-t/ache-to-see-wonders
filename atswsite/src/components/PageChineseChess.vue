@@ -2,6 +2,7 @@
 // The relative position of this file: src/class/PageChineseChess.vue
 import { ref, onMounted, onUnmounted }    from 'vue';
 import { useGameSettingStore }            from '@/stores/store';
+import { useConfigStore }                 from '@/stores/store';
 
 import { ChessSceneManager }              from '@/class/ChessSceneManager';
 import { FirstPersonController }          from '@/class/FirstPersonController';
@@ -21,7 +22,6 @@ import type LogConfig                     from '@/interface/LogConfig';
 import type InstructObject                from '@/interface/InstructObject';
 
 import { cameraConfig }                   from '@/config/chineseChessConfig.ts';
-import { CHINESE_CHESS_SERVER_URL }       from '@/config/apiConfig.ts';
 
 // 导入组件
 import ViewUserLayer                      from '@/components/ViewUserLayer.vue';
@@ -121,10 +121,12 @@ const gameTick = 50;
 // ==============================
 // 服务器通信
 // ==============================
-const ccInstruct = new ChineseChessInstruct(CHINESE_CHESS_SERVER_URL);
+const configStore = useConfigStore();
+let   ccInstruct : ChineseChessInstruct | undefined = undefined;
 
 // 初始化指令处理器
 const initInstructionHandlers = () => {
+  if(ccInstruct===undefined)return;
   ccInstruct.onLog = (message: string, type: 'tip' | 'warn' | 'error', data?: any): LogConfig => {
     return {
       code: 0,
@@ -137,6 +139,7 @@ const initInstructionHandlers = () => {
   };
 
   ccInstruct.onOpen = (ev: Event): void => {
+    if(ccInstruct===undefined)return;
     console.log("服务器已连接");
     ccInstruct.getPublickey();
     
@@ -148,6 +151,7 @@ const initInstructionHandlers = () => {
   };
 
   ccInstruct.onLogin = (): void => {
+    if(ccInstruct===undefined)return;
     ccInstruct.getCampData();
     ccInstruct.getSyncChessPieces();
     ccInstruct.getRbHeadPositionPitchYaw();
@@ -289,6 +293,7 @@ const handleSwitchCampResult = (data: any) => {
  * 处理发送投票
  */
 const handleSendVote = (status: boolean) => {
+  if(ccInstruct===undefined)return;
   // 检查是否有进行中的投票
   if (pollCountdownM1.value <= 0) {
     alertMessage({ type: 'simple', text: '没有进行中的投票' });
@@ -318,6 +323,7 @@ const handleSelectCampRed = () => {
   );
   // 上传新的初始位置
   setTimeout(() => {
+    if(ccInstruct===undefined)return;
     const position = firstPersonController.getPosition();
     ccInstruct.broadcastHeadPositionPitchYaw(
       '',
@@ -339,6 +345,7 @@ const handleSelectCampBlack = () => {
   );
   // 上传新的初始位置
   setTimeout(() => {
+    if(ccInstruct===undefined)return;
     const position = firstPersonController.getPosition();
     ccInstruct.broadcastHeadPositionPitchYaw(
       '',
@@ -589,6 +596,7 @@ const handleBroadcastHeadPositionPitchYaw = (conveyor: string, data: any) => {
  * 处理点赞事件
  */
 const handleHeart3=()=>{
+  if(ccInstruct===undefined)return;
   ccInstruct.heart3();
 };
 
@@ -596,11 +604,14 @@ const handleHeart3=()=>{
  * 处理发送请求和棋事件
  */
 const handleSendRequestDraw = () => {
-  ccInstruct.broadcastRequestDraw('');
-  alertMessage({type:'simple',text:'已发起和棋请求'});
+  if(ccInstruct!==undefined){
+    ccInstruct.broadcastRequestDraw('');
+    alertMessage({type:'simple',text:'已发起和棋请求'});
+  }
 };
 
 const handleSendSwitchCampPoll = (value:boolean) => {
+  if(ccInstruct===undefined) return;
   if(pollCountdownM1.value !== 0){
     alertMessage({type:'simple',text:'请等待投票完成结算'});
     return;
@@ -651,6 +662,7 @@ const showGiveUpConfirm = ()=>{
 
 // 选择阵营开始游戏
 const clickStartGame = (side: 'red' | 'black') => {
+  if(ccInstruct===undefined) return;
   if (side === 'red') {
     firstPersonController.setCameraPosition(//修改相机位置
       cameraConfig.redStartPos,
@@ -676,6 +688,7 @@ const clickStartGame = (side: 'red' | 'black') => {
 
   // 上传新的初始位置
   setTimeout(() => {
+    if(ccInstruct===undefined) return;
     const position = firstPersonController.getPosition();
     ccInstruct.broadcastHeadPositionPitchYaw(
       '',
@@ -706,6 +719,36 @@ const applyGameSettings = () => {
   firstPersonController.updateGameSettings(settings);
 };
 
+const clickLogout = () =>{
+  if(ccInstruct===undefined)return;
+  ccInstruct.closeLink();
+};
+
+const clickResetChess = () =>{
+  if(ccInstruct===undefined)return;
+  ccInstruct.broadcastResetAllChessPieces('');
+};
+
+const confirmGiveUp = () => {
+  if(ccInstruct===undefined)return;
+  ccInstruct.broadcastGiveUp('');
+};
+
+const agreeDraw = () => {
+  if(ccInstruct===undefined)return;
+  ccInstruct.broadcastResponseDraw('',true);
+};
+
+const rejectDraw = () => {
+  if(ccInstruct===undefined)return;
+  ccInstruct.broadcastResponseDraw('',false);
+};
+
+const handleSendMessageSp = (text:string) => {
+  if(ccInstruct===undefined)return;
+  ccInstruct.broadcastSpMessage('',text);
+};
+
 // ==============================
 // 动画循环
 // ==============================
@@ -729,17 +772,19 @@ const animate = () => {
   playerManager.smoothUpdatePlayerHeads(delta);
   
   // 定期广播头部位置
-  if (time % gameTick < delta * 1000) {
-    if (campMyChoiceC1.value === 'red' || campMyChoiceC1.value === 'black') {
-      if (firstPersonController.isPointerLocked) {
-        const position = firstPersonController.getPosition();
-        ccInstruct.broadcastHeadPositionPitchYaw(
-          '',
-          position,
-          firstPersonController.pitch,
-          firstPersonController.yaw,
-          campMyChoiceC1.value
-        );
+  if(ccInstruct!==undefined){
+    if (time % gameTick < delta * 1000) {
+      if (campMyChoiceC1.value === 'red' || campMyChoiceC1.value === 'black') {
+        if (firstPersonController.isPointerLocked) {
+          const position = firstPersonController.getPosition();
+          ccInstruct.broadcastHeadPositionPitchYaw(
+            '',
+            position,
+            firstPersonController.pitch,
+            firstPersonController.yaw,
+            campMyChoiceC1.value
+          );
+        }
       }
     }
   }
@@ -753,9 +798,24 @@ const animate = () => {
 // ==============================
 onMounted(async () => {
   if (!sceneRef.value) return;
-  
-  // 初始化指令处理器
-  initInstructionHandlers();
+  // 建立连接
+  configStore.addOnloadedCallback(
+    ()=>{
+      if(configStore.loaded === true){
+        let apiUrl = configStore.api["CHINESE_CHESS_SERVER_URL"];
+        try {
+          new URL(apiUrl);
+          ccInstruct = new ChineseChessInstruct(apiUrl);
+          // 初始化指令处理器
+          initInstructionHandlers();
+          return true;
+        } catch {
+          throw new Error(`象棋服务器地址错误:${apiUrl}`);
+        }
+      }
+    }
+  );
+
 
   // 初始化场景管理器
   sceneManager = new ChessSceneManager(
@@ -834,12 +894,15 @@ onMounted(async () => {
     sceneManager.camera,
     chessPieceManager,
     (pieceName, position) => {
+      if(ccInstruct===undefined)return;
       ccInstruct.broadcastPickUpChess('', pieceName, position);
     },
     (pieceName, position) => {
+      if(ccInstruct===undefined)return;
       ccInstruct.broadcastPickDownChess('', pieceName, position);
     },
     (pieceName, trajectory) => {
+      if(ccInstruct===undefined)return;
       ccInstruct.broadcastMovingChess('', pieceName, trajectory);
     },
     (pieceName) => {
@@ -912,20 +975,20 @@ onUnmounted(() => {
 
 
     <ViewCC1DebugInfo :enabled-debug="debugEnabled" :debug-info="debugInfoC1"/>
-    <ViewUserLayer theme="light" design="C" @click-logout="ccInstruct.closeLink()"/>
+    <ViewUserLayer theme="light" design="C" @click-logout="clickLogout"/>
     <ViewHeart ref="heartRef" @like-change="handleHeart3" label="Like" />
     <ViewCC1Menu @click-open-menu="showStartMenu" :open-menu-state="false" :top="80" :left="20"/>
     <ViewCC1GiveUp :give-up-state="giveUpStateC1" @click-give-up="showGiveUpConfirm"/>
     <ViewCC1ResetChess :give-up-state="giveUpStateC1" :give-up-conveyor="giveUpConveyorC1" 
-      @click-reset-chess="ccInstruct.broadcastResetAllChessPieces('')"/>
+      @click-reset-chess="clickResetChess"/>
     <ViewCC1GiveUpConfirm ref="giveUpConfirmRef" :give-up-state="giveUpStateC1" 
-      @confirm-give-up="ccInstruct.broadcastGiveUp('')"/>
+      @confirm-give-up="confirmGiveUp"/>
     <ViewCC1GiveUpResult :give-up-state="giveUpStateC1" :give-up-conveyor="giveUpConveyorC1" 
-      @click-reset-chess="ccInstruct.broadcastResetAllChessPieces('')"/>
+      @click-reset-chess="clickResetChess"/>
     <ViewCC1ResetChessResult :reset-chess-count="resetChessCountC1" :reset-chess-conveyor="resetChessConveyorC1"/>
     <ViewCC1RequestDraw @click-request-draw="handleSendRequestDraw"/>
-    <ViewCC1ResponDraw @agree-draw="ccInstruct.broadcastResponseDraw('',true)" 
-      @reject-draw="ccInstruct.broadcastResponseDraw('',false)" 
+    <ViewCC1ResponDraw @agree-draw="agreeDraw" 
+      @reject-draw="rejectDraw" 
       :request-draw-counter="requestDrawCounterC1" :request-draw-conveyor="requestDrawConveyorC1" 
       :response-draw-counter="responseDrawCounterC1" :response-draw-conveyor="responseDrawConveyorC1" 
       :response-draw-status="responseDrawStatusC1"/>
@@ -934,7 +997,7 @@ onUnmounted(() => {
       :result-count="resultCountM1" :poll-result="pollResultM1" 
       :vote-total="voteTotalM1" :vote-agree="voteAgreeM1" :vote-disagree="voteDisagreeM1"/>
     <ViewCC1Notifications :notifications="notificationArr"/>
-    <ViewCC1Message @click-send-message-sp="(text)=>ccInstruct.broadcastSpMessage('',text)" 
+    <ViewCC1Message @click-send-message-sp="(txt)=>handleSendMessageSp(txt)" 
       :messages-sp="messagesSpC1" :message-count-sp="messageCountSpC1"/>
     <PartCC1StartMenu ref="startMenuRef" :camp-data="campDataC1" :selected-camp="campMyChoiceC1" 
       @start-game="clickStartGame" @change-setting="applyGameSettings"/>

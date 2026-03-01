@@ -1,6 +1,10 @@
 {
   "annotation": "The relative position of this file: ./webConfig.json",  
-  "version": "2",
+  "version": "3",
+  "api": {
+    "ACCOUNT_SERVER_URL":"http://127.0.0.1:810",
+    "CHINESE_CHESS_SERVER_URL":"ws://127.0.0.1:2424"
+  },
   "homePageCurrentVideo": {
     "title": "3D象棋",
     "description": "在线和朋友下象棋，自由的放置棋子~",
@@ -81,7 +85,7 @@
     "list": [
       {
         "id":9,
-        "time": "2026-01-03",
+        "time": "2026-02-03",
         "title": "增加2d测试",
         "descript": "增加2d测试，测试几何图形算法"
       },

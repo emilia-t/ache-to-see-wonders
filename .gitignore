@@ -18,6 +18,7 @@ dist
 dist-ssr
 coverage
 *.local
+__pycache__
 
 /cypress/videos/
 /cypress/screenshots/

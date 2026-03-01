@@ -511,7 +511,7 @@ class ChineseChessServer:
 
     async def start_server(self):
         """启动WebSocket服务器"""
-        log_message(f"服务器即将启动在: {self.host}:{self.port}")
+        log_message(f"服务器即将启动: {self.host}:{self.port}")
         
         # SSL配置
         ssl_context = None
@@ -541,7 +541,8 @@ class ChineseChessServer:
         
         protocol = "WSS" if ssl_context else "WS"
         log_message(f"服务器已启动在: {self.host}:{self.port} ({protocol})")
-        log_message(f"服务器URL: {configure._config_server_url_}")
+        log_message(f"象棋服务器URL: {configure._config_server_url_}")
+        log_message(f"账号服务器URL: {configure._api_account_server_url_}")
         log_message("等待客户端连接...")
 
         # 启动自动保存任务

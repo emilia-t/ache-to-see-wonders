@@ -3,8 +3,9 @@
 // 此组件用于各个page的登录用户信息展示和登录界面
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import Tool from '@/class/Tool';
-import { useUserStore } from '@/stores/store';
-import { accountApiService, type LoginCredentials, type RegisterData } from '@/services/api';
+import { useUserStore , useConfigStore} from '@/stores/store';
+import { type LoginCredentials, type RegisterData } from '@/services/api';
+import { AccountApiService } from '@/services/api';
 
 // ==================== 接口定义 ====================
 interface Props {
@@ -12,6 +13,10 @@ interface Props {
   theme?: string     // 界面显示主题(dark and light)
   design?: string    // 界面的样式类型(具体参考html模板)
 };
+
+const configStore = useConfigStore();
+const accountApiService = new AccountApiService('http://undefined.none');
+
 
 // ==================== 用户名验证方法 ====================
 const validateName = (name: string): boolean => {
@@ -504,7 +509,15 @@ onMounted(() => {
   document.addEventListener('click', handleClickOutside);
   window.addEventListener('resize', detectDeviceType);
   // 检查自动登录
-  checkAutoLogin();
+  configStore.addOnloadedCallback(
+    ()=>{
+      if(configStore.loaded === true){
+        let apiUrl = configStore.api.ACCOUNT_SERVER_URL;
+        accountApiService.setServerUrl(apiUrl);
+        checkAutoLogin();
+      }
+    }
+  );
 });
 
 onUnmounted(() => {
@@ -520,8 +533,7 @@ defineExpose({
   handleLogout,
   togglePasswordVisibility,
   showLoginPassword,
-  showRegisterPassword,
-  checkAutoLogin
+  showRegisterPassword
 });
 </script>
 

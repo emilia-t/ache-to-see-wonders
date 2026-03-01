@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useConfigStore } from '@/stores/store'
-import { CHINESE_CHESS_SERVER_URL } from '@/config/apiConfig'
 import type InstructObject from '@/interface/InstructObject'
 import ChineseChessInstruct from '@/class/ChineseChessInstruct'
 import ViewBottomLicense from '@/components/ViewBottomLicense.vue'
@@ -30,6 +29,7 @@ const currentTargetUrl = computed(() => configStore.homePageCurrentVideo.targetU
 const currentButtonName = computed(() => configStore.homePageCurrentVideo.button_name);
 const trialPartBoxList = computed(() => configStore.homePageTrialBox.list);
 const logsPartBoxList = computed(() => configStore.homePageLogsBox.list);
+const apiConfig = computed(() => configStore.api);
 
 watch(trialPartBoxList, (newVlue, oldValue) => {
   if (newVlue.length!==oldValue.length) {
@@ -38,44 +38,50 @@ watch(trialPartBoxList, (newVlue, oldValue) => {
       let key = newVlue[i].key;
       switch (key){
         case "cc1":{
-          const ws = new ChineseChessInstruct(CHINESE_CHESS_SERVER_URL);
-          ws.onOpen = (ev: Event):void => {
-            newVlue[i].online_state=true;
-            ws.getStorageJson();// 获取3d象棋的storage.json
-          };
-          ws.onMessage = (instructObj: InstructObject):void=>{
-            const { type, class: class_, conveyor, data } = instructObj;
-            if(type !== 'storage_json'){
-              return;
-            }
-            try{
-              let storageObj = JSON.parse(data);
-              if(typeof storageObj === 'object' && storageObj!==null){
-                if(storageObj.hasOwnProperty('visit_count')){
-                  let visitCount = storageObj['visit_count'];
-                  if(typeof visitCount === 'number'){
-                    newVlue[i].visit_count = visitCount;
-                  }
-                }
-                if(storageObj.hasOwnProperty('heart_count')){
-                  let heartCount = storageObj['heart_count'];
-                  if(typeof heartCount === 'number'){
-                    newVlue[i].heart_count = heartCount;
-                  }
-                }
-                if(storageObj.hasOwnProperty('online_count')){
-                  let onlineCount = storageObj['online_count'];
-                  if(typeof onlineCount === 'number'){
-                    newVlue[i].online_count = onlineCount;
-                  }
-                }
+          let apiUrl = apiConfig.value["CHINESE_CHESS_SERVER_URL"];
+          try{
+            new URL(apiUrl);
+            const ws = new ChineseChessInstruct(apiUrl);
+            ws.onOpen = (ev: Event):void => {
+              newVlue[i].online_state=true;
+              ws.getStorageJson();// 获取3d象棋的storage.json
+            };
+            ws.onMessage = (instructObj: InstructObject):void=>{
+              const { type, class: class_, conveyor, data } = instructObj;
+              if(type !== 'storage_json'){
+                return;
               }
-              ws.closeLink();
-            }
-            catch (e){
-              ws.closeLink();
-            }
-          };
+              try{
+                let storageObj = JSON.parse(data);
+                if(typeof storageObj === 'object' && storageObj!==null){
+                  if(storageObj.hasOwnProperty('visit_count')){
+                    let visitCount = storageObj['visit_count'];
+                    if(typeof visitCount === 'number'){
+                      newVlue[i].visit_count = visitCount;
+                    }
+                  }
+                  if(storageObj.hasOwnProperty('heart_count')){
+                    let heartCount = storageObj['heart_count'];
+                    if(typeof heartCount === 'number'){
+                      newVlue[i].heart_count = heartCount;
+                    }
+                  }
+                  if(storageObj.hasOwnProperty('online_count')){
+                    let onlineCount = storageObj['online_count'];
+                    if(typeof onlineCount === 'number'){
+                      newVlue[i].online_count = onlineCount;
+                    }
+                  }
+                }
+                ws.closeLink();
+              }
+              catch (e){
+                ws.closeLink();
+              }
+            };
+          }catch{
+            throw new Error(`象棋服务器地址错误:${apiUrl}`);
+          }
           break;
         }
         default:{

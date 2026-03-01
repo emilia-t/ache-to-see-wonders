@@ -117,9 +117,15 @@ interface HomePageLogsConfig{
   list: HomePageLogItemConfig[]
 }
 
+interface ApiConfig{
+  ACCOUNT_SERVER_URL: string
+  [key: string]: string
+}
+
 interface WebConfig {
   annotation?: string
   version?: string
+  api?: ApiConfig
   homePageCurrentVideo?: HomePageVideoConfig
   homePageTrialBox?: HomePageTrialBoxConfig
   homePageLogs?: HomePageLogsConfig
@@ -129,7 +135,9 @@ interface WebConfig {
 export const useConfigStore = defineStore('config', () => {
   const config = ref<WebConfig | null>(null)
   const loading = ref(false)
+  const loaded = ref(false)
   const error = ref<string | null>(null)
+  const pendingCallbacks: (() => void)[] = []
 
   // 默认配置
   const defaultVideoConfig: HomePageVideoConfig = {
@@ -150,6 +158,9 @@ export const useConfigStore = defineStore('config', () => {
     version: 'Loding',
     list: []
   }
+  const defaultApiConfig: ApiConfig = {
+    ACCOUNT_SERVER_URL:''
+  }
 
   // 计算属性，方便直接访问视频配置
   const homePageCurrentVideo = computed((): HomePageVideoConfig => {
@@ -161,28 +172,56 @@ export const useConfigStore = defineStore('config', () => {
   const homePageLogsBox = computed((): HomePageLogsConfig => {
     return config.value?.homePageLogs || defaultLogsConfig
   })
+  const api = computed((): ApiConfig => {
+    return config.value?.api || defaultApiConfig
+  })
+
+  function addOnloadedCallback(callback: () => void) {
+    if (loading.value) {
+      pendingCallbacks.push(callback)
+    } else {
+      try {
+        callback()
+      } catch (e) {
+        console.error('配置加载回调执行错误:', e)
+      }
+    }
+  }
+
+  function onLoaded() {
+    const callbacks = pendingCallbacks.slice()
+    pendingCallbacks.length = 0
+    callbacks.forEach(cb => {
+      try {
+        cb()
+      } catch (e) {
+        console.error('配置加载回调执行错误:', e)
+      }
+    })
+  }
 
   // 加载配置
   async function loadConfig() {
     if (loading.value) return
-    
     loading.value = true
     error.value = null
-    
     try {
       // 添加时间戳参数避免缓存
       const timestamp = new Date().getTime()
       const response = await fetch(`/webConfig.json?t=${timestamp}`)
       if (!response.ok) {
+        loaded.value = false
         throw new Error(`配置加载失败: ${response.status}`)
       }
       const configData = await response.json() as WebConfig
       config.value = configData
-      
+      loaded.value = true
     } catch (err) {
+      loaded.value = false
       error.value = err instanceof Error ? err.message : '未知错误'
     } finally {
       loading.value = false
+      onLoaded()
     }
   }
 
@@ -197,10 +236,13 @@ export const useConfigStore = defineStore('config', () => {
     homePageCurrentVideo,
     homePageTrialBox,
     homePageLogsBox,
-    loading,  
+    api,
+    loading,
+    loaded,
     error,
     configVersion,
-    loadConfig
+    loadConfig,
+    addOnloadedCallback
   }
 })
 

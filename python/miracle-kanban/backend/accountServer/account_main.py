@@ -1203,12 +1203,15 @@ class AccountServer:
 
                     # 包装socket
                     server_socket = context.wrap_socket(server_socket, server_side=True)
-                    log_message(f"账号服务器已启动（SSL加密），监听端口 {self.host}:{self.port}")
+                    log_message(f"账号服务器已启动")
+                    log_message(f"服务器地址: https://{self.host}:{self.port}")
                 except Exception as e:
                     log_message(f"SSL配置失败: {e}")
-                    log_message(f"账号服务器已启动（无SSL），监听端口 {self.host}:{self.port}")
+                    log_message(f"账号服务器已启动")
+                    log_message(f"服务器地址: http://{self.host}:{self.port}")
             else:
-                log_message(f"账号服务器已启动（无SSL），监听端口 {self.host}:{self.port}")
+                log_message(f"账号服务器已启动")
+                log_message(f"服务器地址: http://{self.host}:{self.port}")
             
             while True:
                 try:
@@ -1276,7 +1279,8 @@ def init_database():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_resetpwd_code ON users(resetpwd_code)')
         
         conn.commit()
-        log_message(f"数据库初始化成功！数据库文件: {db_path}")
+        log_message(f"数据库初始化成功")
+        log_message(f"数据文件: {db_path}")
         
     except sqlite3.Error as e:
         log_message(f"数据库初始化失败: {e}")
@@ -1285,7 +1289,8 @@ def init_database():
             conn.close()
 
 if __name__ == "__main__":
-    log_message(f"账号服务器即将启动，日志文件: {log_filename}")
+    log_message(f"账号服务器将启动")
+    log_message(f"日志文件: {log_filename}")
     
     # 初始化数据库
     init_database()

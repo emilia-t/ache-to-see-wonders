@@ -1,5 +1,4 @@
 // The relative position of this file: src/services/api.ts
-import { ACCOUNT_SERVER_URL } from '@/config/apiConfig'
 
 export interface LoginCredentials {
   email: string
@@ -19,16 +18,41 @@ export interface AccountApiResponse {
   user?: any
 }
 
-class AccountApiService {
+export class AccountApiService {
+  private account_server_url : string = 'http://undefined.none';//example URL without '/' at the end
+
+  /**
+   * Create Account api service
+   * @param ACCOUNT_SERVER_URL 'http://undefined.none' example URL without '/' at the end
+   */
+  constructor(ACCOUNT_SERVER_URL:string){
+    this.account_server_url = ACCOUNT_SERVER_URL;
+  }
+  //
+  public getServerUrl():string {
+    return this.account_server_url;
+  }
+  public setServerUrl(url: string): boolean {
+    try {
+      new URL(url);
+      this.account_server_url = url;
+      return true;
+    } catch {
+      throw new Error(`账号服务器地址错误:${url}`);
+    }
+  }
+  // endpoint = request method
   private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
-      const url = `${ACCOUNT_SERVER_URL}${endpoint}`
-      
+      if(this.account_server_url==='http://undefined.none'){
+        return false;
+      }
+      const url = `${this.account_server_url}${endpoint}`;
       const defaultOptions: RequestInit = {
           headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
               ...options.headers,
           },
-      }
+      };
 
       try {
           // 创建带有超时的AbortController
@@ -143,5 +167,3 @@ class AccountApiService {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
 }
-
-export const accountApiService = new AccountApiService()
