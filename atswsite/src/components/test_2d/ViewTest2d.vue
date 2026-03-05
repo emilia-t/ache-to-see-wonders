@@ -5,6 +5,189 @@ import { computed } from 'vue';
 import { onMounted } from 'vue';
 import { onUnmounted } from 'vue';
 
+class CursorManager {
+  private cursorFilePath = {
+    crosshair: "./cursor/crosshair.png",
+    default: "./cursor/default.png",
+    eraser: "./cursor/eraser.png",
+    help: "./cursor/help.png",
+    move: "./cursor/move.png",
+    notAllowed: "./cursor/notAllowed.png",
+    pen: "./cursor/pen.png",
+    pointer: "./cursor/pointer.png"
+  };
+  private dragFilePath = {
+    default: "./cursor/default.gif",
+    eraser: "./cursor/eraser.gif"
+  };
+  private pngCache: { [name: string]: HTMLImageElement | null } = {
+    crosshair: null,
+    default: null,
+    eraser: null,
+    help: null,
+    move: null,
+    notAllowed: null,
+    pen: null,
+    pointer: null
+  };
+  private gifCache: { [name: string]: HTMLImageElement | null } = {
+    default: null,
+    eraser: null
+  };
+  private nowCursorType = 'default';
+  private nowCursorX = 0;      // 指针位置（屏幕坐标）
+  private nowCursorY = 0;
+  private nowOffsetX = 0;       // 渲染时的偏移值（热点偏移）
+  private nowOffsetY = 0;
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private focused = true;       // 指针是否可见（鼠标移出浏览器时不可见）
+  private effectDrag = false;    // 是否显示拖影特效
+
+  constructor(canvasId: string) {
+    this.canvas = document.getElementById(canvasId) as HTMLCanvasElement;
+    this.ctx = this.canvas.getContext('2d')!;
+    this.loadPng();
+    this.loadGif();
+    this.canvas
+  }
+
+  /**
+   * 加载所有 PNG 光标图片
+   */
+  loadPng() {
+    for (const [key, path] of Object.entries(this.cursorFilePath)) {
+      const img = new Image();
+      img.src = path;
+      img.onload = () => {
+        this.pngCache[key] = img;
+        // 如果当前光标类型为此图片且处于聚焦状态，立即重绘
+        if (this.focused && this.nowCursorType === key) {
+          this.draw( this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
+        }
+      };
+      img.onerror = () => {
+        console.warn(`Failed to load cursor image: ${path}`);
+      };
+      // 先占位 null，加载完成后替换
+      this.pngCache[key] = null;
+    }
+  }
+
+  /**
+   * 加载所有 GIF 拖影图片
+   */
+  loadGif() {
+    for (const [key, path] of Object.entries(this.dragFilePath)) {
+      const img = new Image();
+      img.src = path;
+      img.onload = () => {
+        this.gifCache[key] = img;
+        // 如果当前处于拖影模式且光标类型匹配，重绘
+        if (this.focused && this.effectDrag && this.nowCursorType === key) {
+          this.draw( this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
+        }
+      };
+      img.onerror = () => {
+        console.warn(`Failed to load drag cursor image: ${path}`);
+      };
+      this.gifCache[key] = null;
+    }
+  }
+
+  /**
+   * 绘制光标到画布
+   * @param X 鼠标屏幕 X 坐标
+   * @param Y 鼠标屏幕 Y 坐标
+   * @param OffsetX 光标图像热点 X 偏移（相对于左上角）
+   * @param OffsetY 光标图像热点 Y 偏移
+   * @param Type 光标类型（与 cursorFilePath 的键对应）
+   */
+  draw(Type: string, X: number, Y: number, OffsetX: number=0, OffsetY: number=0) {
+    // 更新内部状态
+    this.nowCursorX = X;
+    this.nowCursorY = Y;
+    this.nowOffsetX = OffsetX;
+    this.nowOffsetY = OffsetY;
+    this.nowCursorType = Type;
+
+    // 确保画布尺寸与 CSS 一致（防止模糊）
+    const rect = this.canvas.getBoundingClientRect();
+    if (this.canvas.width !== rect.width || this.canvas.height !== rect.height) {
+      this.canvas.width = rect.width;
+      this.canvas.height = rect.height;
+    }
+
+    // 如果失去焦点，清除画布并返回
+    if (!this.focused) {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      return;
+    }
+
+    // 清除画布
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // 确定要使用的图片：拖影模式优先使用 GIF，否则使用 PNG
+    let img: HTMLImageElement | null = null;
+    if (this.effectDrag && this.gifCache[Type]) {
+      img = this.gifCache[Type];
+    } else if (this.pngCache[Type]) {
+      img = this.pngCache[Type];
+    }
+
+    if (img && img.complete && img.naturalWidth > 0) {
+      // 图片已加载，根据热点偏移绘制
+      const drawX = X - OffsetX;
+      const drawY = Y - OffsetY;
+      this.ctx.drawImage(img, drawX, drawY);
+    } else {
+      // 图片未加载或不存在，绘制默认光标形状（十字准星）
+      this.drawDefaultCursor(X, Y);
+    }
+  }
+
+  /**
+   * 绘制默认光标（备用方案）
+   */
+  private drawDefaultCursor(x: number, y: number) {
+    this.ctx.save();
+    this.ctx.strokeStyle = '#000';
+    this.ctx.lineWidth = 2;
+    // 绘制十字
+    this.ctx.beginPath();
+    this.ctx.moveTo(x - 10, y);
+    this.ctx.lineTo(x + 10, y);
+    this.ctx.moveTo(x, y - 10);
+    this.ctx.lineTo(x, y + 10);
+    this.ctx.stroke();
+    // 中心圆点
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, 3, 0, 2 * Math.PI);
+    this.ctx.fillStyle = '#fff';
+    this.ctx.fill();
+    this.ctx.strokeStyle = '#000';
+    this.ctx.stroke();
+    this.ctx.restore();
+  }
+
+  /**
+   * 设置焦点状态（鼠标是否在画布内）
+   */
+  setFocused(focused: boolean) {
+    this.focused = focused;
+    this.draw( this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY,);
+  }
+
+  /**
+   * 设置拖影特效开关
+   */
+  setEffectDrag(effect: boolean) {
+    this.effectDrag = effect;
+    this.draw( this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
+  }
+}
+
+
 interface RGB { r: number; g: number; b: number; }
 interface Point { x: number; y: number };
 interface EventArea {
@@ -45,10 +228,13 @@ interface SegmentElement extends Element {
 ////////////////////
 //常量区-->
 ////////////////////
+
+
 const graphicsCanvas = ref<HTMLCanvasElement | null>(null);
 const uiCanvas = ref<HTMLCanvasElement | null>(null);
 let graphicsCtx: CanvasRenderingContext2D | null = null;
 let uiCtx: CanvasRenderingContext2D | null = null;
+
 
 const bt1Padding = 30;//bt1是左侧元素添加按钮的
 const bt1Height = 50;
@@ -119,6 +305,8 @@ const STORAGE_KEY = 'viewTest2dState';
 ////////////////////
 //变量区-->
 ////////////////////
+let cursorManager:CursorManager|null = null;
+
 let isDragging = false;
 let lastX = 0;
 let lastY = 0;
@@ -1043,6 +1231,10 @@ const drawGraphics = () => {
   }
 };
 
+const drawCursor = () => {
+
+};
+
 /**
  * 绘制UI层（按钮、标尺、提示）
  */
@@ -1632,6 +1824,8 @@ onMounted(() => {
     }
     startSetting();
   }
+  cursorManager = new CursorManager("canvas-cursor");
+  window.addEventListener('mousemove',(e)=>{cursorManager?.draw('default',e.x,e.y)});
   drawGraphics();
   drawUI();
   // 添加事件监听（全部绑定到UI Canvas）
@@ -1671,8 +1865,9 @@ onUnmounted(() => {
 
 <template>
   <div class="view-test2d-container">
-    <canvas id="canvas-graphics" ref="graphicsCanvas"></canvas>
-    <canvas id="canvas-ui" ref="uiCanvas"></canvas>
+    <canvas id="canvas-graphics"    ref="graphicsCanvas"></canvas>
+    <canvas id="canvas-cursor"      ></canvas>
+    <canvas id="canvas-ui"          ref="uiCanvas"></canvas>
   </div>
 </template>
 
@@ -1705,5 +1900,16 @@ onUnmounted(() => {
   display: block;
   pointer-events: auto; /* UI层接收所有鼠标事件 */
   cursor: default;
+}
+
+#canvas-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  cursor: none; 
 }
 </style>
