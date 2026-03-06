@@ -1,9 +1,9 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 // The relative position of this file: src/components/test_2d/ViewTest2d.vue
-import { ref } from 'vue';
-import { computed } from 'vue';
-import { onMounted } from 'vue';
-import { onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+
+type CursorType = 'crosshair' | 'default' | 'eraser' | 'help' | 'move' | 'notAllowed' | 'pen' | 'pointer';
+type DragCursorType = 'default' | 'eraser';
 
 class CursorManager {
   private cursorFilePath = {
@@ -15,12 +15,12 @@ class CursorManager {
     notAllowed: "./cursor/notAllowed.png",
     pen: "./cursor/pen.png",
     pointer: "./cursor/pointer.png"
-  };
+  } as const;
   private dragFilePath = {
     default: "./cursor/default.gif",
     eraser: "./cursor/eraser.gif"
-  };
-  private pngCache: { [name: string]: HTMLImageElement | null } = {
+  } as const;
+  private pngCache: Record<CursorType, HTMLImageElement | null> = {
     crosshair: null,
     default: null,
     eraser: null,
@@ -30,14 +30,14 @@ class CursorManager {
     pen: null,
     pointer: null
   };
-  private gifCache: { [name: string]: HTMLImageElement | null } = {
+  private gifCache: Record<DragCursorType, HTMLImageElement | null> = {
     default: null,
     eraser: null
   };
-  private nowCursorType = 'default';
+  private nowCursorType: CursorType = 'default';
   private nowCursorX = 0;      // 指针位置（屏幕坐标）
   private nowCursorY = 0;
-  private nowOffsetX = 0;       // 渲染时的偏移值（热点偏移）
+  private nowOffsetX = 0;
   private nowOffsetY = 0;
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -45,11 +45,14 @@ class CursorManager {
   private effectDrag = false;    // 是否显示拖影特效
 
   constructor(canvasId: string) {
-    this.canvas = document.getElementById(canvasId) as HTMLCanvasElement;
+    const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
+    if (!canvas) {
+      throw new Error(`Cursor canvas not found: ${canvasId}`);
+    }
+    this.canvas = canvas;
     this.ctx = this.canvas.getContext('2d')!;
     this.loadPng();
     this.loadGif();
-    this.canvas
   }
 
   /**
@@ -57,20 +60,21 @@ class CursorManager {
    */
   loadPng() {
     for (const [key, path] of Object.entries(this.cursorFilePath)) {
+      const cursorKey = key as CursorType;
       const img = new Image();
       img.src = path;
       img.onload = () => {
-        this.pngCache[key] = img;
+        this.pngCache[cursorKey] = img;
         // 如果当前光标类型为此图片且处于聚焦状态，立即重绘
-        if (this.focused && this.nowCursorType === key) {
-          this.draw( this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
+        if (this.focused && this.nowCursorType === cursorKey) {
+          this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
         }
       };
       img.onerror = () => {
         console.warn(`Failed to load cursor image: ${path}`);
       };
-      // 先占位 null，加载完成后替换
-      this.pngCache[key] = null;
+      
+      this.pngCache[cursorKey] = null;
     }
   }
 
@@ -79,70 +83,76 @@ class CursorManager {
    */
   loadGif() {
     for (const [key, path] of Object.entries(this.dragFilePath)) {
+      const dragKey = key as DragCursorType;
       const img = new Image();
       img.src = path;
       img.onload = () => {
-        this.gifCache[key] = img;
+        this.gifCache[dragKey] = img;
         // 如果当前处于拖影模式且光标类型匹配，重绘
-        if (this.focused && this.effectDrag && this.nowCursorType === key) {
-          this.draw( this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
+        if (this.focused && this.effectDrag && this.nowCursorType === dragKey) {
+          this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
         }
       };
       img.onerror = () => {
         console.warn(`Failed to load drag cursor image: ${path}`);
       };
-      this.gifCache[key] = null;
+      this.gifCache[dragKey] = null;
     }
   }
 
   /**
    * 绘制光标到画布
+   * 
+   * @param Type 光标类型（与 cursorFilePath 的键对应）
    * @param X 鼠标屏幕 X 坐标
    * @param Y 鼠标屏幕 Y 坐标
    * @param OffsetX 光标图像热点 X 偏移（相对于左上角）
    * @param OffsetY 光标图像热点 Y 偏移
-   * @param Type 光标类型（与 cursorFilePath 的键对应）
    */
-  draw(Type: string, X: number, Y: number, OffsetX: number=0, OffsetY: number=0) {
-    // 更新内部状态
+  drawCursor(Type: CursorType, X: number, Y: number, OffsetX: number = 0, OffsetY: number = 0) {
     this.nowCursorX = X;
     this.nowCursorY = Y;
     this.nowOffsetX = OffsetX;
     this.nowOffsetY = OffsetY;
     this.nowCursorType = Type;
 
-    // 确保画布尺寸与 CSS 一致（防止模糊）
     const rect = this.canvas.getBoundingClientRect();
-    if (this.canvas.width !== rect.width || this.canvas.height !== rect.height) {
-      this.canvas.width = rect.width;
-      this.canvas.height = rect.height;
+    const dpr = Math.max(window.devicePixelRatio || 1, 1);
+    const displayWidth = Math.round(rect.width * dpr);
+    const displayHeight = Math.round(rect.height * dpr);
+    if (this.canvas.width !== displayWidth || this.canvas.height !== displayHeight) {
+      this.canvas.width = displayWidth;
+      this.canvas.height = displayHeight;
     }
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const localX = X - rect.left;
+    const localY = Y - rect.top;
 
     // 如果失去焦点，清除画布并返回
     if (!this.focused) {
-      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.clearRect(0, 0, rect.width, rect.height);
       return;
     }
 
     // 清除画布
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.clearRect(0, 0, rect.width, rect.height);
 
     // 确定要使用的图片：拖影模式优先使用 GIF，否则使用 PNG
     let img: HTMLImageElement | null = null;
-    if (this.effectDrag && this.gifCache[Type]) {
-      img = this.gifCache[Type];
+    if (this.effectDrag && Type in this.gifCache && this.gifCache[Type as DragCursorType]) {
+      img = this.gifCache[Type as DragCursorType];
     } else if (this.pngCache[Type]) {
       img = this.pngCache[Type];
     }
 
     if (img && img.complete && img.naturalWidth > 0) {
       // 图片已加载，根据热点偏移绘制
-      const drawX = X - OffsetX;
-      const drawY = Y - OffsetY;
+      const drawX = localX - OffsetX;
+      const drawY = localY - OffsetY;
       this.ctx.drawImage(img, drawX, drawY);
     } else {
       // 图片未加载或不存在，绘制默认光标形状（十字准星）
-      this.drawDefaultCursor(X, Y);
+      this.drawDefaultCursor(localX, localY);
     }
   }
 
@@ -175,7 +185,7 @@ class CursorManager {
    */
   setFocused(focused: boolean) {
     this.focused = focused;
-    this.draw( this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY,);
+    this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
   }
 
   /**
@@ -183,10 +193,9 @@ class CursorManager {
    */
   setEffectDrag(effect: boolean) {
     this.effectDrag = effect;
-    this.draw( this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
+    this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
   }
 }
-
 
 interface RGB { r: number; g: number; b: number; }
 interface Point { x: number; y: number };
@@ -229,12 +238,10 @@ interface SegmentElement extends Element {
 //常量区-->
 ////////////////////
 
-
 const graphicsCanvas = ref<HTMLCanvasElement | null>(null);
 const uiCanvas = ref<HTMLCanvasElement | null>(null);
 let graphicsCtx: CanvasRenderingContext2D | null = null;
 let uiCtx: CanvasRenderingContext2D | null = null;
-
 
 const bt1Padding = 30;//bt1是左侧元素添加按钮的
 const bt1Height = 50;
@@ -319,6 +326,7 @@ let hiddenElementList: Array<Element> = [];  //
 let eventArea: Array<EventArea> = []; // 事件触发区域列表
 let mouseX = 0;
 let mouseY = 0;
+let hasMousePosition = false; // 鼠标位置是否有效
 let hoveredArea: EventArea | null = null;
 let drawStatusPoint = false;
 let drawStatusLine = false;
@@ -328,6 +336,45 @@ let isDrawing = false; // 是否正在绘制中（用于线和线段）
 let drawStartPoint: Point | null = null; // 绘制起点（用于线）
 ////////////////////
 //<--变量区
+////////////////////
+
+////////////////////
+//辅助函数区-->
+////////////////////
+const getCanvasCssSize = (canvas: HTMLCanvasElement) => {
+  const width = canvas.clientWidth || window.innerWidth;
+  const height = canvas.clientHeight || window.innerHeight;
+  return { width, height };
+};
+
+const applyDprToCanvas = (canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) => {
+  const { width, height } = getCanvasCssSize(canvas);
+  const dpr = Math.max(window.devicePixelRatio || 1, 1);
+  const displayWidth = Math.round(width * dpr);
+  const displayHeight = Math.round(height * dpr);
+  if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+    canvas.width = displayWidth;
+    canvas.height = displayHeight;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+};
+
+const getHitEventArea = (x: number, y: number): EventArea | null => {
+  for (let i = eventArea.length - 1; i >= 0; i--) {
+    const area = eventArea[i];
+    if (
+      x >= area.rect.x &&
+      x <= area.rect.x + area.rect.width &&
+      y >= area.rect.y &&
+      y <= area.rect.y + area.rect.height
+    ) {
+      return area;
+    }
+  }
+  return null;
+};
+////////////////////
+//<--辅助函数区
 ////////////////////
 
 ////////////////////
@@ -346,8 +393,9 @@ const emptyComputed = computed(() => {
 const startSetting = () => {
   // 初始化原点偏移量为画布中心
   if (graphicsCanvas.value) {
-    offsetXX = graphicsCanvas.value.width / 2;
-    offsetYY = graphicsCanvas.value.height / 2;
+    const { width, height } = getCanvasCssSize(graphicsCanvas.value);
+    offsetXX = width / 2;
+    offsetYY = height / 2;
   }
 
   // 测试元素
@@ -458,7 +506,7 @@ const drawUIButtons = () => {
  */
 const drawInstructions = () => {
   if (!uiCtx || !uiCanvas.value) return;
-  const width = uiCanvas.value.width;
+  const { width } = getCanvasCssSize(uiCanvas.value);
   const text = 'Ctrl + S = Save    Ctrl + F = Clear';
   uiCtx.save();
   uiCtx.font = '14px "Microsoft YaHei", Arial, sans-serif';
@@ -491,7 +539,8 @@ const drawUIRuler = () => {
   const ruleHeight = 40;
 
   const x = padding;
-  const y = uiCanvas.value.height - padding - ruleHeight;
+  const { height } = getCanvasCssSize(uiCanvas.value);
+  const y = height - padding - ruleHeight;
 
   uiCtx.save();
 
@@ -556,6 +605,7 @@ const roundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 };
 
 const createEventArea = () => {
+  eventArea = []; // 清空后重新创建
   // 为每个按钮创建事件区域
   buttons.forEach(button => {
     eventArea.push({
@@ -583,7 +633,7 @@ const createEventArea = () => {
       }
     });
   });
-}
+};
 
 /**
  * 创建坐标轴刻度标记（图形层）
@@ -591,8 +641,7 @@ const createEventArea = () => {
 const createAxisMark = () => {
   if (!graphicsCtx || !graphicsCanvas.value) return;
 
-  const width = graphicsCanvas.value.width;
-  const height = graphicsCanvas.value.height;
+  const { width, height } = getCanvasCssSize(graphicsCanvas.value);
   const gridSize = 50 * scale; // 网格大小
   const tickSize = 6; // 刻度线长度
 
@@ -675,8 +724,7 @@ const createAxisMark = () => {
 const createAxis = (xColor: RGB, yColor: RGB) => {
   if (!graphicsCtx || !graphicsCanvas.value) return;
 
-  const width = graphicsCanvas.value.width;
-  const height = graphicsCanvas.value.height;
+  const { width, height } = getCanvasCssSize(graphicsCanvas.value);
   const gridSize = 50 * scale; // 网格大小（像素）
   const tickSize = 6; // 刻度线长度
 
@@ -756,8 +804,7 @@ const createAxis = (xColor: RGB, yColor: RGB) => {
 const createGrid = () => {
   if (!graphicsCtx || !graphicsCanvas.value) return;
 
-  const width = graphicsCanvas.value.width;
-  const height = graphicsCanvas.value.height;
+  const { width, height } = getCanvasCssSize(graphicsCanvas.value);
   const gridSize = 50 * scale; // 网格大小，随缩放比例变化
 
   graphicsCtx.save();
@@ -839,7 +886,6 @@ const createSegment = (points: Array<Point>, inherentProp: InherentProp, customP
 ////////////////////
 //<--各种创建函数区
 ////////////////////
-
 
 ////////////////////
 //其他函数区-->
@@ -1186,12 +1232,14 @@ const updateElementProperty = (id: number, newProps: Partial<InherentProp>) => {
 const drawGraphics = () => {
   if (!graphicsCtx || !graphicsCanvas.value) return;
 
+  const { width, height } = getCanvasCssSize(graphicsCanvas.value);
+
   // 清空画布
-  graphicsCtx.clearRect(0, 0, graphicsCanvas.value.width, graphicsCanvas.value.height);
+  graphicsCtx.clearRect(0, 0, width, height);
 
   // 设置背景色
   graphicsCtx.fillStyle = '#f0f0f0';
-  graphicsCtx.fillRect(0, 0, graphicsCanvas.value.width, graphicsCanvas.value.height);
+  graphicsCtx.fillRect(0, 0, width, height);
 
   // 绘制网格
   createGrid();
@@ -1215,8 +1263,7 @@ const drawGraphics = () => {
     showTempPoint(drawStartPoint);
     
     // 如果有鼠标位置，可以显示从起点到鼠标的预览线
-    if (mouseX && mouseY) {
-      const mouseCanvasPos = screenToCanvas(mouseX, mouseY);
+    if (hasMousePosition) {
       graphicsCtx.save();
       graphicsCtx.beginPath();
       const startScreen = canvasToScreen(drawStartPoint.x, drawStartPoint.y);
@@ -1231,16 +1278,13 @@ const drawGraphics = () => {
   }
 };
 
-const drawCursor = () => {
-
-};
-
 /**
  * 绘制UI层（按钮、标尺、提示）
  */
 const drawUI = () => {
   if (!uiCtx || !uiCanvas.value) return;
-  uiCtx.clearRect(0, 0, uiCanvas.value.width, uiCanvas.value.height);
+  const { width, height } = getCanvasCssSize(uiCanvas.value);
+  uiCtx.clearRect(0, 0, width, height);
   drawUIButtons();
   drawUIRuler();
   drawInstructions();
@@ -1616,27 +1660,16 @@ const onCanvasClick = (e: MouseEvent) => {
   const screenY = e.offsetY;
   
   // 首先检查是否点击了按钮区域
-  let flagA = false;
-  for (let i = eventArea.length - 1; i >= 0; i--) {
-    const area = eventArea[i];
-    if (screenX >= area.rect.x &&
-      screenX <= area.rect.x + area.rect.width &&
-      screenY >= area.rect.y &&
-      screenY <= area.rect.y + area.rect.height) {
-
-      if (area.onClick) {
-        area.onClick(e, area);
-        // 在UI层显示点击效果？这里简单重绘UI
-        drawUI();
-      }
-      e.stopPropagation();
-      flagA = true;
-      break;
+  const hitArea = getHitEventArea(screenX, screenY);
+  if (hitArea) {
+    if (hitArea.onClick) {
+      hitArea.onClick(e, hitArea);
+      // 在UI层显示点击效果？这里简单重绘UI
+      drawUI();
     }
+    e.stopPropagation();
+    return;
   }
-
-  // 如果点击了按钮区域，不处理图形绘制
-  if (flagA) return;
 
   // 转换为画布坐标
   const canvasPos = screenToCanvas(screenX, screenY);
@@ -1657,12 +1690,7 @@ const onCanvasDoubleClick = (e: MouseEvent) => {
   const screenX = e.offsetX;
   const screenY = e.offsetY;
   // 检查是否点击按钮区域，如果是则忽略
-  for (let area of eventArea) {
-    if (screenX >= area.rect.x && screenX <= area.rect.x + area.rect.width &&
-        screenY >= area.rect.y && screenY <= area.rect.y + area.rect.height) {
-      return;
-    }
-  }
+  if (getHitEventArea(screenX, screenY)) return;
 
   if(drawTempPoints.length >= 4){
     drawTempPoints.pop();//删除双击造成得多余的一个点
@@ -1686,27 +1714,32 @@ const onCanvasDoubleClick = (e: MouseEvent) => {
  */
 const onResizeCanvas = () => {
   if (!graphicsCanvas.value || !uiCanvas.value) return;
+  const cursorCanvas = document.getElementById('canvas-cursor') as HTMLCanvasElement | null;
 
-  graphicsCanvas.value.width = window.innerWidth;
-  graphicsCanvas.value.height = window.innerHeight;
-  uiCanvas.value.width = window.innerWidth;
-  uiCanvas.value.height = window.innerHeight;
-
-  // 重新获取上下文
   graphicsCtx = graphicsCanvas.value.getContext('2d');
   uiCtx = uiCanvas.value.getContext('2d');
+  if (!graphicsCtx || !uiCtx) return;
 
-  if (graphicsCtx && uiCtx) {
-    // 如果还没有设置偏移量，初始化为画布中心
-    if (offsetXX === 0 && offsetYY === 0) {
-      offsetXX = graphicsCanvas.value.width / 2;
-      offsetYY = graphicsCanvas.value.height / 2;
+  // 应用 DPI 适配
+  applyDprToCanvas(graphicsCanvas.value, graphicsCtx);
+  applyDprToCanvas(uiCanvas.value, uiCtx);
+  if (cursorCanvas) {
+    const cursorCtx = cursorCanvas.getContext('2d');
+    if (cursorCtx) {
+      applyDprToCanvas(cursorCanvas, cursorCtx);
     }
-
-    // 重新绘制所有内容
-    drawGraphics();
-    drawUI();
   }
+
+  // 如果还没有设置偏移量，初始化为画布中心
+  if (offsetXX === 0 && offsetYY === 0) {
+    const { width, height } = getCanvasCssSize(graphicsCanvas.value);
+    offsetXX = width / 2;
+    offsetYY = height / 2;
+  }
+
+  // 重新绘制所有内容
+  drawGraphics();
+  drawUI();
 };
 
 /**
@@ -1717,12 +1750,7 @@ const onMousedown = (e: MouseEvent) => {
   const screenY = e.offsetY;
 
   // 如果按在按钮区域，不触发拖动
-  for (let area of eventArea) {
-    if (screenX >= area.rect.x && screenX <= area.rect.x + area.rect.width &&
-        screenY >= area.rect.y && screenY <= area.rect.y + area.rect.height) {
-      return;
-    }
-  }
+  if (getHitEventArea(screenX, screenY)) return;
 
   isDragging = true;
   lastX = e.clientX;
@@ -1744,22 +1772,21 @@ const onMouseMove = (e: MouseEvent) => {
   // 更新鼠标位置
   mouseX = e.offsetX;
   mouseY = e.offsetY;
+  hasMousePosition = true;
   
-  // 悬停检测（简单实现：改变光标）
-  let hovered = false;
-  for (let area of eventArea) {
-    if (mouseX >= area.rect.x && mouseX <= area.rect.x + area.rect.width &&
-        mouseY >= area.rect.y && mouseY <= area.rect.y + area.rect.height) {
-      uiCanvas.value!.style.cursor = area.cursor || 'pointer';
-      hovered = true;
-      break;
-    }
+  if (!uiCanvas.value) return;
+
+  // 悬停检测
+  const hitArea = getHitEventArea(mouseX, mouseY);
+  hoveredArea = hitArea;
+  if (hitArea) {
+    uiCanvas.value.style.cursor = hitArea.cursor || 'pointer';
   }
-  if (!hovered && !isDragging && !(drawStatusPoint || drawStatusLine || drawStatusSegment)) {
-    uiCanvas.value!.style.cursor = 'default';
+  if (!hitArea && !isDragging && !(drawStatusPoint || drawStatusLine || drawStatusSegment)) {
+    uiCanvas.value.style.cursor = 'default';
   }
 
-  if (!isDragging || !uiCanvas.value) {
+  if (!isDragging) {
     // 如果正在绘制状态，实时更新预览（重绘图形）
     if (drawStatusLine || drawStatusSegment) {
       drawGraphics();
@@ -1805,6 +1832,27 @@ const onClearAll = () => {
   clearCanvas();  
 };
 
+/**
+ * 窗口鼠标移动（用于自定义光标）
+ */
+const onWindowMouseMove = (e: MouseEvent) => {
+  cursorManager?.drawCursor('default', e.clientX, e.clientY,20,15);
+};
+
+/**
+ * 窗口鼠标离开（隐藏光标）
+ */
+const onWindowMouseLeave = () => {
+  cursorManager?.setFocused(false);
+};
+
+/**
+ * 窗口鼠标进入（显示光标）
+ */
+const onWindowMouseEnter = () => {
+  cursorManager?.setFocused(true);
+};
+
 ////////////////////
 //<--事件处理函数区
 ////////////////////
@@ -1819,13 +1867,14 @@ onMounted(() => {
   const loaded = loadFromLocalStorage();
   if (!loaded) {
     if (graphicsCanvas.value) {
-      offsetXX = graphicsCanvas.value.width / 2;
-      offsetYY = graphicsCanvas.value.height / 2;
+      const { width, height } = getCanvasCssSize(graphicsCanvas.value);
+      offsetXX = width / 2;
+      offsetYY = height / 2;
     }
     startSetting();
   }
   cursorManager = new CursorManager("canvas-cursor");
-  window.addEventListener('mousemove',(e)=>{cursorManager?.draw('default',e.x,e.y)});
+  window.addEventListener('mousemove', onWindowMouseMove);
   drawGraphics();
   drawUI();
   // 添加事件监听（全部绑定到UI Canvas）
@@ -1836,9 +1885,12 @@ onMounted(() => {
     uiCanvas.value.addEventListener('mouseleave', onMouseUp); // 鼠标离开画布时取消拖动
     uiCanvas.value.addEventListener('click', onCanvasClick);
     uiCanvas.value.addEventListener('dblclick', onCanvasDoubleClick);
+    uiCanvas.value.addEventListener('mouseleave', onWindowMouseLeave);
+    uiCanvas.value.addEventListener('mouseenter', onWindowMouseEnter);
   }
 
   window.addEventListener('resize', onResizeCanvas);
+  window.visualViewport?.addEventListener('resize', onResizeCanvas);
   window.addEventListener('keydown', onGlobalKeyDown); // 添加快捷键监听
 });
 
@@ -1854,13 +1906,17 @@ onUnmounted(() => {
   }
 
   window.removeEventListener('resize', onResizeCanvas);
+  window.visualViewport?.removeEventListener('resize', onResizeCanvas);
+  window.removeEventListener('mousemove', onWindowMouseMove);
+  window.removeEventListener('mouseleave', onWindowMouseLeave);
+  window.removeEventListener('mouseenter', onWindowMouseEnter);
   window.removeEventListener('keydown', onGlobalKeyDown); // 移除快捷键监听
+  window.removeEventListener('keydown', onKeyDown);
 });
 
 ////////////////////
 //<--vue事件处理区
 ////////////////////
-
 </script>
 
 <template>
