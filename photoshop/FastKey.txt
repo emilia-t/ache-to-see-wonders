@@ -1,0 +1,7 @@
+Ctrl + I 反相(颜色)
+
+Ctrl + L 色阶
+
+Ctrl + B 色彩平衡
+
+Ctrl + U 色相/饱和度

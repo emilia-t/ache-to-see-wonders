@@ -2,8 +2,53 @@
 // The relative position of this file: src/components/test_2d/ViewTest2d.vue
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 
-type CursorType = 'crosshair' | 'default' | 'eraser' | 'help' | 'move' | 'notAllowed' | 'pen' | 'pointer';
-type DragCursorType = 'default' | 'eraser';
+type TypeCursorName = 'crosshair' | 'default' | 'eraser' | 'help' | 'move' | 'notAllowed' | 'pen' | 'pointer';
+type TypeEffectName = 'default' | 'eraser';
+
+
+
+interface RGB { r: number; g: number; b: number; }
+interface Point { x: number; y: number };
+interface EventArea {
+  id: string;                    // 唯一标识
+  rect: {                         // 矩形区域
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  type: 'button' | 'element' | 'menu';  // 区域类型
+  data?: any;                     // 附加数据
+  cursor?: TypeCursorName;                 // 鼠标样式
+  onClick?: (e: MouseEvent, area: EventArea) => void;
+  onHover?: (e: MouseEvent, area: EventArea, isHovering: boolean) => void;
+}
+interface InherentProp {
+  name: string;
+  color: RGB;
+  opacity: 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1;
+};
+interface Element {
+  id: number;
+  type: "point" | "line" | "segment";
+  points: Array<Point>;
+  inherentProp: InherentProp;
+  customProp: Object;
+};
+interface PointElement extends Element {
+  type: "point"
+};
+interface LineElement extends Element {
+  type: "line"
+};
+interface SegmentElement extends Element {
+  type: "segment"
+};
+interface CachedImage {
+  img: HTMLImageElement;
+  offsetX: number;
+  offsetY: number;
+}
 
 class CursorManager {
   private cursorFilePath = {
@@ -20,7 +65,7 @@ class CursorManager {
     default: "./cursor/default.gif",
     eraser: "./cursor/eraser.gif"
   } as const;
-  private pngCache: Record<CursorType, HTMLImageElement | null> = {
+  private pngCache: Record<TypeCursorName, CachedImage  | null> = {
     crosshair: null,
     default: null,
     eraser: null,
@@ -30,20 +75,20 @@ class CursorManager {
     pen: null,
     pointer: null
   };
-  private gifCache: Record<DragCursorType, HTMLImageElement | null> = {
+  private gifCache: Record<TypeEffectName, CachedImage  | null> = {
     default: null,
     eraser: null
   };
-  private nowCursorType: CursorType = 'default';
+  private nowCursorType: TypeCursorName = 'default';
   private nowCursorX = 0;      // 指针位置（屏幕坐标）
   private nowCursorY = 0;
-  private nowOffsetX = 0;
-  private nowOffsetY = 0;
+  private nowScale = 1;
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private focused = true;       // 指针是否可见（鼠标移出浏览器时不可见）
   private effectDrag = false;    // 是否显示拖影特效
-
+  private lastDisplayWidth = 0;
+  private lastDisplayHeight = 0;
   constructor(canvasId: string) {
     const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
     if (!canvas) {
@@ -55,26 +100,69 @@ class CursorManager {
     this.loadGif();
   }
 
+  public setNowCursorType(type: TypeCursorName) {
+    this.nowCursorType = type;
+    this.drawCursor(type, this.nowCursorX, this.nowCursorY, this.nowScale);
+  }
+
+  /**
+   * 按需调整画布尺寸和 DPR 变换（仅在需要时执行）
+   */
+  private updateCanvasSizeIfNeeded(rect: DOMRect) {
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = Math.round(rect.width * dpr);
+    const displayHeight = Math.round(rect.height * dpr);
+    
+    // 检查画布物理尺寸是否已变化
+    if (this.canvas.width !== displayWidth || this.canvas.height !== displayHeight) {
+      this.canvas.width = displayWidth;
+      this.canvas.height = displayHeight;
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // 更新缓存
+      this.lastDisplayWidth = displayWidth;
+      this.lastDisplayHeight = displayHeight;
+    }
+  }
+
   /**
    * 加载所有 PNG 光标图片
    */
   loadPng() {
     for (const [key, path] of Object.entries(this.cursorFilePath)) {
-      const cursorKey = key as CursorType;
+      const cursorKey = key as TypeCursorName;
       const img = new Image();
       img.src = path;
       img.onload = () => {
-        this.pngCache[cursorKey] = img;
-        // 如果当前光标类型为此图片且处于聚焦状态，立即重绘
+        const offset = this.calcOffset(cursorKey, img.width, img.height);
+        this.pngCache[cursorKey] = { img, offsetX: offset.x, offsetY: offset.y };
         if (this.focused && this.nowCursorType === cursorKey) {
-          this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
+          this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowScale);
         }
       };
       img.onerror = () => {
         console.warn(`Failed to load cursor image: ${path}`);
       };
-      
       this.pngCache[cursorKey] = null;
+    }
+  }
+
+  /**
+   * 计算光标的偏移值
+   */
+  private calcOffset(type: TypeCursorName, imgWidth: number, imgHeight: number): { x: number, y: number } {
+    switch (type) {
+      case 'crosshair':
+      case 'move':
+      case 'notAllowed':
+        return { x: imgWidth / 2, y: imgHeight / 2 };
+      case 'eraser':
+      case 'pen':
+        return { x: 0, y: imgHeight };
+      case 'default':
+      case 'help':
+      case 'pointer':
+      default:
+        return { x: 0, y: 0 };
     }
   }
 
@@ -83,48 +171,39 @@ class CursorManager {
    */
   loadGif() {
     for (const [key, path] of Object.entries(this.dragFilePath)) {
-      const dragKey = key as DragCursorType;
+      const dragKey = key as TypeEffectName;
       const img = new Image();
       img.src = path;
       img.onload = () => {
-        this.gifCache[dragKey] = img;
-        // 如果当前处于拖影模式且光标类型匹配，重绘
+        const offset = this.calcOffset(dragKey as TypeCursorName, img.width, img.height);
+        this.gifCache[dragKey] = { img, offsetX: offset.x, offsetY: offset.y };
         if (this.focused && this.effectDrag && this.nowCursorType === dragKey) {
-          this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
+          this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowScale);
         }
       };
       img.onerror = () => {
         console.warn(`Failed to load drag cursor image: ${path}`);
       };
-      this.gifCache[dragKey] = null;
+	    this.gifCache[dragKey] = null;
     }
   }
-
   /**
    * 绘制光标到画布
    * 
    * @param Type 光标类型（与 cursorFilePath 的键对应）
    * @param X 鼠标屏幕 X 坐标
    * @param Y 鼠标屏幕 Y 坐标
-   * @param OffsetX 光标图像热点 X 偏移（相对于左上角）
-   * @param OffsetY 光标图像热点 Y 偏移
+   * @param scale 缩放比例
    */
-  drawCursor(Type: CursorType, X: number, Y: number, OffsetX: number = 0, OffsetY: number = 0) {
+  drawCursor(Type: TypeCursorName | 'auto', X: number, Y: number, scale: number = 1) {
     this.nowCursorX = X;
     this.nowCursorY = Y;
-    this.nowOffsetX = OffsetX;
-    this.nowOffsetY = OffsetY;
-    this.nowCursorType = Type;
+    const actualType = Type === 'auto' ? this.nowCursorType : Type;
+    this.nowCursorType = actualType;
+    this.nowScale = scale;
 
     const rect = this.canvas.getBoundingClientRect();
-    const dpr = Math.max(window.devicePixelRatio || 1, 1);
-    const displayWidth = Math.round(rect.width * dpr);
-    const displayHeight = Math.round(rect.height * dpr);
-    if (this.canvas.width !== displayWidth || this.canvas.height !== displayHeight) {
-      this.canvas.width = displayWidth;
-      this.canvas.height = displayHeight;
-    }
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.updateCanvasSizeIfNeeded(rect);
     const localX = X - rect.left;
     const localY = Y - rect.top;
 
@@ -137,19 +216,21 @@ class CursorManager {
     // 清除画布
     this.ctx.clearRect(0, 0, rect.width, rect.height);
 
-    // 确定要使用的图片：拖影模式优先使用 GIF，否则使用 PNG
-    let img: HTMLImageElement | null = null;
-    if (this.effectDrag && Type in this.gifCache && this.gifCache[Type as DragCursorType]) {
-      img = this.gifCache[Type as DragCursorType];
-    } else if (this.pngCache[Type]) {
-      img = this.pngCache[Type];
+    let cached: CachedImage | null = null;
+    if (this.effectDrag && actualType in this.gifCache) {
+      cached = this.gifCache[actualType as TypeEffectName];
+    }
+    if (!cached) {
+      cached = this.pngCache[actualType];
     }
 
-    if (img && img.complete && img.naturalWidth > 0) {
-      // 图片已加载，根据热点偏移绘制
-      const drawX = localX - OffsetX;
-      const drawY = localY - OffsetY;
-      this.ctx.drawImage(img, drawX, drawY);
+    if (cached && cached.img.complete && cached.img.naturalWidth > 0) {
+      const { img, offsetX, offsetY } = cached;
+      const drawX = localX - offsetX * scale;
+      const drawY = localY - offsetY * scale;
+      const width = img.width * scale;
+      const height = img.height * scale;
+      this.ctx.drawImage(img, drawX, drawY, width, height);
     } else {
       // 图片未加载或不存在，绘制默认光标形状（十字准星）
       this.drawDefaultCursor(localX, localY);
@@ -185,7 +266,7 @@ class CursorManager {
    */
   setFocused(focused: boolean) {
     this.focused = focused;
-    this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
+    this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowScale);
   }
 
   /**
@@ -193,62 +274,20 @@ class CursorManager {
    */
   setEffectDrag(effect: boolean) {
     this.effectDrag = effect;
-    this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowOffsetX, this.nowOffsetY);
+    this.drawCursor(this.nowCursorType, this.nowCursorX, this.nowCursorY, this.nowScale);
   }
 }
 
-interface RGB { r: number; g: number; b: number; }
-interface Point { x: number; y: number };
-interface EventArea {
-  id: string;                    // 唯一标识
-  rect: {                         // 矩形区域
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  type: 'button' | 'element' | 'menu';  // 区域类型
-  data?: any;                     // 附加数据
-  cursor?: string;                 // 鼠标样式
-  onClick?: (e: MouseEvent, area: EventArea) => void;
-  onHover?: (e: MouseEvent, area: EventArea, isHovering: boolean) => void;
-}
-interface InherentProp {
-  name: string;
-  color: RGB;
-  opacity: 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1;
-};
-interface Element {
-  id: number;
-  type: "point" | "line" | "segment";
-  points: Array<Point>;
-  inherentProp: InherentProp;
-  customProp: Object;
-};
-interface PointElement extends Element {
-  type: "point"
-};
-interface LineElement extends Element {
-  type: "line"
-};
-interface SegmentElement extends Element {
-  type: "segment"
-};
 ////////////////////
 //常量区-->
 ////////////////////
-
-const graphicsCanvas = ref<HTMLCanvasElement | null>(null);
-const uiCanvas = ref<HTMLCanvasElement | null>(null);
-let graphicsCtx: CanvasRenderingContext2D | null = null;
-let uiCtx: CanvasRenderingContext2D | null = null;
-
-const bt1Padding = 30;//bt1是左侧元素添加按钮的
-const bt1Height = 50;
-const bt1Width = 105;
-const bt1Spacing = 20;
-// 按钮配置
-const buttons = [
+const GRAPHICS_CANVAS = ref<HTMLCanvasElement | null>(null);
+const UI_CANVAS = ref<HTMLCanvasElement | null>(null);
+const BT1_PADDING = 30;//bt1是左侧元素添加按钮的
+const BT1_HEIGHT = 50;
+const BT1_WIDTH = 105;
+const BT1_SPACING = 20;
+const BT1_INI = [
   {
     id: 'btn_point',
     label: 'Point',
@@ -257,7 +296,7 @@ const buttons = [
     size: 16,
     color: { r: 66, g: 133, b: 244 },
     x: 30,
-    y: bt1Padding,
+    y: BT1_PADDING,
     onClick: () => {
       if(drawStatusPoint){
         onCancelPoint();
@@ -275,7 +314,7 @@ const buttons = [
     size: 16,
     color: { r: 52, g: 168, b: 83 },
     x: 30,
-    y: bt1Padding + (bt1Height + bt1Spacing),
+    y: BT1_PADDING + (BT1_HEIGHT + BT1_SPACING),
     onClick: () => {
       if(drawStatusLine){
         onCancelLine();
@@ -293,7 +332,7 @@ const buttons = [
     size: 12,
     color: { r: 251, g: 188, b: 5 },
     x: 30,
-    y: bt1Padding + (bt1Height + bt1Spacing) * 2,
+    y: BT1_PADDING + (BT1_HEIGHT + BT1_SPACING) * 2,
     onClick: () => {
       if(drawStatusSegment){
         onCancelSegment();
@@ -304,7 +343,7 @@ const buttons = [
     }
   }
 ];
-const STORAGE_KEY = 'viewTest2dState';
+const LOCAL_STORAGE_KEY = 'viewTest2dState';
 ////////////////////
 //<--常量区
 ////////////////////
@@ -312,11 +351,10 @@ const STORAGE_KEY = 'viewTest2dState';
 ////////////////////
 //变量区-->
 ////////////////////
-let cursorManager:CursorManager|null = null;
+let cursorManager: CursorManager | null = null;
+let ctxGraphics: CanvasRenderingContext2D | null = null;
+let ctxUi: CanvasRenderingContext2D | null = null;
 
-let isDragging = false;
-let lastX = 0;
-let lastY = 0;
 let offsetXX = 0;  // 原点在x轴上的偏移
 let offsetYY = 0;  // 原点在y轴上的偏移
 let scale = 1;    // 缩放比例
@@ -331,9 +369,17 @@ let hoveredArea: EventArea | null = null;
 let drawStatusPoint = false;
 let drawStatusLine = false;
 let drawStatusSegment = false;
-let drawTempPoints: Array<Point> = []; // 临时存储绘制中的点
+let isDragging = false;
 let isDrawing = false; // 是否正在绘制中（用于线和线段）
-let drawStartPoint: Point | null = null; // 绘制起点（用于线）
+let isMoveCanvas = false; // 是否正在拖动画布
+let drawLineStartPoint: Point | null = null; // 绘制起点（用于线）
+let drawTempPoints: Array<Point> = []; // 临时存储绘制中的点
+let dragStartX = 0;      // 拖动起始X坐标
+let dragStartY = 0;      // 拖动起始Y坐标
+let dragTotalX = 0;      // 累计X方向拖动长度
+let dragTotalY = 0;      // 累计Y方向拖动长度
+let lastDragX = 0;       // 上一次拖动的X位置
+let lastDragY = 0;       // 上一次拖动的Y位置
 ////////////////////
 //<--变量区
 ////////////////////
@@ -341,14 +387,14 @@ let drawStartPoint: Point | null = null; // 绘制起点（用于线）
 ////////////////////
 //辅助函数区-->
 ////////////////////
-const getCanvasCssSize = (canvas: HTMLCanvasElement) => {
+const H_getCanvasCssSize = (canvas: HTMLCanvasElement) => {
   const width = canvas.clientWidth || window.innerWidth;
   const height = canvas.clientHeight || window.innerHeight;
   return { width, height };
 };
 
-const applyDprToCanvas = (canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) => {
-  const { width, height } = getCanvasCssSize(canvas);
+const H_applyDprToCanvas = (canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) => {
+  const { width, height } = H_getCanvasCssSize(canvas);
   const dpr = Math.max(window.devicePixelRatio || 1, 1);
   const displayWidth = Math.round(width * dpr);
   const displayHeight = Math.round(height * dpr);
@@ -359,7 +405,7 @@ const applyDprToCanvas = (canvas: HTMLCanvasElement, ctx: CanvasRenderingContext
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 };
 
-const getHitEventArea = (x: number, y: number): EventArea | null => {
+const H_getHitEventArea = (x: number, y: number): EventArea | null => {
   for (let i = eventArea.length - 1; i >= 0; i--) {
     const area = eventArea[i];
     if (
@@ -378,37 +424,36 @@ const getHitEventArea = (x: number, y: number): EventArea | null => {
 ////////////////////
 
 ////////////////////
-//computed-->
-////////////////////
-const emptyComputed = computed(() => {
-  return;
-});
-////////////////////
-//<--computed
-////////////////////
-
-////////////////////
 //初始化函数区-->
 ////////////////////
 const startSetting = () => {
-  // 初始化原点偏移量为画布中心
-  if (graphicsCanvas.value) {
-    const { width, height } = getCanvasCssSize(graphicsCanvas.value);
-    offsetXX = width / 2;
-    offsetYY = height / 2;
+  onResizeCanvas();
+  createEventArea();
+  const loaded = localStorageLoad();
+  if(!loaded){
+    if (GRAPHICS_CANVAS.value) {
+      const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
+      offsetXX = width / 2;// 初始化原点偏移量为画布中心
+      offsetYY = height / 2;
+    }
   }
-
-  // 测试元素
-  const pointProp: InherentProp = { name: 'P1', color: { r: 0, g: 100, b: 255 }, opacity: 1 };
-  createPoint({ x: 100, y: 50 }, pointProp, {});
-
-  const lineProp: InherentProp = { name: 'L1', color: { r: 0, g: 255, b: 0 }, opacity: 0.8 };
-  createLine([{ x: -100, y: -100 }, { x: 100, y: 100 }], lineProp, {});
-
-  const segmentProp: InherentProp = { name: 'S1', color: { r: 0, g: 0, b: 255 }, opacity: 0.6 };
-  createSegment([{ x: -50, y: 50 }, { x: 50, y: 50 }, { x: 50, y: -50 }, { x: -50, y: -50 }, { x: -50, y: 50 }], segmentProp, {});
-  // 渲染元素
+  if (UI_CANVAS.value) {// 添加事件监听（全部绑定到UI Canvas）
+    UI_CANVAS.value.addEventListener('mousedown', onMousedown);
+    UI_CANVAS.value.addEventListener('mousemove', onMouseMove);
+    UI_CANVAS.value.addEventListener('mouseup', onMouseUp);
+    UI_CANVAS.value.addEventListener('mouseleave', onMouseUp); // 鼠标离开画布时取消拖动
+    UI_CANVAS.value.addEventListener('click', onCanvasClick);
+    UI_CANVAS.value.addEventListener('dblclick', onCanvasDoubleClick);
+    UI_CANVAS.value.addEventListener('mouseleave', onWindowMouseLeave);
+    UI_CANVAS.value.addEventListener('mouseenter', onWindowMouseEnter);
+  }
+  cursorManager = new CursorManager("canvas-cursor");
+  window.addEventListener('mousemove', onWindowMouseMove);
+  window.addEventListener('resize', onResizeCanvas);
+  window.visualViewport?.addEventListener('resize', onResizeCanvas);
+  window.addEventListener('keydown', onGlobalKeyDown); // 添加快捷键监听
   drawGraphics();
+  drawUI();
 };
 ////////////////////
 //<--初始化函数区
@@ -419,178 +464,9 @@ const startSetting = () => {
 ////////////////////
 
 /**
- * 绘制图形添加按钮（UI层）
- */
-const drawUIButtons = () => {
-  if (!uiCtx || !uiCanvas.value) return;
-
-  const startX = bt1Padding;
-  const startY = bt1Padding;
-
-  uiCtx.save();
-
-  // 绘制面板背景
-  const panelWidth = bt1Width + 40;
-  const panelHeight = buttons.length * (bt1Height + bt1Spacing) + 40 - bt1Spacing;
-  uiCtx.beginPath();
-  roundRect(uiCtx, startX - 15, startY - 15, panelWidth, panelHeight, 12);
-  uiCtx.fillStyle = 'rgba(255,255,255,0.8)';
-  uiCtx.fill();
-  uiCtx.shadowColor = 'rgba(0, 0, 0, 0.1)';
-  uiCtx.shadowBlur = 5;
-  uiCtx.shadowOffsetX = 1;
-  uiCtx.shadowOffsetY = 1;
-
-  // 重置阴影（避免影响后续绘制）
-  uiCtx.shadowColor = 'transparent';
-
-  // 绘制每个按钮
-  buttons.forEach((button) => {
-    if(uiCtx===null)return;
-    const x = button.x;
-    const y = button.y;
-
-    // 根据当前模式决定按钮背景色强度
-    let isActive = false;
-    if (button.type === 'point' && drawStatusPoint) isActive = true;
-    if (button.type === 'line' && drawStatusLine) isActive = true;
-    if (button.type === 'segment' && drawStatusSegment) isActive = true;
-
-    const bgOpacity = isActive ? 0.3 : 0.1;
-    uiCtx.fillStyle = `rgba(${button.color.r}, ${button.color.g}, ${button.color.b}, ${bgOpacity})`;
-    uiCtx.shadowColor = 'rgba(0, 0, 0, 0.1)';
-    uiCtx.shadowBlur = 5;
-    uiCtx.shadowOffsetX = 1;
-    uiCtx.shadowOffsetY = 1;
-    uiCtx.beginPath();
-    roundRect(uiCtx, x, y, bt1Width, bt1Height, 8);
-    uiCtx.fill();
-
-    // 绘制按钮边框
-    uiCtx.strokeStyle = `rgb(${button.color.r}, ${button.color.g}, ${button.color.b})`;
-    uiCtx.lineWidth = 2;
-    uiCtx.shadowBlur = 0;
-    uiCtx.stroke();
-
-    // 绘制图标（大圆点）
-    uiCtx.font = '30px "Segoe UI", Arial, sans-serif';
-    uiCtx.fillStyle = `rgb(${button.color.r}, ${button.color.g}, ${button.color.b})`;
-    uiCtx.textAlign = 'center';
-    uiCtx.textBaseline = 'middle';
-    uiCtx.fillText(button.icon, x + 25, y + bt1Height / 2);
-
-    // 绘制按钮文字
-    uiCtx.font = 'bold ' + button.size + 'px "Microsoft YaHei", Arial, sans-serif';
-    uiCtx.fillStyle = '#333';
-    uiCtx.textAlign = 'left';
-    uiCtx.fillText(button.label, x + 45, y + bt1Height / 2);
-  });
-
-  // 绘制分隔线
-  uiCtx.beginPath();
-  uiCtx.strokeStyle = '#ddd';
-  uiCtx.lineWidth = 1;
-  uiCtx.setLineDash([5, 3]);
-  uiCtx.moveTo(startX - 5, startY + buttons.length * (bt1Height + bt1Spacing) + 5);
-  uiCtx.lineTo(startX + bt1Width + 5, startY + buttons.length * (bt1Height + bt1Spacing) + 5);
-  uiCtx.stroke();
-
-  // 重置虚线设置
-  uiCtx.setLineDash([]);
-
-  uiCtx.restore();
-};
-
-/**
- * 绘制顶部提示信息（UI层）
- */
-const drawInstructions = () => {
-  if (!uiCtx || !uiCanvas.value) return;
-  const { width } = getCanvasCssSize(uiCanvas.value);
-  const text = 'Ctrl + S = Save    Ctrl + F = Clear';
-  uiCtx.save();
-  uiCtx.font = '14px "Microsoft YaHei", Arial, sans-serif';
-  uiCtx.fillStyle = 'rgba(78,78,78,0.9)';
-  uiCtx.textAlign = 'center';
-  uiCtx.textBaseline = 'top';
-  const textWidth = uiCtx.measureText(text).width;
-  const padding = 10;
-  const boxWidth = textWidth + padding * 2;
-  const boxHeight = 30;
-  const x = (width - boxWidth) / 2;
-  const y = 0;
-  // 半透明背景
-  uiCtx.fillStyle = 'rgba(208,208,208,0.7)';
-  roundRect(uiCtx, x, y, boxWidth, boxHeight, 5);
-  uiCtx.fill();
-  uiCtx.fillStyle = 'rgb(78,78,78)';
-  uiCtx.fillText(text, width / 2, y + 8);
-  uiCtx.restore();
-};
-
-/**
- * 绘制比例尺（UI层）
- */
-const drawUIRuler = () => {
-  if (!uiCtx || !uiCanvas.value) return;
-
-  const padding = 20;
-  const ruleWidth = 90;
-  const ruleHeight = 40;
-
-  const x = padding;
-  const { height } = getCanvasCssSize(uiCanvas.value);
-  const y = height - padding - ruleHeight;
-
-  uiCtx.save();
-
-  // 半透明背景
-  uiCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-  uiCtx.fillRect(x, y, ruleWidth, ruleHeight);
-
-  // 边框
-  uiCtx.strokeStyle = '#ccc';
-  uiCtx.lineWidth = 1;
-  uiCtx.strokeRect(x, y, ruleWidth, ruleHeight);
-
-  // 每格实际代表的单位
-  const gridUnit = 50; // 每格代表50单位
-
-  // 比例尺显示
-  uiCtx.font = '12px Arial';
-  uiCtx.fillStyle = '#333';
-  uiCtx.textAlign = 'center';
-
-  // 绘制比例尺条
-  uiCtx.beginPath();
-  uiCtx.strokeStyle = '#333';
-  uiCtx.lineWidth = 2;
-  uiCtx.moveTo(x + 20, y + 25);
-  uiCtx.lineTo(x + ruleWidth - 20, y + 25);
-  uiCtx.stroke();
-
-  // 刻度
-  uiCtx.beginPath();
-  uiCtx.moveTo(x + 20, y + 20);
-  uiCtx.lineTo(x + 20, y + 30);
-  uiCtx.stroke();
-
-  uiCtx.beginPath();
-  uiCtx.moveTo(x + ruleWidth - 20, y + 20);
-  uiCtx.lineTo(x + ruleWidth - 20, y + 30);
-  uiCtx.stroke();
-
-  // 数值
-  uiCtx.fillText('0', x + 20, y + 15);
-  uiCtx.fillText(`${gridUnit}`, x + ruleWidth - 20, y + 15);
-
-  uiCtx.restore();
-};
-
-/**
  * 绘制圆角矩形辅助函数
  */
-const roundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+const createRoundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
   if (w < 2 * r) r = w / 2;
   if (h < 2 * r) r = h / 2;
   ctx.moveTo(x + r, y);
@@ -607,14 +483,14 @@ const roundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 const createEventArea = () => {
   eventArea = []; // 清空后重新创建
   // 为每个按钮创建事件区域
-  buttons.forEach(button => {
+  BT1_INI.forEach(button => {
     eventArea.push({
       id: button.id,
       rect: {
         x: button.x,
         y: button.y,
-        width: bt1Width,
-        height: bt1Height
+        width: BT1_WIDTH,
+        height: BT1_HEIGHT
       },
       type: 'button',
       data: button,
@@ -626,9 +502,9 @@ const createEventArea = () => {
       },
       onHover: (e, area, isHovering) => {
         if (isHovering) {
-          uiCanvas.value!.style.cursor = 'pointer';
+          UI_CANVAS.value!.style.cursor = 'pointer';
         } else {
-          uiCanvas.value!.style.cursor = 'default';
+          UI_CANVAS.value!.style.cursor = 'default';
         }
       }
     });
@@ -639,21 +515,21 @@ const createEventArea = () => {
  * 创建坐标轴刻度标记（图形层）
  */
 const createAxisMark = () => {
-  if (!graphicsCtx || !graphicsCanvas.value) return;
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
 
-  const { width, height } = getCanvasCssSize(graphicsCanvas.value);
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
   const gridSize = 50 * scale; // 网格大小
   const tickSize = 6; // 刻度线长度
 
-  graphicsCtx.save();
-  graphicsCtx.font = '12px Arial';
-  graphicsCtx.fillStyle = '#333';
-  graphicsCtx.textAlign = 'center';
-  graphicsCtx.textBaseline = 'middle';
+  ctxGraphics.save();
+  ctxGraphics.font = '12px Arial';
+  ctxGraphics.fillStyle = '#333';
+  ctxGraphics.textAlign = 'center';
+  ctxGraphics.textBaseline = 'middle';
 
   // 计算画布可见区域对应的坐标范围
-  const canvasLeftTop = screenToCanvas(0, 0);
-  const canvasRightBottom = screenToCanvas(width, height);
+  const canvasLeftTop = TOscreen2Canvas(0, 0);
+  const canvasRightBottom = TOscreen2Canvas(width, height);
 
   // X轴刻度（在X轴上绘制）
   if (offsetYY >= 0 && offsetYY <= height) {
@@ -666,20 +542,20 @@ const createAxisMark = () => {
 
     // 绘制X轴刻度
     for (let x = firstTickX; x <= maxX; x += 50) {
-      const screenPos = canvasToScreen(x, 0);
+      const screenPos = TOcanvas2Screen(x, 0);
 
       // 确保刻度在画布范围内
       if (screenPos.x >= 0 && screenPos.x <= width) {
         // 绘制刻度线
-        graphicsCtx.beginPath();
-        graphicsCtx.moveTo(screenPos.x, offsetYY - tickSize / 2);
-        graphicsCtx.lineTo(screenPos.x, offsetYY + tickSize / 2);
-        graphicsCtx.strokeStyle = '#666';
-        graphicsCtx.lineWidth = 1;
-        graphicsCtx.stroke();
+        ctxGraphics.beginPath();
+        ctxGraphics.moveTo(screenPos.x, offsetYY - tickSize / 2);
+        ctxGraphics.lineTo(screenPos.x, offsetYY + tickSize / 2);
+        ctxGraphics.strokeStyle = '#666';
+        ctxGraphics.lineWidth = 1;
+        ctxGraphics.stroke();
 
         // 绘制刻度数值
-        graphicsCtx.fillText(x.toString(), screenPos.x, offsetYY + 15);
+        ctxGraphics.fillText(x.toString(), screenPos.x, offsetYY + 15);
       }
     }
   }
@@ -695,25 +571,25 @@ const createAxisMark = () => {
 
     // 绘制Y轴刻度
     for (let y = firstTickY; y <= maxY; y += 50) {
-      const screenPos = canvasToScreen(0, y);
+      const screenPos = TOcanvas2Screen(0, y);
 
       // 确保刻度在画布范围内
       if (screenPos.y >= 0 && screenPos.y <= height) {
         // 绘制刻度线
-        graphicsCtx.beginPath();
-        graphicsCtx.moveTo(offsetXX - tickSize / 2, screenPos.y);
-        graphicsCtx.lineTo(offsetXX + tickSize / 2, screenPos.y);
-        graphicsCtx.strokeStyle = '#666';
-        graphicsCtx.lineWidth = 1;
-        graphicsCtx.stroke();
+        ctxGraphics.beginPath();
+        ctxGraphics.moveTo(offsetXX - tickSize / 2, screenPos.y);
+        ctxGraphics.lineTo(offsetXX + tickSize / 2, screenPos.y);
+        ctxGraphics.strokeStyle = '#666';
+        ctxGraphics.lineWidth = 1;
+        ctxGraphics.stroke();
 
         // 绘制刻度数值
-        graphicsCtx.fillText(y.toString(), offsetXX - 20, screenPos.y);
+        ctxGraphics.fillText(y.toString(), offsetXX - 20, screenPos.y);
       }
     }
   }
 
-  graphicsCtx.restore();
+  ctxGraphics.restore();
 };
 
 /**
@@ -722,112 +598,110 @@ const createAxisMark = () => {
  * @param yColor Y轴颜色
  */
 const createAxis = (xColor: RGB, yColor: RGB) => {
-  if (!graphicsCtx || !graphicsCanvas.value) return;
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
 
-  const { width, height } = getCanvasCssSize(graphicsCanvas.value);
-  const gridSize = 50 * scale; // 网格大小（像素）
-  const tickSize = 6; // 刻度线长度
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
 
   // 保存当前上下文状态
-  graphicsCtx.save();
+  ctxGraphics.save();
 
   // 绘制X轴（红色）
-  graphicsCtx.beginPath();
-  graphicsCtx.strokeStyle = `rgb(${xColor.r}, ${xColor.g}, ${xColor.b})`;
-  graphicsCtx.lineWidth = 2;
-  graphicsCtx.moveTo(0, offsetYY);
-  graphicsCtx.lineTo(width, offsetYY);
-  graphicsCtx.stroke();
+  ctxGraphics.beginPath();
+  ctxGraphics.strokeStyle = `rgb(${xColor.r}, ${xColor.g}, ${xColor.b})`;
+  ctxGraphics.lineWidth = 2;
+  ctxGraphics.moveTo(0, offsetYY);
+  ctxGraphics.lineTo(width, offsetYY);
+  ctxGraphics.stroke();
 
   // 绘制Y轴（绿色）
-  graphicsCtx.beginPath();
-  graphicsCtx.strokeStyle = `rgb(${yColor.r}, ${yColor.g}, ${yColor.b})`;
-  graphicsCtx.lineWidth = 2;
-  graphicsCtx.moveTo(offsetXX, 0);
-  graphicsCtx.lineTo(offsetXX, height);
-  graphicsCtx.stroke();
+  ctxGraphics.beginPath();
+  ctxGraphics.strokeStyle = `rgb(${yColor.r}, ${yColor.g}, ${yColor.b})`;
+  ctxGraphics.lineWidth = 2;
+  ctxGraphics.moveTo(offsetXX, 0);
+  ctxGraphics.lineTo(offsetXX, height);
+  ctxGraphics.stroke();
 
   // 绘制箭头（X轴箭头）
-  graphicsCtx.beginPath();
-  graphicsCtx.fillStyle = `rgb(${xColor.r}, ${xColor.g}, ${xColor.b})`;
+  ctxGraphics.beginPath();
+  ctxGraphics.fillStyle = `rgb(${xColor.r}, ${xColor.g}, ${xColor.b})`;
   // 右箭头
-  graphicsCtx.moveTo(width - 10, offsetYY - 5);
-  graphicsCtx.lineTo(width, offsetYY);
-  graphicsCtx.lineTo(width - 10, offsetYY + 5);
-  graphicsCtx.fill();
+  ctxGraphics.moveTo(width - 10, offsetYY - 5);
+  ctxGraphics.lineTo(width, offsetYY);
+  ctxGraphics.lineTo(width - 10, offsetYY + 5);
+  ctxGraphics.fill();
 
   // 左箭头
-  graphicsCtx.beginPath();
-  graphicsCtx.moveTo(10, offsetYY - 5);
-  graphicsCtx.lineTo(0, offsetYY);
-  graphicsCtx.lineTo(10, offsetYY + 5);
-  graphicsCtx.fill();
+  ctxGraphics.beginPath();
+  ctxGraphics.moveTo(10, offsetYY - 5);
+  ctxGraphics.lineTo(0, offsetYY);
+  ctxGraphics.lineTo(10, offsetYY + 5);
+  ctxGraphics.fill();
 
   // 绘制箭头（Y轴箭头）
-  graphicsCtx.beginPath();
-  graphicsCtx.fillStyle = `rgb(${yColor.r}, ${yColor.g}, ${yColor.b})`;
+  ctxGraphics.beginPath();
+  ctxGraphics.fillStyle = `rgb(${yColor.r}, ${yColor.g}, ${yColor.b})`;
   // 上箭头
-  graphicsCtx.moveTo(offsetXX - 5, 10);
-  graphicsCtx.lineTo(offsetXX, 0);
-  graphicsCtx.lineTo(offsetXX + 5, 10);
-  graphicsCtx.fill();
+  ctxGraphics.moveTo(offsetXX - 5, 10);
+  ctxGraphics.lineTo(offsetXX, 0);
+  ctxGraphics.lineTo(offsetXX + 5, 10);
+  ctxGraphics.fill();
 
   // 下箭头
-  graphicsCtx.beginPath();
-  graphicsCtx.moveTo(offsetXX - 5, height - 10);
-  graphicsCtx.lineTo(offsetXX, height);
-  graphicsCtx.lineTo(offsetXX + 5, height - 10);
-  graphicsCtx.fill();
+  ctxGraphics.beginPath();
+  ctxGraphics.moveTo(offsetXX - 5, height - 10);
+  ctxGraphics.lineTo(offsetXX, height);
+  ctxGraphics.lineTo(offsetXX + 5, height - 10);
+  ctxGraphics.fill();
 
   // 标注坐标轴文字
-  graphicsCtx.font = "14px Arial";
-  graphicsCtx.fillStyle = "#000";
-  graphicsCtx.fillText("X", width - 20, offsetYY - 10);
-  graphicsCtx.fillText("Y", offsetXX + 10, 20);
+  ctxGraphics.font = "14px Arial";
+  ctxGraphics.fillStyle = "#000";
+  ctxGraphics.fillText("X", width - 20, offsetYY - 10);
+  ctxGraphics.fillText("Y", offsetXX + 10, 20);
 
   // 原点标注
-  graphicsCtx.beginPath();
-  graphicsCtx.arc(offsetXX, offsetYY, 4, 0, Math.PI * 2);
-  graphicsCtx.fillStyle = '#333';
-  graphicsCtx.fill();
-  graphicsCtx.fillStyle = '#000';
-  graphicsCtx.font = 'bold 12px Arial';
-  graphicsCtx.fillText("O", offsetXX + 8, offsetYY - 8);
+  ctxGraphics.beginPath();
+  ctxGraphics.arc(offsetXX, offsetYY, 4, 0, Math.PI * 2);
+  ctxGraphics.fillStyle = '#333';
+  ctxGraphics.fill();
+  ctxGraphics.fillStyle = '#000';
+  ctxGraphics.font = 'bold 12px Arial';
+  ctxGraphics.fillText("O", offsetXX + 8, offsetYY - 8);
 
   // 恢复上下文状态
-  graphicsCtx.restore();
+  ctxGraphics.restore();
 };
 
 /**
  * 绘制网格辅助线（图形层）
  */
 const createGrid = () => {
-  if (!graphicsCtx || !graphicsCanvas.value) return;
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
 
-  const { width, height } = getCanvasCssSize(graphicsCanvas.value);
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
   const gridSize = 50 * scale; // 网格大小，随缩放比例变化
 
-  graphicsCtx.save();
-  graphicsCtx.strokeStyle = "#e0e0e0";
-  graphicsCtx.lineWidth = 0.5;
+  ctxGraphics.save();
+  ctxGraphics.strokeStyle = "#e0e0e0";
+  ctxGraphics.lineWidth = 0.5;
 
   // 绘制垂直网格线
   for (let x = offsetXX % gridSize; x < width; x += gridSize) {
-    graphicsCtx.beginPath();
-    graphicsCtx.moveTo(x, 0);
-    graphicsCtx.lineTo(x, height);
-    graphicsCtx.stroke();
+    ctxGraphics.beginPath();
+    ctxGraphics.moveTo(x, 0);
+    ctxGraphics.lineTo(x, height);
+    ctxGraphics.stroke();
   }
 
   // 绘制水平网格线
   for (let y = offsetYY % gridSize; y < height; y += gridSize) {
-    graphicsCtx.beginPath();
-    graphicsCtx.moveTo(0, y);
-    graphicsCtx.lineTo(width, y);
-    graphicsCtx.stroke();
+    ctxGraphics.beginPath();
+    ctxGraphics.moveTo(0, y);
+    ctxGraphics.lineTo(width, y);
+    ctxGraphics.stroke();
   }
 
-  graphicsCtx.restore();
+  ctxGraphics.restore();
 };
 
 /**
@@ -894,7 +768,7 @@ const createSegment = (points: Array<Point>, inherentProp: InherentProp, customP
 /**
  * 清空画布所有内容
  */
-const clearCanvas = () => {
+const graphicsElementClear = () => {
   // 清空元素列表
   renderElementList = [];
   hiddenElementList = [];
@@ -904,12 +778,14 @@ const clearCanvas = () => {
   drawStatusLine = false;
   drawStatusSegment = false;
   drawTempPoints = [];
-  drawStartPoint = null;
+  drawLineStartPoint = null;
   isDrawing = false;
 
   // 恢复鼠标样式
-  if (uiCanvas.value) {
-    uiCanvas.value.style.cursor = 'default';
+  if (UI_CANVAS.value) {
+    if(cursorManager){
+      cursorManager.setNowCursorType('default');
+    }
   }
 
   // 重绘
@@ -920,7 +796,7 @@ const clearCanvas = () => {
 /**
  * 保存数据到本地存储
  */
-const saveToLocalStorage = () => {
+const localStorageSave = () => {
   const state = {
     offsetXX,
     offsetYY,
@@ -928,7 +804,7 @@ const saveToLocalStorage = () => {
     elementIdIndex,
   };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
     console.log('状态已保存');
   } catch (e) {
     console.error('保存失败', e);
@@ -938,8 +814,8 @@ const saveToLocalStorage = () => {
 /**
  * 加载本地存储到数据
  */
-const loadFromLocalStorage = (): boolean => {
-  const saved = localStorage.getItem(STORAGE_KEY);
+const localStorageLoad = (): boolean => {
+  const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (!saved) return false;
   try {
     const state = JSON.parse(saved);
@@ -967,7 +843,7 @@ const loadFromLocalStorage = (): boolean => {
  * @param screenY 屏幕Y坐标
  * @returns 画布坐标对象
  */
-const screenToCanvas = (screenX: number, screenY: number) => {
+const TOscreen2Canvas = (screenX: number, screenY: number) => {
   return {
     x: screenX - offsetXX,
     y: offsetYY - screenY  // 因为屏幕Y轴向下，画布Y轴向上
@@ -980,7 +856,7 @@ const screenToCanvas = (screenX: number, screenY: number) => {
  * @param canvasY 画布Y坐标
  * @returns 屏幕坐标对象
  */
-const canvasToScreen = (canvasX: number, canvasY: number) => {
+const TOcanvas2Screen = (canvasX: number, canvasY: number) => {
   return {
     x: canvasX + offsetXX,
     y: offsetYY - canvasY
@@ -991,23 +867,23 @@ const canvasToScreen = (canvasX: number, canvasY: number) => {
  * 绘制元素（图形层）
  */
 const drawElement = () => {
-  if (!graphicsCtx || !graphicsCanvas.value) return;
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
 
   // 遍历渲染列表中的所有元素
   renderElementList.forEach(element => {
-    if (graphicsCtx === null) return;
+    if (ctxGraphics === null) return;
     // 保存当前上下文状态
-    graphicsCtx.save();
+    ctxGraphics.save();
 
     // 设置通用属性
     if (element.inherentProp.color) {
-      graphicsCtx.strokeStyle = `rgb(${element.inherentProp.color.r}, ${element.inherentProp.color.g}, ${element.inherentProp.color.b})`;
-      graphicsCtx.fillStyle = `rgb(${element.inherentProp.color.r}, ${element.inherentProp.color.g}, ${element.inherentProp.color.b})`;
+      ctxGraphics.strokeStyle = `rgb(${element.inherentProp.color.r}, ${element.inherentProp.color.g}, ${element.inherentProp.color.b})`;
+      ctxGraphics.fillStyle = `rgb(${element.inherentProp.color.r}, ${element.inherentProp.color.g}, ${element.inherentProp.color.b})`;
     }
 
     // 设置透明度
     if (element.inherentProp.opacity) {
-      graphicsCtx.globalAlpha = element.inherentProp.opacity;
+      ctxGraphics.globalAlpha = element.inherentProp.opacity;
     }
 
     // 根据元素类型绘制
@@ -1024,7 +900,7 @@ const drawElement = () => {
     }
 
     // 恢复上下文状态
-    graphicsCtx.restore();
+    ctxGraphics.restore();
   });
 };
 
@@ -1032,30 +908,30 @@ const drawElement = () => {
  * 绘制点元素（图形层）
  */
 const drawPointElement = (element: PointElement) => {
-  if (!graphicsCtx || !graphicsCanvas.value || element.points.length === 0) return;
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value || element.points.length === 0) return;
 
   const point = element.points[0];
 
   // 将画布坐标转换为屏幕坐标
-  const screenPos = canvasToScreen(point.x, point.y);
+  const screenPos = TOcanvas2Screen(point.x, point.y);
 
-  graphicsCtx.beginPath();
+  ctxGraphics.beginPath();
 
   // 绘制点（半径为5的圆）
-  graphicsCtx.arc(screenPos.x, screenPos.y, 5, 0, Math.PI * 2);
-  graphicsCtx.fill();
+  ctxGraphics.arc(screenPos.x, screenPos.y, 5, 0, Math.PI * 2);
+  ctxGraphics.fill();
 
   // 绘制点的边框
-  graphicsCtx.strokeStyle = '#000';
-  graphicsCtx.lineWidth = 1;
-  graphicsCtx.stroke();
+  ctxGraphics.strokeStyle = '#000';
+  ctxGraphics.lineWidth = 1;
+  ctxGraphics.stroke();
 
   // 绘制点的名称（如果有）
   if (element.inherentProp.name) {
-    graphicsCtx.font = '12px Arial';
-    graphicsCtx.fillStyle = '#000';
-    graphicsCtx.globalAlpha = 1; // 文字不透明
-    graphicsCtx.fillText(element.inherentProp.name, screenPos.x + 10, screenPos.y - 10);
+    ctxGraphics.font = '12px Arial';
+    ctxGraphics.fillStyle = '#000';
+    ctxGraphics.globalAlpha = 1; // 文字不透明
+    ctxGraphics.fillText(element.inherentProp.name, screenPos.x + 10, screenPos.y - 10);
   }
 };
 
@@ -1063,32 +939,32 @@ const drawPointElement = (element: PointElement) => {
  * 绘制直线元素（图形层）
  */
 const drawLineElement = (element: LineElement) => {
-  if (!graphicsCtx || !graphicsCanvas.value || element.points.length < 2) return;
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value || element.points.length < 2) return;
 
   const startPoint = element.points[0];
   const endPoint = element.points[1];
 
   // 将画布坐标转换为屏幕坐标
-  const startScreen = canvasToScreen(startPoint.x, startPoint.y);
-  const endScreen = canvasToScreen(endPoint.x, endPoint.y);
+  const startScreen = TOcanvas2Screen(startPoint.x, startPoint.y);
+  const endScreen = TOcanvas2Screen(endPoint.x, endPoint.y);
 
-  graphicsCtx.beginPath();
-  graphicsCtx.moveTo(startScreen.x, startScreen.y);
-  graphicsCtx.lineTo(endScreen.x, endScreen.y);
+  ctxGraphics.beginPath();
+  ctxGraphics.moveTo(startScreen.x, startScreen.y);
+  ctxGraphics.lineTo(endScreen.x, endScreen.y);
 
   // 设置线宽
-  graphicsCtx.lineWidth = 2;
-  graphicsCtx.stroke();
+  ctxGraphics.lineWidth = 2;
+  ctxGraphics.stroke();
 
   // 绘制直线上的两个端点标记
-  graphicsCtx.beginPath();
-  graphicsCtx.arc(startScreen.x, startScreen.y, 3, 0, Math.PI * 2);
-  graphicsCtx.fillStyle = '#00f';
-  graphicsCtx.fill();
+  ctxGraphics.beginPath();
+  ctxGraphics.arc(startScreen.x, startScreen.y, 3, 0, Math.PI * 2);
+  ctxGraphics.fillStyle = '#00f';
+  ctxGraphics.fill();
 
-  graphicsCtx.beginPath();
-  graphicsCtx.arc(endScreen.x, endScreen.y, 3, 0, Math.PI * 2);
-  graphicsCtx.fill();
+  ctxGraphics.beginPath();
+  ctxGraphics.arc(endScreen.x, endScreen.y, 3, 0, Math.PI * 2);
+  ctxGraphics.fill();
 
   // 绘制直线名称
   if (element.inherentProp.name) {
@@ -1096,29 +972,29 @@ const drawLineElement = (element: LineElement) => {
     const midX = (startScreen.x + endScreen.x) / 2;
     const midY = (startScreen.y + endScreen.y) / 2;
 
-    graphicsCtx.font = '12px Arial';
-    graphicsCtx.fillStyle = '#000';
-    graphicsCtx.globalAlpha = 1;
-    graphicsCtx.fillText(element.inherentProp.name, midX + 10, midY - 10);
+    ctxGraphics.font = '12px Arial';
+    ctxGraphics.fillStyle = '#000';
+    ctxGraphics.globalAlpha = 1;
+    ctxGraphics.fillText(element.inherentProp.name, midX + 10, midY - 10);
   }
   // 绘制每个顶点的标记
   element.points.forEach((point, index) => {
-    if (graphicsCtx === null) return;
-    const screenPos = canvasToScreen(point.x, point.y);
+    if (ctxGraphics === null) return;
+    const screenPos = TOcanvas2Screen(point.x, point.y);
 
-    graphicsCtx.beginPath();
-    graphicsCtx.arc(screenPos.x, screenPos.y, 3, 0, Math.PI * 2);
-    graphicsCtx.fillStyle = '#f00';
-    graphicsCtx.fill();
-    graphicsCtx.strokeStyle = '#000';
-    graphicsCtx.lineWidth = 1;
-    graphicsCtx.stroke();
+    ctxGraphics.beginPath();
+    ctxGraphics.arc(screenPos.x, screenPos.y, 3, 0, Math.PI * 2);
+    ctxGraphics.fillStyle = '#f00';
+    ctxGraphics.fill();
+    ctxGraphics.strokeStyle = '#000';
+    ctxGraphics.lineWidth = 1;
+    ctxGraphics.stroke();
 
     // 绘制顶点编号
-    graphicsCtx.font = '10px Arial';
-    graphicsCtx.fillStyle = '#000';
-    graphicsCtx.globalAlpha = 1;
-    graphicsCtx.fillText(index.toString(), screenPos.x + 8, screenPos.y - 8);
+    ctxGraphics.font = '10px Arial';
+    ctxGraphics.fillStyle = '#000';
+    ctxGraphics.globalAlpha = 1;
+    ctxGraphics.fillText(index.toString(), screenPos.x + 8, screenPos.y - 8);
   });
 };
 
@@ -1126,18 +1002,18 @@ const drawLineElement = (element: LineElement) => {
  * 绘制线段元素（图形层）
  */
 const drawSegmentElement = (element: SegmentElement) => {
-  if (!graphicsCtx || !graphicsCanvas.value || element.points.length < 2) return;
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value || element.points.length < 2) return;
   let ptLength = element.points.length - 1;
-  graphicsCtx.beginPath();
+  ctxGraphics.beginPath();
 
   // 将第一个点转换为屏幕坐标并移动到该点
-  const firstScreen = canvasToScreen(element.points[0].x, element.points[0].y);
-  graphicsCtx.moveTo(firstScreen.x, firstScreen.y);
+  const firstScreen = TOcanvas2Screen(element.points[0].x, element.points[0].y);
+  ctxGraphics.moveTo(firstScreen.x, firstScreen.y);
 
   // 依次连接各个点
   for (let i = 1; i < element.points.length; i++) {
-    const screenPos = canvasToScreen(element.points[i].x, element.points[i].y);
-    graphicsCtx.lineTo(screenPos.x, screenPos.y);
+    const screenPos = TOcanvas2Screen(element.points[i].x, element.points[i].y);
+    ctxGraphics.lineTo(screenPos.x, screenPos.y);
   }
 
   // 如果是闭合线段（首尾相连），可以填充
@@ -1147,37 +1023,37 @@ const drawSegmentElement = (element: SegmentElement) => {
 
   if (isClosed) {
     // 闭合路径
-    graphicsCtx.closePath();
+    ctxGraphics.closePath();
     // 填充
-    graphicsCtx.globalAlpha = element.inherentProp.opacity * 0.3; // 填充透明度更低
-    graphicsCtx.fill();
+    ctxGraphics.globalAlpha = element.inherentProp.opacity * 0.3; // 填充透明度更低
+    ctxGraphics.fill();
     // 描边
-    graphicsCtx.globalAlpha = element.inherentProp.opacity;
-    graphicsCtx.stroke();
+    ctxGraphics.globalAlpha = element.inherentProp.opacity;
+    ctxGraphics.stroke();
   } else {
     // 只描边
-    graphicsCtx.stroke();
+    ctxGraphics.stroke();
   }
 
   // 绘制每个顶点的标记
   element.points.forEach((point, index) => {
-    if (graphicsCtx === null) return;
+    if (ctxGraphics === null) return;
     if (isClosed) { if (index === ptLength) { return; } }
-    const screenPos = canvasToScreen(point.x, point.y);
+    const screenPos = TOcanvas2Screen(point.x, point.y);
 
-    graphicsCtx.beginPath();
-    graphicsCtx.arc(screenPos.x, screenPos.y, 3, 0, Math.PI * 2);
-    graphicsCtx.fillStyle = '#f00';
-    graphicsCtx.fill();
-    graphicsCtx.strokeStyle = '#000';
-    graphicsCtx.lineWidth = 1;
-    graphicsCtx.stroke();
+    ctxGraphics.beginPath();
+    ctxGraphics.arc(screenPos.x, screenPos.y, 3, 0, Math.PI * 2);
+    ctxGraphics.fillStyle = '#f00';
+    ctxGraphics.fill();
+    ctxGraphics.strokeStyle = '#000';
+    ctxGraphics.lineWidth = 1;
+    ctxGraphics.stroke();
 
     // 绘制顶点编号
-    graphicsCtx.font = '10px Arial';
-    graphicsCtx.fillStyle = '#000';
-    graphicsCtx.globalAlpha = 1;
-    graphicsCtx.fillText(index.toString(), screenPos.x + 8, screenPos.y - 8);
+    ctxGraphics.font = '10px Arial';
+    ctxGraphics.fillStyle = '#000';
+    ctxGraphics.globalAlpha = 1;
+    ctxGraphics.fillText(index.toString(), screenPos.x + 8, screenPos.y - 8);
   });
 
   // 绘制线段名称
@@ -1190,56 +1066,198 @@ const drawSegmentElement = (element: SegmentElement) => {
     });
     const centerX = sumX / element.points.length;
     const centerY = sumY / element.points.length;
-    const screenCenter = canvasToScreen(centerX, centerY);
+    const screenCenter = TOcanvas2Screen(centerX, centerY);
 
-    graphicsCtx.font = '12px Arial';
-    graphicsCtx.fillStyle = '#000';
-    graphicsCtx.globalAlpha = 1;
-    graphicsCtx.fillText(element.inherentProp.name, screenCenter.x + 10, screenCenter.y - 10);
+    ctxGraphics.font = '12px Arial';
+    ctxGraphics.fillStyle = '#000';
+    ctxGraphics.globalAlpha = 1;
+    ctxGraphics.fillText(element.inherentProp.name, screenCenter.x + 10, screenCenter.y - 10);
   }
 };
 
 /**
- * 清空渲染列表
+ * 绘制图形添加按钮（UI层）
  */
-const clearRenderList = () => {
-  renderElementList = [];
-  drawGraphics();
+const drawUIButtons = () => {
+  if (!ctxUi || !UI_CANVAS.value) return;
+
+  const startX = BT1_PADDING;
+  const startY = BT1_PADDING;
+
+  ctxUi.save();
+
+  // 绘制面板背景
+  const panelWidth = BT1_WIDTH + 40;
+  const panelHeight = BT1_INI.length * (BT1_HEIGHT + BT1_SPACING) + 40 - BT1_SPACING;
+  ctxUi.beginPath();
+  createRoundRect(ctxUi, startX - 15, startY - 15, panelWidth, panelHeight, 12);
+  ctxUi.fillStyle = 'rgba(255,255,255,0.8)';
+  ctxUi.fill();
+  ctxUi.shadowColor = 'rgba(0, 0, 0, 0.1)';
+  ctxUi.shadowBlur = 5;
+  ctxUi.shadowOffsetX = 1;
+  ctxUi.shadowOffsetY = 1;
+
+  // 重置阴影（避免影响后续绘制）
+  ctxUi.shadowColor = 'transparent';
+
+  // 绘制每个按钮
+  BT1_INI.forEach((button) => {
+    if(ctxUi===null)return;
+    const x = button.x;
+    const y = button.y;
+
+    // 根据当前模式决定按钮背景色强度
+    let isActive = false;
+    if (button.type === 'point' && drawStatusPoint) isActive = true;
+    if (button.type === 'line' && drawStatusLine) isActive = true;
+    if (button.type === 'segment' && drawStatusSegment) isActive = true;
+
+    const bgOpacity = isActive ? 0.3 : 0.1;
+    ctxUi.fillStyle = `rgba(${button.color.r}, ${button.color.g}, ${button.color.b}, ${bgOpacity})`;
+    ctxUi.shadowColor = 'rgba(0, 0, 0, 0.1)';
+    ctxUi.shadowBlur = 5;
+    ctxUi.shadowOffsetX = 1;
+    ctxUi.shadowOffsetY = 1;
+    ctxUi.beginPath();
+    createRoundRect(ctxUi, x, y, BT1_WIDTH, BT1_HEIGHT, 8);
+    ctxUi.fill();
+
+    // 绘制按钮边框
+    ctxUi.strokeStyle = `rgb(${button.color.r}, ${button.color.g}, ${button.color.b})`;
+    ctxUi.lineWidth = 2;
+    ctxUi.shadowBlur = 0;
+    ctxUi.stroke();
+
+    // 绘制图标（大圆点）
+    ctxUi.font = '30px "Segoe UI", Arial, sans-serif';
+    ctxUi.fillStyle = `rgb(${button.color.r}, ${button.color.g}, ${button.color.b})`;
+    ctxUi.textAlign = 'center';
+    ctxUi.textBaseline = 'middle';
+    ctxUi.fillText(button.icon, x + 25, y + BT1_HEIGHT / 2);
+
+    // 绘制按钮文字
+    ctxUi.font = 'bold ' + button.size + 'px "Microsoft YaHei", Arial, sans-serif';
+    ctxUi.fillStyle = '#333';
+    ctxUi.textAlign = 'left';
+    ctxUi.fillText(button.label, x + 45, y + BT1_HEIGHT / 2);
+  });
+
+  // 绘制分隔线
+  ctxUi.beginPath();
+  ctxUi.strokeStyle = '#ddd';
+  ctxUi.lineWidth = 1;
+  ctxUi.setLineDash([5, 3]);
+  ctxUi.moveTo(startX - 5, startY + BT1_INI.length * (BT1_HEIGHT + BT1_SPACING) + 5);
+  ctxUi.lineTo(startX + BT1_WIDTH + 5, startY + BT1_INI.length * (BT1_HEIGHT + BT1_SPACING) + 5);
+  ctxUi.stroke();
+
+  // 重置虚线设置
+  ctxUi.setLineDash([]);
+
+  ctxUi.restore();
 };
 
 /**
- * 从渲染列表中移除元素
+ * 绘制顶部提示信息（UI层）
  */
-const removeFromRenderList = (id: number) => {
-  renderElementList = renderElementList.filter(element => element.id !== id);
-  drawGraphics();
+const drawInstructions = () => {
+  if (!ctxUi || !UI_CANVAS.value) return;
+  const { width } = H_getCanvasCssSize(UI_CANVAS.value);
+  const text = 'Ctrl + S = Save    Ctrl + F = Clear';
+  ctxUi.save();
+  ctxUi.font = '14px "Microsoft YaHei", Arial, sans-serif';
+  ctxUi.fillStyle = 'rgba(78,78,78,0.9)';
+  ctxUi.textAlign = 'center';
+  ctxUi.textBaseline = 'top';
+  const textWidth = ctxUi.measureText(text).width;
+  const padding = 10;
+  const boxWidth = textWidth + padding * 2;
+  const boxHeight = 30;
+  const x = (width - boxWidth) / 2;
+  const y = 0;
+  // 半透明背景
+  ctxUi.fillStyle = 'rgba(208,208,208,0.7)';
+  createRoundRect(ctxUi, x, y, boxWidth, boxHeight, 5);
+  ctxUi.fill();
+  ctxUi.fillStyle = 'rgb(78,78,78)';
+  ctxUi.fillText(text, width / 2, y + 8);
+  ctxUi.restore();
 };
 
 /**
- * 更新元素属性
+ * 绘制比例尺（UI层）
  */
-const updateElementProperty = (id: number, newProps: Partial<InherentProp>) => {
-  const element = renderElementList.find(e => e.id === id);
-  if (element) {
-    element.inherentProp = { ...element.inherentProp, ...newProps };
-    drawGraphics();
-  }
+const drawUIRuler = () => {
+  if (!ctxUi || !UI_CANVAS.value) return;
+
+  const padding = 20;
+  const ruleWidth = 90;
+  const ruleHeight = 40;
+
+  const x = padding;
+  const { height } = H_getCanvasCssSize(UI_CANVAS.value);
+  const y = height - padding - ruleHeight;
+
+  ctxUi.save();
+
+  // 半透明背景
+  ctxUi.fillStyle = 'rgba(255, 255, 255, 0.8)';
+  ctxUi.fillRect(x, y, ruleWidth, ruleHeight);
+
+  // 边框
+  ctxUi.strokeStyle = '#ccc';
+  ctxUi.lineWidth = 1;
+  ctxUi.strokeRect(x, y, ruleWidth, ruleHeight);
+
+  // 每格实际代表的单位
+  const gridUnit = 50; // 每格代表50单位
+
+  // 比例尺显示
+  ctxUi.font = '12px Arial';
+  ctxUi.fillStyle = '#333';
+  ctxUi.textAlign = 'center';
+
+  // 绘制比例尺条
+  ctxUi.beginPath();
+  ctxUi.strokeStyle = '#333';
+  ctxUi.lineWidth = 2;
+  ctxUi.moveTo(x + 20, y + 25);
+  ctxUi.lineTo(x + ruleWidth - 20, y + 25);
+  ctxUi.stroke();
+
+  // 刻度
+  ctxUi.beginPath();
+  ctxUi.moveTo(x + 20, y + 20);
+  ctxUi.lineTo(x + 20, y + 30);
+  ctxUi.stroke();
+
+  ctxUi.beginPath();
+  ctxUi.moveTo(x + ruleWidth - 20, y + 20);
+  ctxUi.lineTo(x + ruleWidth - 20, y + 30);
+  ctxUi.stroke();
+
+  // 数值
+  ctxUi.fillText('0', x + 20, y + 15);
+  ctxUi.fillText(`${gridUnit}`, x + ruleWidth - 20, y + 15);
+
+  ctxUi.restore();
 };
 
 /**
  * 绘制图形层（网格、轴、元素、临时预览）
  */
 const drawGraphics = () => {
-  if (!graphicsCtx || !graphicsCanvas.value) return;
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
 
-  const { width, height } = getCanvasCssSize(graphicsCanvas.value);
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
 
   // 清空画布
-  graphicsCtx.clearRect(0, 0, width, height);
+  ctxGraphics.clearRect(0, 0, width, height);
 
   // 设置背景色
-  graphicsCtx.fillStyle = '#f0f0f0';
-  graphicsCtx.fillRect(0, 0, width, height);
+  ctxGraphics.fillStyle = '#f0f0f0';
+  ctxGraphics.fillRect(0, 0, width, height);
 
   // 绘制网格
   createGrid();
@@ -1259,21 +1277,21 @@ const drawGraphics = () => {
   }
   
   // 绘制临时点预览（如果正在绘制线且已有第一个点）
-  if (drawStatusLine && drawStartPoint) {
-    showTempPoint(drawStartPoint);
+  if (drawStatusLine && drawLineStartPoint) {
+    showTempPoint(drawLineStartPoint);
     
     // 如果有鼠标位置，可以显示从起点到鼠标的预览线
     if (hasMousePosition) {
-      graphicsCtx.save();
-      graphicsCtx.beginPath();
-      const startScreen = canvasToScreen(drawStartPoint.x, drawStartPoint.y);
-      graphicsCtx.moveTo(startScreen.x, startScreen.y);
-      graphicsCtx.lineTo(mouseX, mouseY);
-      graphicsCtx.strokeStyle = 'rgba(52, 168, 83, 0.5)';
-      graphicsCtx.lineWidth = 2;
-      graphicsCtx.setLineDash([5, 3]);
-      graphicsCtx.stroke();
-      graphicsCtx.restore();
+      ctxGraphics.save();
+      ctxGraphics.beginPath();
+      const startScreen = TOcanvas2Screen(drawLineStartPoint.x, drawLineStartPoint.y);
+      ctxGraphics.moveTo(startScreen.x, startScreen.y);
+      ctxGraphics.lineTo(mouseX, mouseY);
+      ctxGraphics.strokeStyle = 'rgba(52, 168, 83, 0.5)';
+      ctxGraphics.lineWidth = 2;
+      ctxGraphics.setLineDash([5, 3]);
+      ctxGraphics.stroke();
+      ctxGraphics.restore();
     }
   }
 };
@@ -1282,71 +1300,71 @@ const drawGraphics = () => {
  * 绘制UI层（按钮、标尺、提示）
  */
 const drawUI = () => {
-  if (!uiCtx || !uiCanvas.value) return;
-  const { width, height } = getCanvasCssSize(uiCanvas.value);
-  uiCtx.clearRect(0, 0, width, height);
+  if (!ctxUi || !UI_CANVAS.value) return;
+  const { width, height } = H_getCanvasCssSize(UI_CANVAS.value);
+  ctxUi.clearRect(0, 0, width, height);
   drawUIButtons();
   drawUIRuler();
   drawInstructions();
 };
 
 /**
- * 显示临时点（用于绘制中的预览，图形层）
- */
-const showTempPoint = (point: Point) => {
-  if (!graphicsCtx || !graphicsCanvas.value) return;
-  
-  const screenPos = canvasToScreen(point.x, point.y);
-  
-  graphicsCtx.save();
-  graphicsCtx.beginPath();
-  graphicsCtx.arc(screenPos.x, screenPos.y, 5, 0, Math.PI * 2);
-  graphicsCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-  graphicsCtx.fill();
-  graphicsCtx.strokeStyle = '#ff9900';
-  graphicsCtx.lineWidth = 2;
-  graphicsCtx.stroke();
-  graphicsCtx.restore();
-};
-
-/**
  * 绘制临时线段（预览，图形层）
  */
 const drawTempSegment = () => {
-  if (!graphicsCtx || !graphicsCanvas.value || drawTempPoints.length < 2) return;
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value || drawTempPoints.length < 2) return;
   
-  graphicsCtx.save();
-  graphicsCtx.beginPath();
+  ctxGraphics.save();
+  ctxGraphics.beginPath();
   
-  const firstScreen = canvasToScreen(drawTempPoints[0].x, drawTempPoints[0].y);
-  graphicsCtx.moveTo(firstScreen.x, firstScreen.y);
+  const firstScreen = TOcanvas2Screen(drawTempPoints[0].x, drawTempPoints[0].y);
+  ctxGraphics.moveTo(firstScreen.x, firstScreen.y);
   
   for (let i = 1; i < drawTempPoints.length; i++) {
-    const screenPos = canvasToScreen(drawTempPoints[i].x, drawTempPoints[i].y);
-    graphicsCtx.lineTo(screenPos.x, screenPos.y);
+    const screenPos = TOcanvas2Screen(drawTempPoints[i].x, drawTempPoints[i].y);
+    ctxGraphics.lineTo(screenPos.x, screenPos.y);
   }
   
-  graphicsCtx.strokeStyle = '#ff9900';
-  graphicsCtx.lineWidth = 2;
-  graphicsCtx.setLineDash([5, 3]); // 虚线表示预览
-  graphicsCtx.stroke();
+  ctxGraphics.strokeStyle = '#ff9900';
+  ctxGraphics.lineWidth = 2;
+  ctxGraphics.setLineDash([5, 3]); // 虚线表示预览
+  ctxGraphics.stroke();
   
   // 绘制临时点
   drawTempPoints.forEach(point => {
     showTempPoint(point);
   });
   
-  graphicsCtx.restore();
+  ctxGraphics.restore();
+};
+
+/**
+ * 显示临时点（用于绘制中的预览，图形层）
+ */
+const showTempPoint = (point: Point) => {
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
+  
+  const screenPos = TOcanvas2Screen(point.x, point.y);
+  
+  ctxGraphics.save();
+  ctxGraphics.beginPath();
+  ctxGraphics.arc(screenPos.x, screenPos.y, 5, 0, Math.PI * 2);
+  ctxGraphics.fillStyle = 'rgba(255, 255, 255, 0.8)';
+  ctxGraphics.fill();
+  ctxGraphics.strokeStyle = '#ff9900';
+  ctxGraphics.lineWidth = 2;
+  ctxGraphics.stroke();
+  ctxGraphics.restore();
 };
 
 /**
  * 显示点击效果（图形层）
  */
 const showClickEffect = (x: number, y: number) => {
-  if (!graphicsCtx || !graphicsCanvas.value) return;
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
 
   // 保存当前上下文状态
-  graphicsCtx.save();
+  ctxGraphics.save();
 
   // 绘制点击波纹效果
   let radius = 0;
@@ -1356,7 +1374,7 @@ const showClickEffect = (x: number, y: number) => {
   const animateRipple = () => {
     const currentTime = performance.now();
     const progress = (currentTime - startTime) / 300; // 300ms动画
-    if (graphicsCtx === null) return;
+    if (ctxGraphics === null) return;
     if (progress < 1) {
       radius = maxRadius * progress;
 
@@ -1364,17 +1382,17 @@ const showClickEffect = (x: number, y: number) => {
       drawGraphics();
 
       // 在顶部绘制点击效果
-      graphicsCtx.beginPath();
-      graphicsCtx.arc(x, y, radius, 0, Math.PI * 2);
-      graphicsCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-      graphicsCtx.lineWidth = 2;
-      graphicsCtx.stroke();
+      ctxGraphics.beginPath();
+      ctxGraphics.arc(x, y, radius, 0, Math.PI * 2);
+      ctxGraphics.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctxGraphics.lineWidth = 2;
+      ctxGraphics.stroke();
 
-      graphicsCtx.beginPath();
-      graphicsCtx.arc(x, y, radius * 0.7, 0, Math.PI * 2);
-      graphicsCtx.strokeStyle = 'rgba(100, 100, 255, 0.6)';
-      graphicsCtx.lineWidth = 1.5;
-      graphicsCtx.stroke();
+      ctxGraphics.beginPath();
+      ctxGraphics.arc(x, y, radius * 0.7, 0, Math.PI * 2);
+      ctxGraphics.strokeStyle = 'rgba(100, 100, 255, 0.6)';
+      ctxGraphics.lineWidth = 1.5;
+      ctxGraphics.stroke();
 
       requestAnimationFrame(animateRipple);
     } else {
@@ -1393,28 +1411,6 @@ const showClickEffect = (x: number, y: number) => {
 ////////////////////
 //事件处理函数区-->
 ////////////////////
-
-/**
- * 全局键盘快捷键处理
- * Ctrl+S 保存；Ctrl+S 清空画布
- */
-const onGlobalKeyDown = (e: KeyboardEvent) => {
-  // 仅当按下 Ctrl 或 Command 时才处理
-  if (e.ctrlKey || e.metaKey) {
-    switch (e.key) {
-      case 's':
-        e.preventDefault();
-        saveToLocalStorage();
-        break;
-      case 'f':
-        e.preventDefault();
-        clearCanvas();
-        break;
-      // 可在此扩展其他快捷键
-    }
-  }
-};
-
 /**
  * 处理绘制点
  */
@@ -1426,7 +1422,7 @@ const handleDrawPoint = (canvasPos: Point) => {
   };
   
   createPoint(canvasPos, pointProp, {});
-  showClickEffect(canvasToScreen(canvasPos.x, canvasPos.y).x, canvasToScreen(canvasPos.x, canvasPos.y).y);
+  showClickEffect(TOcanvas2Screen(canvasPos.x, canvasPos.y).x, TOcanvas2Screen(canvasPos.x, canvasPos.y).y);
   
   // 点创建后不退出绘制状态，可以继续创建点
   drawGraphics();
@@ -1436,9 +1432,9 @@ const handleDrawPoint = (canvasPos: Point) => {
  * 处理绘制线
  */
 const handleDrawLine = (canvasPos: Point) => {
-  if (!drawStartPoint) {
+  if (!drawLineStartPoint) {
     // 第一个点
-    drawStartPoint = canvasPos;
+    drawLineStartPoint = canvasPos;
     drawTempPoints = [canvasPos];
     
     // 重绘图形以显示临时点
@@ -1451,13 +1447,13 @@ const handleDrawLine = (canvasPos: Point) => {
       opacity: 0.8 
     };
     
-    createLine([drawStartPoint, canvasPos], lineProp, {});
+    createLine([drawLineStartPoint, canvasPos], lineProp, {});
     
     // 显示创建动画
-    showClickEffect(canvasToScreen(canvasPos.x, canvasPos.y).x, canvasToScreen(canvasPos.x, canvasPos.y).y);
+    showClickEffect(TOcanvas2Screen(canvasPos.x, canvasPos.y).x, TOcanvas2Screen(canvasPos.x, canvasPos.y).y);
     
     // 重置状态，准备画下一条线
-    drawStartPoint = null;
+    drawLineStartPoint = null;
     drawTempPoints = [];
     
     drawGraphics();
@@ -1505,6 +1501,28 @@ const handleDrawSegment = (canvasPos: Point) => {
 };
 
 /**
+ * 全局键盘快捷键处理
+ * Ctrl+S 保存；Ctrl+S 清空画布
+ */
+const onGlobalKeyDown = (e: KeyboardEvent) => {
+  // 仅当按下 Ctrl 或 Command 时才处理
+  if (e.ctrlKey || e.metaKey) {
+    switch (e.key) {
+      case 's':
+        e.preventDefault();
+        localStorageSave();
+        break;
+      case 'f':
+        e.preventDefault();
+        graphicsElementClear();
+        break;
+      // 可在此扩展其他快捷键
+    }
+  }
+};
+
+
+/**
  * 进入绘制点事件
  */
 const onInventPoint = () => {
@@ -1519,8 +1537,10 @@ const onInventPoint = () => {
   isDrawing = false;
   
   // 改变鼠标样式
-  if (uiCanvas.value) {
-    uiCanvas.value.style.cursor = 'crosshair';
+  if (UI_CANVAS.value) {
+    if(cursorManager){
+      cursorManager.setNowCursorType('crosshair');
+    }
   }
   
   // 添加键盘监听
@@ -1536,8 +1556,10 @@ const onCancelPoint = () => {
   drawTempPoints = [];
   
   // 恢复鼠标样式
-  if (uiCanvas.value) {
-    uiCanvas.value.style.cursor = 'default';
+  if (UI_CANVAS.value) {
+    if(cursorManager){
+      cursorManager.setNowCursorType('default');
+    }
   }
   
   // 移除键盘监听
@@ -1558,12 +1580,14 @@ const onInventLine = () => {
   
   drawStatusLine = true;
   drawTempPoints = [];
-  drawStartPoint = null;
+  drawLineStartPoint = null;
   isDrawing = true; // 线需要两个点
   
   // 改变鼠标样式
-  if (uiCanvas.value) {
-    uiCanvas.value.style.cursor = 'crosshair';
+  if (UI_CANVAS.value) {
+    if(cursorManager){
+      cursorManager.setNowCursorType('crosshair');
+    }
   }
   
   // 添加键盘监听
@@ -1577,12 +1601,14 @@ const onInventLine = () => {
 const onCancelLine = () => {
   drawStatusLine = false;
   drawTempPoints = [];
-  drawStartPoint = null;
+  drawLineStartPoint = null;
   isDrawing = false;
   
   // 恢复鼠标样式
-  if (uiCanvas.value) {
-    uiCanvas.value.style.cursor = 'default';
+  if (UI_CANVAS.value) {
+    if(cursorManager){
+      cursorManager.setNowCursorType('default');
+    }
   }
   
   // 移除键盘监听
@@ -1606,8 +1632,10 @@ const onInventSegment = () => {
   isDrawing = true;
   
   // 改变鼠标样式
-  if (uiCanvas.value) {
-    uiCanvas.value.style.cursor = 'crosshair';
+  if (UI_CANVAS.value) {
+    if(cursorManager){
+      cursorManager.setNowCursorType('crosshair');
+    }
   }
   
   // 添加键盘监听
@@ -1624,8 +1652,10 @@ const onCancelSegment = () => {
   isDrawing = false;
   
   // 恢复鼠标样式
-  if (uiCanvas.value) {
-    uiCanvas.value.style.cursor = 'default';
+  if (UI_CANVAS.value) {
+    if(cursorManager){
+      cursorManager.setNowCursorType('default');
+    }
   }
   
   // 移除键盘监听
@@ -1653,18 +1683,17 @@ const onKeyDown = (e: KeyboardEvent) => {
  * 画布点击事件处理（绑定到UI Canvas）
  */
 const onCanvasClick = (e: MouseEvent) => {
-  if (!uiCanvas.value || !graphicsCtx) return;
+  if (!UI_CANVAS.value || !ctxGraphics) return;
 
   // 获取点击位置的屏幕坐标
   const screenX = e.offsetX;
   const screenY = e.offsetY;
   
   // 首先检查是否点击了按钮区域
-  const hitArea = getHitEventArea(screenX, screenY);
+  const hitArea = H_getHitEventArea(screenX, screenY);
   if (hitArea) {
     if (hitArea.onClick) {
       hitArea.onClick(e, hitArea);
-      // 在UI层显示点击效果？这里简单重绘UI
       drawUI();
     }
     e.stopPropagation();
@@ -1672,25 +1701,30 @@ const onCanvasClick = (e: MouseEvent) => {
   }
 
   // 转换为画布坐标
-  const canvasPos = screenToCanvas(screenX, screenY);
+  const canvasPos = TOscreen2Canvas(screenX, screenY);
 
   // 处理绘制状态
-  if (drawStatusPoint) {
-    handleDrawPoint(canvasPos);
-  } else if (drawStatusLine) {
-    handleDrawLine(canvasPos);
-  } else if (drawStatusSegment) {
-    handleDrawSegment(canvasPos);
+  if(dragTotalX < 1 && dragTotalY < 1){
+    if (drawStatusPoint) {
+      handleDrawPoint(canvasPos);
+    } else if (drawStatusLine) {
+      handleDrawLine(canvasPos);
+    } else if (drawStatusSegment) {
+      handleDrawSegment(canvasPos);
+    }
   }
+  
+  dragTotalX = 0;
+  dragTotalY = 0;
 };
 
 const onCanvasDoubleClick = (e: MouseEvent) => {
-  if (!uiCanvas.value) return;
+  if (!UI_CANVAS.value) return;
   // 只处理图形区域双击
   const screenX = e.offsetX;
   const screenY = e.offsetY;
   // 检查是否点击按钮区域，如果是则忽略
-  if (getHitEventArea(screenX, screenY)) return;
+  if (H_getHitEventArea(screenX, screenY)) return;
 
   if(drawTempPoints.length >= 4){
     drawTempPoints.pop();//删除双击造成得多余的一个点
@@ -1713,26 +1747,26 @@ const onCanvasDoubleClick = (e: MouseEvent) => {
  * 调整画布大小以适应窗口
  */
 const onResizeCanvas = () => {
-  if (!graphicsCanvas.value || !uiCanvas.value) return;
+  if (!GRAPHICS_CANVAS.value || !UI_CANVAS.value) return;
   const cursorCanvas = document.getElementById('canvas-cursor') as HTMLCanvasElement | null;
 
-  graphicsCtx = graphicsCanvas.value.getContext('2d');
-  uiCtx = uiCanvas.value.getContext('2d');
-  if (!graphicsCtx || !uiCtx) return;
+  ctxGraphics = GRAPHICS_CANVAS.value.getContext('2d');
+  ctxUi = UI_CANVAS.value.getContext('2d');
+  if (!ctxGraphics || !ctxUi) return;
 
   // 应用 DPI 适配
-  applyDprToCanvas(graphicsCanvas.value, graphicsCtx);
-  applyDprToCanvas(uiCanvas.value, uiCtx);
+  H_applyDprToCanvas(GRAPHICS_CANVAS.value, ctxGraphics);
+  H_applyDprToCanvas(UI_CANVAS.value, ctxUi);
   if (cursorCanvas) {
     const cursorCtx = cursorCanvas.getContext('2d');
     if (cursorCtx) {
-      applyDprToCanvas(cursorCanvas, cursorCtx);
+      H_applyDprToCanvas(cursorCanvas, cursorCtx);
     }
   }
 
   // 如果还没有设置偏移量，初始化为画布中心
   if (offsetXX === 0 && offsetYY === 0) {
-    const { width, height } = getCanvasCssSize(graphicsCanvas.value);
+    const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
     offsetXX = width / 2;
     offsetYY = height / 2;
   }
@@ -1749,22 +1783,23 @@ const onMousedown = (e: MouseEvent) => {
   const screenX = e.offsetX;
   const screenY = e.offsetY;
 
-  // 如果按在按钮区域，不触发拖动
-  if (getHitEventArea(screenX, screenY)) return;
+  if (H_getHitEventArea(screenX, screenY)) return;
 
+  // 记录拖动起始点（画布坐标）
+  const canvasPos = TOscreen2Canvas(screenX, screenY);
+  dragStartX = canvasPos.x;
+  dragStartY = canvasPos.y;
+  
+  // 记录上一次拖动的屏幕位置
+  lastDragX = e.clientX;
+  lastDragY = e.clientY;
   isDragging = true;
-  lastX = e.clientX;
-  lastY = e.clientY;
-
-  // 改变鼠标样式
-  if (uiCanvas.value) {
-    if(drawStatusPoint || drawStatusLine || drawStatusSegment){
-      return;
-    }
-    uiCanvas.value.style.cursor = 'grabbing';
-  }
+  isMoveCanvas = true; // 标记正在移动画布
 };
 
+/**
+ * 鼠标移动事件（绑定到UI Canvas）
+ */
 /**
  * 鼠标移动事件（绑定到UI Canvas）
  */
@@ -1773,17 +1808,24 @@ const onMouseMove = (e: MouseEvent) => {
   mouseX = e.offsetX;
   mouseY = e.offsetY;
   hasMousePosition = true;
-  
-  if (!uiCanvas.value) return;
+
+  if (!UI_CANVAS.value) return;
 
   // 悬停检测
-  const hitArea = getHitEventArea(mouseX, mouseY);
+  const hitArea = H_getHitEventArea(mouseX, mouseY);
   hoveredArea = hitArea;
+
+  // 更新光标样式（优先移动、悬停、绘制、默认）
   if (hitArea) {
-    uiCanvas.value.style.cursor = hitArea.cursor || 'pointer';
-  }
-  if (!hitArea && !isDragging && !(drawStatusPoint || drawStatusLine || drawStatusSegment)) {
-    uiCanvas.value.style.cursor = 'default';
+    cursorManager?.setNowCursorType(hitArea.cursor || 'pointer');
+  } else {
+    if (isMoveCanvas) {
+      cursorManager?.setNowCursorType('move');
+    } else if (drawStatusPoint || drawStatusLine || drawStatusSegment) {
+      cursorManager?.setNowCursorType('crosshair');
+    } else {
+      cursorManager?.setNowCursorType('default');
+    }
   }
 
   if (!isDragging) {
@@ -1794,17 +1836,21 @@ const onMouseMove = (e: MouseEvent) => {
     return;
   }
 
-  // 计算鼠标移动距离
-  const deltaX = e.clientX - lastX;
-  const deltaY = e.clientY - lastY;
+  // 计算本次移动的增量
+  const deltaX = e.clientX - lastDragX;
+  const deltaY = e.clientY - lastDragY;
+
+  // 更新累计拖动长度
+  dragTotalX += Math.abs(deltaX);
+  dragTotalY += Math.abs(deltaY);
 
   // 更新偏移量（实现画布拖动）
   offsetXX += deltaX;
   offsetYY += deltaY;
 
-  // 更新最后位置
-  lastX = e.clientX;
-  lastY = e.clientY;
+  // 更新位置
+  lastDragX = e.clientX;
+  lastDragY = e.clientY;
 
   // 重绘图形
   drawGraphics();
@@ -1815,28 +1861,18 @@ const onMouseMove = (e: MouseEvent) => {
  */
 const onMouseUp = () => {
   isDragging = false;
+  isMoveCanvas = false;
 
-  // 恢复鼠标样式
-  if (uiCanvas.value) {
-    if(drawStatusPoint || drawStatusLine || drawStatusSegment){
-      return;
-    }
-    uiCanvas.value.style.cursor = 'default';
+  if (!(drawStatusPoint || drawStatusLine || drawStatusSegment)) {
+    cursorManager?.setNowCursorType('default');
   }
-};
-
-/**
- * 清空事件
- */
-const onClearAll = () => {
-  clearCanvas();  
 };
 
 /**
  * 窗口鼠标移动（用于自定义光标）
  */
 const onWindowMouseMove = (e: MouseEvent) => {
-  cursorManager?.drawCursor('default', e.clientX, e.clientY,20,15);
+  cursorManager?.drawCursor('auto', e.clientX, e.clientY,0.2);
 };
 
 /**
@@ -1862,47 +1898,18 @@ const onWindowMouseEnter = () => {
 ////////////////////
 
 onMounted(() => {
-  onResizeCanvas();
-  createEventArea();
-  const loaded = loadFromLocalStorage();
-  if (!loaded) {
-    if (graphicsCanvas.value) {
-      const { width, height } = getCanvasCssSize(graphicsCanvas.value);
-      offsetXX = width / 2;
-      offsetYY = height / 2;
-    }
-    startSetting();
-  }
-  cursorManager = new CursorManager("canvas-cursor");
-  window.addEventListener('mousemove', onWindowMouseMove);
-  drawGraphics();
-  drawUI();
-  // 添加事件监听（全部绑定到UI Canvas）
-  if (uiCanvas.value) {
-    uiCanvas.value.addEventListener('mousedown', onMousedown);
-    uiCanvas.value.addEventListener('mousemove', onMouseMove);
-    uiCanvas.value.addEventListener('mouseup', onMouseUp);
-    uiCanvas.value.addEventListener('mouseleave', onMouseUp); // 鼠标离开画布时取消拖动
-    uiCanvas.value.addEventListener('click', onCanvasClick);
-    uiCanvas.value.addEventListener('dblclick', onCanvasDoubleClick);
-    uiCanvas.value.addEventListener('mouseleave', onWindowMouseLeave);
-    uiCanvas.value.addEventListener('mouseenter', onWindowMouseEnter);
-  }
-
-  window.addEventListener('resize', onResizeCanvas);
-  window.visualViewport?.addEventListener('resize', onResizeCanvas);
-  window.addEventListener('keydown', onGlobalKeyDown); // 添加快捷键监听
+  startSetting();
 });
 
 onUnmounted(() => {
   // 移除事件监听
-  if (uiCanvas.value) {
-    uiCanvas.value.removeEventListener('mousedown', onMousedown);
-    uiCanvas.value.removeEventListener('mousemove', onMouseMove);
-    uiCanvas.value.removeEventListener('mouseup', onMouseUp);
-    uiCanvas.value.removeEventListener('mouseleave', onMouseUp);
-    uiCanvas.value.removeEventListener('click', onCanvasClick);
-    uiCanvas.value.removeEventListener('dblclick', onCanvasDoubleClick);
+  if (UI_CANVAS.value) {
+    UI_CANVAS.value.removeEventListener('mousedown', onMousedown);
+    UI_CANVAS.value.removeEventListener('mousemove', onMouseMove);
+    UI_CANVAS.value.removeEventListener('mouseup', onMouseUp);
+    UI_CANVAS.value.removeEventListener('mouseleave', onMouseUp);
+    UI_CANVAS.value.removeEventListener('click', onCanvasClick);
+    UI_CANVAS.value.removeEventListener('dblclick', onCanvasDoubleClick);
   }
 
   window.removeEventListener('resize', onResizeCanvas);
@@ -1921,9 +1928,11 @@ onUnmounted(() => {
 
 <template>
   <div class="view-test2d-container">
-    <canvas id="canvas-graphics"    ref="graphicsCanvas"></canvas>
+    <canvas id="canvas-graphics"    ref="GRAPHICS_CANVAS"></canvas>
+    
+    <canvas id="canvas-ui"          ref="UI_CANVAS"></canvas>
+
     <canvas id="canvas-cursor"      ></canvas>
-    <canvas id="canvas-ui"          ref="uiCanvas"></canvas>
   </div>
 </template>
 
@@ -1955,7 +1964,7 @@ onUnmounted(() => {
   height: 100%;
   display: block;
   pointer-events: auto; /* UI层接收所有鼠标事件 */
-  cursor: default;
+  cursor: none;
 }
 
 #canvas-cursor {
@@ -1967,5 +1976,9 @@ onUnmounted(() => {
   display: block;
   pointer-events: none;
   cursor: none; 
+}
+
+body {
+  cursor: none;
 }
 </style>
