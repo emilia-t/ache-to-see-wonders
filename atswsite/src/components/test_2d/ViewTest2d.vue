@@ -5,8 +5,17 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 type TypeCursorName = 'crosshair' | 'default' | 'eraser' | 'help' | 'move' | 'notAllowed' | 'pen' | 'pointer';
 type TypeEffectName = 'default' | 'eraser';
 
-
-
+interface Resolution { width: number; height: number }
+interface PenPoint {x: number; y: number; g: number};//g是压力值，0-1通过鼠标移动速度模拟
+interface PenTrajectory {
+  id: number;//轨迹ID
+  color: RGB;//笔迹颜色
+  thickness: number;//笔迹粗细
+  resolution: Resolution;//分辨率
+  startPoint: Point;//参照点
+  endPoint: Point;//终结点
+  list: Array<PenPoint>;//笔迹点以startPoint为起点的偏移坐标值和压力值
+}
 interface RGB { r: number; g: number; b: number; }
 interface Point { x: number; y: number };
 interface EventArea {
@@ -87,8 +96,7 @@ class CursorManager {
   private ctx: CanvasRenderingContext2D;
   private focused = true;       // 指针是否可见（鼠标移出浏览器时不可见）
   private effectDrag = false;    // 是否显示拖影特效
-  private lastDisplayWidth = 0;
-  private lastDisplayHeight = 0;
+  
   constructor(canvasId: string) {
     const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
     if (!canvas) {
@@ -118,9 +126,6 @@ class CursorManager {
       this.canvas.width = displayWidth;
       this.canvas.height = displayHeight;
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      // 更新缓存
-      this.lastDisplayWidth = displayWidth;
-      this.lastDisplayHeight = displayHeight;
     }
   }
 
@@ -341,9 +346,28 @@ const BT1_INI = [
       }
       drawUI();
     }
-  }
+  },
+  {
+    id: 'btn_pen',
+    label: 'Pen',
+    type: 'pen',
+    icon: '✎',
+    size: 12,
+    color: { r: 251, g: 188, b: 5 },
+    x: 30,
+    y: BT1_PADDING + (BT1_HEIGHT + BT1_SPACING) * 3,
+    onClick: () => {
+      if(drawStatusPen){
+        onCancelPen();
+      }else{
+        onInventPen();
+      }
+      drawUI();
+    }
+  },
 ];
 const LOCAL_STORAGE_KEY = 'viewTest2dState';
+const MAX_SPEED_PEN = 10; // 笔迹速度对应的最大压力值
 ////////////////////
 //<--常量区
 ////////////////////
@@ -359,8 +383,11 @@ let offsetXX = 0;  // 原点在x轴上的偏移
 let offsetYY = 0;  // 原点在y轴上的偏移
 let scale = 1;    // 缩放比例
 let elementIdIndex = 1;
-let renderElementList: Array<Element> = [];  // 
-let hiddenElementList: Array<Element> = [];  // 
+
+let renderElementList: Array<Element> = [];  // 要渲染的元素
+let hiddenElementList: Array<Element> = [];  // 要隐藏的元素
+let penTrajectoryList: Array<PenTrajectory> = [];// 笔迹列表
+
 let eventArea: Array<EventArea> = []; // 事件触发区域列表
 let mouseX = 0;
 let mouseY = 0;
@@ -369,17 +396,22 @@ let hoveredArea: EventArea | null = null;
 let drawStatusPoint = false;
 let drawStatusLine = false;
 let drawStatusSegment = false;
+let drawStatusPen = false;
 let isDragging = false;
 let isDrawing = false; // 是否正在绘制中（用于线和线段）
+let isWriting = false; // 是否正在书写中（用于笔迹）
 let isMoveCanvas = false; // 是否正在拖动画布
 let drawLineStartPoint: Point | null = null; // 绘制起点（用于线）
 let drawTempPoints: Array<Point> = []; // 临时存储绘制中的点
+let drawPenTempTrajectory: PenTrajectory | null = null; // 临时存储绘制中的笔迹点
 let dragStartX = 0;      // 拖动起始X坐标
 let dragStartY = 0;      // 拖动起始Y坐标
 let dragTotalX = 0;      // 累计X方向拖动长度
 let dragTotalY = 0;      // 累计Y方向拖动长度
 let lastDragX = 0;       // 上一次拖动的X位置
 let lastDragY = 0;       // 上一次拖动的Y位置
+let lastPenPoint: Point | null = null;    // 上一个笔迹点（用于压力计算）
+let lastPenTime: number = 0;               // 上一个点的时间戳
 ////////////////////
 //<--变量区
 ////////////////////
@@ -387,6 +419,68 @@ let lastDragY = 0;       // 上一次拖动的Y位置
 ////////////////////
 //辅助函数区-->
 ////////////////////
+
+/**
+ * 道格拉斯-普克算法简化点集
+ * @param points 原始点数组 (PenPoint[])
+ * @param tolerance 容差 (像素单位)
+ * @returns 简化后的点数组
+ */
+function H_simplifyPoints(points: PenPoint[], tolerance: number): PenPoint[] {
+  if (points.length <= 2) return points;
+
+  // 找到距离首尾连线最远的点
+  const first = points[0];
+  const last = points[points.length - 1];
+  let maxDist = 0;
+  let maxIndex = 0;
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const dist = H_perpendicularDistance(points[i], first, last);
+    if (dist > maxDist) {
+      maxDist = dist;
+      maxIndex = i;
+    }
+  }
+
+  // 如果最大距离大于容差，则递归简化两段
+  if (maxDist > tolerance) {
+    const left = points.slice(0, maxIndex + 1);
+    const right = points.slice(maxIndex);
+    const simplifiedLeft = H_simplifyPoints(left, tolerance);
+    const simplifiedRight = H_simplifyPoints(right, tolerance);
+    // 合并时注意去掉重复的中间点
+    return simplifiedLeft.slice(0, -1).concat(simplifiedRight);
+  } else {
+    // 否则只保留首尾点
+    return [first, last];
+  }
+}
+
+/**
+ * 计算点到线段的最短距离
+ */
+function H_perpendicularDistance(p: PenPoint, p1: PenPoint, p2: PenPoint): number {
+  const x0 = p.x, y0 = p.y;
+  const x1 = p1.x, y1 = p1.y;
+  const x2 = p2.x, y2 = p2.y;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq === 0) {
+    // p1 和 p2 重合，直接计算到 p1 的距离
+    return Math.hypot(x0 - x1, y0 - y1);
+  }
+
+  // 投影参数 t
+  let t = ((x0 - x1) * dx + (y0 - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const projX = x1 + t * dx;
+  const projY = y1 + t * dy;
+  return Math.hypot(x0 - projX, y0 - projY);
+}
+
 const H_getCanvasCssSize = (canvas: HTMLCanvasElement) => {
   const width = canvas.clientWidth || window.innerWidth;
   const height = canvas.clientHeight || window.innerHeight;
@@ -768,15 +862,17 @@ const createSegment = (points: Array<Point>, inherentProp: InherentProp, customP
 /**
  * 清空画布所有内容
  */
-const graphicsElementClear = () => {
+const graphicsClear = () => {
   // 清空元素列表
   renderElementList = [];
   hiddenElementList = [];
+  penTrajectoryList = []; 
 
   // 重置绘制状态
   drawStatusPoint = false;
   drawStatusLine = false;
   drawStatusSegment = false;
+  drawStatusPen = false;
   drawTempPoints = [];
   drawLineStartPoint = null;
   isDrawing = false;
@@ -797,17 +893,29 @@ const graphicsElementClear = () => {
  * 保存数据到本地存储
  */
 const localStorageSave = () => {
+  const simplifiedTrajectories = penTrajectoryList.map(trajectory => {
+    if (trajectory.list.length <= 2) return trajectory; // 少于2点不处理
+
+    const simplifiedList = H_simplifyPoints(trajectory.list, 0.8); // 容差0.8像素
+    return {
+      ...trajectory,
+      list: simplifiedList
+    };
+  });
+
   const state = {
     offsetXX,
     offsetYY,
     renderElementList,
     elementIdIndex,
+    penTrajectoryList: simplifiedTrajectories
   };
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
     console.log('状态已保存');
   } catch (e) {
     console.error('保存失败', e);
+    alert('保存失败，可能是存储空间已满，请删除部分笔迹后重试');
   }
 };
 
@@ -830,6 +938,7 @@ const localStorageLoad = (): boolean => {
       renderElementList.forEach(e => { if (e.id > maxId) maxId = e.id; });
       elementIdIndex = maxId + 1;
     }
+    if (state.penTrajectoryList) penTrajectoryList = state.penTrajectoryList;
     return true;
   } catch (e) {
     console.error('加载失败', e);
@@ -861,6 +970,64 @@ const TOcanvas2Screen = (canvasX: number, canvasY: number) => {
     x: canvasX + offsetXX,
     y: offsetYY - canvasY
   };
+};
+
+/**
+ * 绘制笔迹轨迹（图形层）
+ */
+const drawPenTrajectory = () => {
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
+  ctxGraphics.save();
+  penTrajectoryList.forEach(trajectory => {
+    if(ctxGraphics === null) return;
+    if (trajectory.list.length === 0) return;
+    const { startPoint, color, thickness, list } = trajectory;
+    ctxGraphics.beginPath();
+    ctxGraphics.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+    ctxGraphics.lineWidth = thickness;
+    ctxGraphics.lineCap = 'round';
+    ctxGraphics.lineJoin = 'round';
+
+    // 第一个点
+    const firstScreen = TOcanvas2Screen(startPoint.x + list[0].x, startPoint.y + list[0].y);
+    ctxGraphics.moveTo(firstScreen.x, firstScreen.y);
+
+    for (let i = 1; i < list.length; i++) {
+      const p = list[i];
+      const screenPos = TOcanvas2Screen(startPoint.x + p.x, startPoint.y + p.y);
+      ctxGraphics.lineTo(screenPos.x, screenPos.y);
+    }
+    ctxGraphics.stroke();
+  });
+  ctxGraphics.restore();
+};
+
+/**
+ * 绘制正在绘制中的笔迹（图形层）
+ */
+const drawPenTrajectoryIng = () => {
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value || !drawPenTempTrajectory) return;
+  const trajectory = drawPenTempTrajectory;
+  if (trajectory.list.length === 0) return;
+  ctxGraphics.save();
+  const { startPoint, color, thickness, list } = trajectory;
+  ctxGraphics.beginPath();
+  ctxGraphics.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.7)`;
+  ctxGraphics.lineWidth = thickness;
+  ctxGraphics.lineCap = 'round';
+  ctxGraphics.lineJoin = 'round';
+  ctxGraphics.setLineDash([5, 3]); // 虚线表示临时笔迹
+
+  const firstScreen = TOcanvas2Screen(startPoint.x + list[0].x, startPoint.y + list[0].y);
+  ctxGraphics.moveTo(firstScreen.x, firstScreen.y);
+
+  for (let i = 1; i < list.length; i++) {
+    const p = list[i];
+    const screenPos = TOcanvas2Screen(startPoint.x + p.x, startPoint.y + p.y);
+    ctxGraphics.lineTo(screenPos.x, screenPos.y);
+  }
+  ctxGraphics.stroke();
+  ctxGraphics.restore();
 };
 
 /**
@@ -930,7 +1097,7 @@ const drawPointElement = (element: PointElement) => {
   if (element.inherentProp.name) {
     ctxGraphics.font = '12px Arial';
     ctxGraphics.fillStyle = '#000';
-    ctxGraphics.globalAlpha = 1; // 文字不透明
+    ctxGraphics.globalAlpha = 1;
     ctxGraphics.fillText(element.inherentProp.name, screenPos.x + 10, screenPos.y - 10);
   }
 };
@@ -1025,7 +1192,7 @@ const drawSegmentElement = (element: SegmentElement) => {
     // 闭合路径
     ctxGraphics.closePath();
     // 填充
-    ctxGraphics.globalAlpha = element.inherentProp.opacity * 0.3; // 填充透明度更低
+    ctxGraphics.globalAlpha = element.inherentProp.opacity * 0.3;
     ctxGraphics.fill();
     // 描边
     ctxGraphics.globalAlpha = element.inherentProp.opacity;
@@ -1112,6 +1279,7 @@ const drawUIButtons = () => {
     if (button.type === 'point' && drawStatusPoint) isActive = true;
     if (button.type === 'line' && drawStatusLine) isActive = true;
     if (button.type === 'segment' && drawStatusSegment) isActive = true;
+    if (button.type === 'pen' && drawStatusPen) isActive = true;
 
     const bgOpacity = isActive ? 0.3 : 0.1;
     ctxUi.fillStyle = `rgba(${button.color.r}, ${button.color.g}, ${button.color.b}, ${bgOpacity})`;
@@ -1271,6 +1439,12 @@ const drawGraphics = () => {
   // 渲染元素
   drawElement();
 
+  // 渲染笔迹
+  drawPenTrajectory();
+
+  // 绘制正在绘制中的笔迹
+  drawPenTrajectoryIng();
+
   // 绘制临时线段预览（如果正在绘制线段）
   if (drawStatusSegment && drawTempPoints.length >= 1) {
     drawTempSegment();
@@ -1423,8 +1597,7 @@ const handleDrawPoint = (canvasPos: Point) => {
   
   createPoint(canvasPos, pointProp, {});
   showClickEffect(TOcanvas2Screen(canvasPos.x, canvasPos.y).x, TOcanvas2Screen(canvasPos.x, canvasPos.y).y);
-  
-  // 点创建后不退出绘制状态，可以继续创建点
+
   drawGraphics();
 };
 
@@ -1480,7 +1653,7 @@ const handleDrawSegment = (canvasPos: Point) => {
     
     // 如果距离<=3单位，认为是闭合操作
     if (distance <= 3) {
-      drawTempPoints.pop(); // 移除当前点（因为我们要用第一个点闭合）
+      drawTempPoints.pop(); // 移除当前点（用第一个点闭合）
       // 闭合线段，将第一个点作为最后一个点
       drawTempPoints.push(firstPoint);
       
@@ -1502,7 +1675,6 @@ const handleDrawSegment = (canvasPos: Point) => {
 
 /**
  * 全局键盘快捷键处理
- * Ctrl+S 保存；Ctrl+S 清空画布
  */
 const onGlobalKeyDown = (e: KeyboardEvent) => {
   // 仅当按下 Ctrl 或 Command 时才处理
@@ -1514,7 +1686,7 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
         break;
       case 'f':
         e.preventDefault();
-        graphicsElementClear();
+        graphicsClear();
         break;
       // 可在此扩展其他快捷键
     }
@@ -1644,6 +1816,32 @@ const onInventSegment = () => {
 };
 
 /**
+ * 进入笔迹绘制事件
+ */
+const onInventPen = () => {
+  // 如果正在绘制其他图形，先退出
+  if (drawStatusPoint || drawStatusLine || drawStatusSegment) {
+    onCancelPoint();
+    onCancelLine();
+    onCancelSegment();
+  }
+  
+  drawStatusPen = true;
+  drawPenTempTrajectory = null;
+  isWriting = false;
+  
+  // 改变鼠标样式
+  if (cursorManager) {
+    cursorManager.setNowCursorType('pen');
+  }
+  
+  // 添加键盘监听
+  window.addEventListener('keydown', onKeyDown);
+  drawUI(); // 更新按钮高亮
+  drawGraphics(); // 清除可能的临时图形
+};
+
+/**
  * 退出绘制线段事件
  */
 const onCancelSegment = () => {
@@ -1665,6 +1863,26 @@ const onCancelSegment = () => {
 };
 
 /**
+ * 退出笔迹绘制事件
+ */
+const onCancelPen = () => {
+  drawStatusPen = false;
+  isWriting = false;
+  drawPenTempTrajectory = null;
+  lastPenPoint = null;
+  
+  // 恢复鼠标样式
+  if (cursorManager) {
+    cursorManager.setNowCursorType('default');
+  }
+  
+  // 移除键盘监听
+  window.removeEventListener('keydown', onKeyDown);
+  drawUI();
+  drawGraphics();
+};
+
+/**
  * 键盘事件处理（ESC退出绘制）
  */
 const onKeyDown = (e: KeyboardEvent) => {
@@ -1675,6 +1893,8 @@ const onKeyDown = (e: KeyboardEvent) => {
       onCancelLine();
     } else if (drawStatusSegment) {
       onCancelSegment();
+    } else if (drawStatusPen) {
+      onCancelPen();
     }
   }
 };
@@ -1785,7 +2005,27 @@ const onMousedown = (e: MouseEvent) => {
 
   if (H_getHitEventArea(screenX, screenY)) return;
 
-  // 记录拖动起始点（画布坐标）
+  // 笔迹绘制模式
+  if (drawStatusPen) {
+    e.preventDefault();
+    const canvasPos = TOscreen2Canvas(screenX, screenY);
+    // 开始新轨迹
+    drawPenTempTrajectory = {
+      id: Date.now(),
+      color: { r: 0, g: 0, b: 0 }, // 黑色，后续可自定义
+      thickness: 2,
+      resolution: { width: 0, height: 0 },
+      startPoint: canvasPos,
+      endPoint: canvasPos,
+      list: [{ x: 0, y: 0, g: 1.0 }] // 第一个点偏移为0，压力默认为1
+    };
+    isWriting = true;
+    lastPenPoint = canvasPos;
+    lastPenTime = performance.now();
+    return; // 阻止画布拖动
+  }
+
+  // 原有拖动逻辑
   const canvasPos = TOscreen2Canvas(screenX, screenY);
   dragStartX = canvasPos.x;
   dragStartY = canvasPos.y;
@@ -1794,7 +2034,7 @@ const onMousedown = (e: MouseEvent) => {
   lastDragX = e.clientX;
   lastDragY = e.clientY;
   isDragging = true;
-  isMoveCanvas = true; // 标记正在移动画布
+  isMoveCanvas = true;
 };
 
 /**
@@ -1811,6 +2051,36 @@ const onMouseMove = (e: MouseEvent) => {
 
   if (!UI_CANVAS.value) return;
 
+  // 如果正在书写笔迹
+  if (isWriting && drawPenTempTrajectory) {
+    e.preventDefault();
+    const canvasPos = TOscreen2Canvas(mouseX, mouseY);
+    const now = performance.now();
+    // 计算压力（根据速度）
+    let pressure = 0.5; // 默认
+    if (lastPenPoint && lastPenTime) {
+      const dx = canvasPos.x - lastPenPoint.x;
+      const dy = canvasPos.y - lastPenPoint.y;
+      const distance = Math.sqrt(dx*dx + dy*dy);
+      const dt = now - lastPenTime;
+      if (dt > 0) {
+        const speed = distance / dt; // 像素/毫秒
+        pressure = parseFloat(Math.max(0, Math.min(1, 1 - speed / MAX_SPEED_PEN)).toFixed(2));
+      }
+    }
+    // 计算相对于起点的偏移
+    const offsetX = canvasPos.x - drawPenTempTrajectory.startPoint.x;
+    const offsetY = canvasPos.y - drawPenTempTrajectory.startPoint.y;
+    drawPenTempTrajectory.list.push({ x: offsetX, y: offsetY, g: pressure });
+    drawPenTempTrajectory.endPoint = canvasPos;
+
+    lastPenPoint = canvasPos;
+    lastPenTime = now;
+
+    drawGraphics(); // 重绘以显示新点
+    return;
+  }
+
   // 悬停检测
   const hitArea = H_getHitEventArea(mouseX, mouseY);
   hoveredArea = hitArea;
@@ -1823,6 +2093,8 @@ const onMouseMove = (e: MouseEvent) => {
       cursorManager?.setNowCursorType('move');
     } else if (drawStatusPoint || drawStatusLine || drawStatusSegment) {
       cursorManager?.setNowCursorType('crosshair');
+    } else if (drawStatusPen) {
+      cursorManager?.setNowCursorType('pen');
     } else {
       cursorManager?.setNowCursorType('default');
     }
@@ -1860,10 +2132,22 @@ const onMouseMove = (e: MouseEvent) => {
  * 鼠标释放事件（绑定到UI Canvas）
  */
 const onMouseUp = () => {
+  // 如果正在书写，结束笔迹
+  if (isWriting && drawPenTempTrajectory) {
+    if (drawPenTempTrajectory.list.length > 0) {
+      penTrajectoryList.push(drawPenTempTrajectory);
+    }
+    drawPenTempTrajectory = null;
+    isWriting = false;
+    lastPenPoint = null;
+    drawGraphics();
+    return;
+  }
+
   isDragging = false;
   isMoveCanvas = false;
 
-  if (!(drawStatusPoint || drawStatusLine || drawStatusSegment)) {
+  if (!(drawStatusPoint || drawStatusLine || drawStatusSegment || drawStatusPen)) {
     cursorManager?.setNowCursorType('default');
   }
 };
@@ -1902,7 +2186,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  // 移除事件监听
   if (UI_CANVAS.value) {
     UI_CANVAS.value.removeEventListener('mousedown', onMousedown);
     UI_CANVAS.value.removeEventListener('mousemove', onMouseMove);
@@ -1917,7 +2200,7 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', onWindowMouseMove);
   window.removeEventListener('mouseleave', onWindowMouseLeave);
   window.removeEventListener('mouseenter', onWindowMouseEnter);
-  window.removeEventListener('keydown', onGlobalKeyDown); // 移除快捷键监听
+  window.removeEventListener('keydown', onGlobalKeyDown);
   window.removeEventListener('keydown', onKeyDown);
 });
 
@@ -1925,60 +2208,16 @@ onUnmounted(() => {
 //<--vue事件处理区
 ////////////////////
 </script>
-
 <template>
   <div class="view-test2d-container">
-    <canvas id="canvas-graphics"    ref="GRAPHICS_CANVAS"></canvas>
-    
-    <canvas id="canvas-ui"          ref="UI_CANVAS"></canvas>
-
-    <canvas id="canvas-cursor"      ></canvas>
+    <canvas id="canvas-graphics" ref="GRAPHICS_CANVAS"></canvas>
+    <canvas id="canvas-ui" ref="UI_CANVAS"></canvas>
+    <canvas id="canvas-cursor"></canvas>
   </div>
 </template>
-
 <style scoped>
-.view-test2d-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-}
-
-#canvas-graphics {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  pointer-events: none; /* 图形层不接收事件，由UI层转发 */
-}
-
-#canvas-ui {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  pointer-events: auto; /* UI层接收所有鼠标事件 */
-  cursor: none;
-}
-
-#canvas-cursor {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  pointer-events: none;
-  cursor: none; 
-}
-
-body {
-  cursor: none;
-}
+.view-test2d-container{position:fixed;top:0;left:0;width:100vw;height:100vh;overflow:hidden;cursor:none;}
+#canvas-graphics{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
+#canvas-ui{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:auto;cursor:none;}
+#canvas-cursor{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
 </style>
