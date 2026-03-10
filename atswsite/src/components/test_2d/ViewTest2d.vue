@@ -352,7 +352,7 @@ const BT1_INI = [
     label: 'Pen',
     type: 'pen',
     icon: '✎',
-    size: 12,
+    size: 16,
     color: { r: 251, g: 188, b: 5 },
     x: 30,
     y: BT1_PADDING + (BT1_HEIGHT + BT1_SPACING) * 3,
@@ -361,6 +361,24 @@ const BT1_INI = [
         onCancelPen();
       }else{
         onInventPen();
+      }
+      drawUI();
+    }
+  },
+  {
+    id: 'btn_eraser',
+    label: 'Eraser',
+    type: 'eraser',
+    icon: '🧽',
+    size: 16,
+    color: { r: 128, g: 128, b: 128 },
+    x: 30,
+    y: BT1_PADDING + (BT1_HEIGHT + BT1_SPACING) * 4,
+    onClick: () => {
+      if(drawStatusEraser){
+        onCancelEraser();
+      }else{
+        onInventEraser();
       }
       drawUI();
     }
@@ -397,6 +415,8 @@ let drawStatusPoint = false;
 let drawStatusLine = false;
 let drawStatusSegment = false;
 let drawStatusPen = false;
+let drawStatusEraser = false;
+let isErasing = false;
 let isDragging = false;
 let isDrawing = false; // 是否正在绘制中（用于线和线段）
 let isWriting = false; // 是否正在书写中（用于笔迹）
@@ -412,6 +432,8 @@ let lastDragX = 0;       // 上一次拖动的X位置
 let lastDragY = 0;       // 上一次拖动的Y位置
 let lastPenPoint: Point | null = null;    // 上一个笔迹点（用于压力计算）
 let lastPenTime: number = 0;               // 上一个点的时间戳
+let mouseLeftButtonDown = false; // 鼠标左键是否按下
+let eraserRadius = 5; // 橡皮擦半径大小
 ////////////////////
 //<--变量区
 ////////////////////
@@ -873,6 +895,7 @@ const graphicsClear = () => {
   drawStatusLine = false;
   drawStatusSegment = false;
   drawStatusPen = false;
+  drawStatusEraser = false;
   drawTempPoints = [];
   drawLineStartPoint = null;
   isDrawing = false;
@@ -1245,32 +1268,31 @@ const drawSegmentElement = (element: SegmentElement) => {
 /**
  * 绘制图形添加按钮（UI层）
  */
-const drawUIButtons = () => {
-  if (!ctxUi || !UI_CANVAS.value) return;
+const drawUIButtons = (CtxUi: CanvasRenderingContext2D) => {
 
   const startX = BT1_PADDING;
   const startY = BT1_PADDING;
 
-  ctxUi.save();
+  CtxUi.save();
 
   // 绘制面板背景
   const panelWidth = BT1_WIDTH + 40;
   const panelHeight = BT1_INI.length * (BT1_HEIGHT + BT1_SPACING) + 40 - BT1_SPACING;
-  ctxUi.beginPath();
-  createRoundRect(ctxUi, startX - 15, startY - 15, panelWidth, panelHeight, 12);
-  ctxUi.fillStyle = 'rgba(255,255,255,0.8)';
-  ctxUi.fill();
-  ctxUi.shadowColor = 'rgba(0, 0, 0, 0.1)';
-  ctxUi.shadowBlur = 5;
-  ctxUi.shadowOffsetX = 1;
-  ctxUi.shadowOffsetY = 1;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, startX - 15, startY - 15, panelWidth, panelHeight, 12);
+  CtxUi.fillStyle = 'rgba(255,255,255,0.8)';
+  CtxUi.fill();
+  CtxUi.shadowColor = 'rgba(0, 0, 0, 0.1)';
+  CtxUi.shadowBlur = 5;
+  CtxUi.shadowOffsetX = 1;
+  CtxUi.shadowOffsetY = 1;
 
   // 重置阴影（避免影响后续绘制）
-  ctxUi.shadowColor = 'transparent';
+  CtxUi.shadowColor = 'transparent';
 
   // 绘制每个按钮
   BT1_INI.forEach((button) => {
-    if(ctxUi===null)return;
+    if(CtxUi===null)return;
     const x = button.x;
     const y = button.y;
 
@@ -1280,136 +1302,135 @@ const drawUIButtons = () => {
     if (button.type === 'line' && drawStatusLine) isActive = true;
     if (button.type === 'segment' && drawStatusSegment) isActive = true;
     if (button.type === 'pen' && drawStatusPen) isActive = true;
+    if (button.type === 'eraser' && drawStatusEraser) isActive = true;
 
     const bgOpacity = isActive ? 0.3 : 0.1;
-    ctxUi.fillStyle = `rgba(${button.color.r}, ${button.color.g}, ${button.color.b}, ${bgOpacity})`;
-    ctxUi.shadowColor = 'rgba(0, 0, 0, 0.1)';
-    ctxUi.shadowBlur = 5;
-    ctxUi.shadowOffsetX = 1;
-    ctxUi.shadowOffsetY = 1;
-    ctxUi.beginPath();
-    createRoundRect(ctxUi, x, y, BT1_WIDTH, BT1_HEIGHT, 8);
-    ctxUi.fill();
+    CtxUi.fillStyle = `rgba(${button.color.r}, ${button.color.g}, ${button.color.b}, ${bgOpacity})`;
+    CtxUi.shadowColor = 'rgba(0, 0, 0, 0.1)';
+    CtxUi.shadowBlur = 5;
+    CtxUi.shadowOffsetX = 1;
+    CtxUi.shadowOffsetY = 1;
+    CtxUi.beginPath();
+    createRoundRect(CtxUi, x, y, BT1_WIDTH, BT1_HEIGHT, 8);
+    CtxUi.fill();
 
     // 绘制按钮边框
-    ctxUi.strokeStyle = `rgb(${button.color.r}, ${button.color.g}, ${button.color.b})`;
-    ctxUi.lineWidth = 2;
-    ctxUi.shadowBlur = 0;
-    ctxUi.stroke();
+    CtxUi.strokeStyle = `rgb(${button.color.r}, ${button.color.g}, ${button.color.b})`;
+    CtxUi.lineWidth = 2;
+    CtxUi.shadowBlur = 0;
+    CtxUi.stroke();
 
     // 绘制图标（大圆点）
-    ctxUi.font = '30px "Segoe UI", Arial, sans-serif';
-    ctxUi.fillStyle = `rgb(${button.color.r}, ${button.color.g}, ${button.color.b})`;
-    ctxUi.textAlign = 'center';
-    ctxUi.textBaseline = 'middle';
-    ctxUi.fillText(button.icon, x + 25, y + BT1_HEIGHT / 2);
+    CtxUi.font = '30px "Segoe UI", Arial, sans-serif';
+    CtxUi.fillStyle = `rgb(${button.color.r}, ${button.color.g}, ${button.color.b})`;
+    CtxUi.textAlign = 'center';
+    CtxUi.textBaseline = 'middle';
+    CtxUi.fillText(button.icon, x + 25, y + BT1_HEIGHT / 2);
 
     // 绘制按钮文字
-    ctxUi.font = 'bold ' + button.size + 'px "Microsoft YaHei", Arial, sans-serif';
-    ctxUi.fillStyle = '#333';
-    ctxUi.textAlign = 'left';
-    ctxUi.fillText(button.label, x + 45, y + BT1_HEIGHT / 2);
+    CtxUi.font = 'bold ' + button.size + 'px "Microsoft YaHei", Arial, sans-serif';
+    CtxUi.fillStyle = '#333';
+    CtxUi.textAlign = 'left';
+    CtxUi.fillText(button.label, x + 45, y + BT1_HEIGHT / 2);
   });
 
   // 绘制分隔线
-  ctxUi.beginPath();
-  ctxUi.strokeStyle = '#ddd';
-  ctxUi.lineWidth = 1;
-  ctxUi.setLineDash([5, 3]);
-  ctxUi.moveTo(startX - 5, startY + BT1_INI.length * (BT1_HEIGHT + BT1_SPACING) + 5);
-  ctxUi.lineTo(startX + BT1_WIDTH + 5, startY + BT1_INI.length * (BT1_HEIGHT + BT1_SPACING) + 5);
-  ctxUi.stroke();
+  CtxUi.beginPath();
+  CtxUi.strokeStyle = '#ddd';
+  CtxUi.lineWidth = 1;
+  CtxUi.setLineDash([5, 3]);
+  CtxUi.moveTo(startX - 5, startY + BT1_INI.length * (BT1_HEIGHT + BT1_SPACING) + 5);
+  CtxUi.lineTo(startX + BT1_WIDTH + 5, startY + BT1_INI.length * (BT1_HEIGHT + BT1_SPACING) + 5);
+  CtxUi.stroke();
 
   // 重置虚线设置
-  ctxUi.setLineDash([]);
+  CtxUi.setLineDash([]);
 
-  ctxUi.restore();
+  CtxUi.restore();
 };
 
 /**
  * 绘制顶部提示信息（UI层）
  */
-const drawInstructions = () => {
-  if (!ctxUi || !UI_CANVAS.value) return;
-  const { width } = H_getCanvasCssSize(UI_CANVAS.value);
+const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
+  if (!CtxUi || !CANVAS) return;
+  const { width } = H_getCanvasCssSize(CANVAS);
   const text = 'Ctrl + S = Save    Ctrl + F = Clear';
-  ctxUi.save();
-  ctxUi.font = '14px "Microsoft YaHei", Arial, sans-serif';
-  ctxUi.fillStyle = 'rgba(78,78,78,0.9)';
-  ctxUi.textAlign = 'center';
-  ctxUi.textBaseline = 'top';
-  const textWidth = ctxUi.measureText(text).width;
+  CtxUi.save();
+  CtxUi.font = '14px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.fillStyle = 'rgba(78,78,78,0.9)';
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'top';
+  const textWidth = CtxUi.measureText(text).width;
   const padding = 10;
   const boxWidth = textWidth + padding * 2;
   const boxHeight = 30;
   const x = (width - boxWidth) / 2;
   const y = 0;
   // 半透明背景
-  ctxUi.fillStyle = 'rgba(208,208,208,0.7)';
-  createRoundRect(ctxUi, x, y, boxWidth, boxHeight, 5);
-  ctxUi.fill();
-  ctxUi.fillStyle = 'rgb(78,78,78)';
-  ctxUi.fillText(text, width / 2, y + 8);
-  ctxUi.restore();
+  CtxUi.fillStyle = 'rgba(208,208,208,0.7)';
+  createRoundRect(CtxUi, x, y, boxWidth, boxHeight, 5);
+  CtxUi.fill();
+  CtxUi.fillStyle = 'rgb(78,78,78)';
+  CtxUi.fillText(text, width / 2, y + 8);
+  CtxUi.restore();
 };
 
 /**
  * 绘制比例尺（UI层）
  */
-const drawUIRuler = () => {
-  if (!ctxUi || !UI_CANVAS.value) return;
-
+const drawUIRuler = (CtxUi: CanvasRenderingContext2D,CANVAS: HTMLCanvasElement) => {
   const padding = 20;
   const ruleWidth = 90;
   const ruleHeight = 40;
 
   const x = padding;
-  const { height } = H_getCanvasCssSize(UI_CANVAS.value);
+  const { height } = H_getCanvasCssSize(CANVAS);
   const y = height - padding - ruleHeight;
 
-  ctxUi.save();
+  CtxUi.save();
 
   // 半透明背景
-  ctxUi.fillStyle = 'rgba(255, 255, 255, 0.8)';
-  ctxUi.fillRect(x, y, ruleWidth, ruleHeight);
+  CtxUi.fillStyle = 'rgba(255, 255, 255, 0.8)';
+  CtxUi.fillRect(x, y, ruleWidth, ruleHeight);
 
   // 边框
-  ctxUi.strokeStyle = '#ccc';
-  ctxUi.lineWidth = 1;
-  ctxUi.strokeRect(x, y, ruleWidth, ruleHeight);
+  CtxUi.strokeStyle = '#ccc';
+  CtxUi.lineWidth = 1;
+  CtxUi.strokeRect(x, y, ruleWidth, ruleHeight);
 
   // 每格实际代表的单位
   const gridUnit = 50; // 每格代表50单位
 
   // 比例尺显示
-  ctxUi.font = '12px Arial';
-  ctxUi.fillStyle = '#333';
-  ctxUi.textAlign = 'center';
+  CtxUi.font = '12px Arial';
+  CtxUi.fillStyle = '#333';
+  CtxUi.textAlign = 'center';
 
   // 绘制比例尺条
-  ctxUi.beginPath();
-  ctxUi.strokeStyle = '#333';
-  ctxUi.lineWidth = 2;
-  ctxUi.moveTo(x + 20, y + 25);
-  ctxUi.lineTo(x + ruleWidth - 20, y + 25);
-  ctxUi.stroke();
+  CtxUi.beginPath();
+  CtxUi.strokeStyle = '#333';
+  CtxUi.lineWidth = 2;
+  CtxUi.moveTo(x + 20, y + 25);
+  CtxUi.lineTo(x + ruleWidth - 20, y + 25);
+  CtxUi.stroke();
 
   // 刻度
-  ctxUi.beginPath();
-  ctxUi.moveTo(x + 20, y + 20);
-  ctxUi.lineTo(x + 20, y + 30);
-  ctxUi.stroke();
+  CtxUi.beginPath();
+  CtxUi.moveTo(x + 20, y + 20);
+  CtxUi.lineTo(x + 20, y + 30);
+  CtxUi.stroke();
 
-  ctxUi.beginPath();
-  ctxUi.moveTo(x + ruleWidth - 20, y + 20);
-  ctxUi.lineTo(x + ruleWidth - 20, y + 30);
-  ctxUi.stroke();
+  CtxUi.beginPath();
+  CtxUi.moveTo(x + ruleWidth - 20, y + 20);
+  CtxUi.lineTo(x + ruleWidth - 20, y + 30);
+  CtxUi.stroke();
 
   // 数值
-  ctxUi.fillText('0', x + 20, y + 15);
-  ctxUi.fillText(`${gridUnit}`, x + ruleWidth - 20, y + 15);
+  CtxUi.fillText('0', x + 20, y + 15);
+  CtxUi.fillText(`${gridUnit}`, x + ruleWidth - 20, y + 15);
 
-  ctxUi.restore();
+  CtxUi.restore();
 };
 
 /**
@@ -1477,9 +1498,28 @@ const drawUI = () => {
   if (!ctxUi || !UI_CANVAS.value) return;
   const { width, height } = H_getCanvasCssSize(UI_CANVAS.value);
   ctxUi.clearRect(0, 0, width, height);
-  drawUIButtons();
-  drawUIRuler();
-  drawInstructions();
+  drawUIButtons(ctxUi);
+  drawUIRuler(ctxUi, UI_CANVAS.value);
+  drawInstructions(ctxUi, UI_CANVAS.value);
+  drawEraserPreview(ctxUi);
+};
+
+/**
+ *  绘制橡皮擦范围预览
+ */
+const drawEraserPreview = (CtxUi: CanvasRenderingContext2D) => {
+  if (drawStatusEraser && hasMousePosition && mouseLeftButtonDown) {//仅在橡皮擦模式下且鼠标在画布内
+    CtxUi.save();
+    CtxUi.beginPath();
+    CtxUi.arc(mouseX, mouseY, eraserRadius, 0, Math.PI * 2);
+    CtxUi.strokeStyle = 'rgba(128,128,128,0.5)';
+    CtxUi.lineWidth = 2;
+    CtxUi.setLineDash([3, 3]);
+    CtxUi.stroke();
+    CtxUi.fillStyle = 'rgba(128,128,128,0.1)';
+    CtxUi.fill();
+    CtxUi.restore();
+  }
 };
 
 /**
@@ -1576,6 +1616,100 @@ const showClickEffect = (x: number, y: number) => {
   };
 
   requestAnimationFrame(animateRipple);
+};
+
+/**
+ * 擦除鼠标周围的所有元素
+ * @param screenX 鼠标屏幕X坐标
+ * @param screenY 鼠标屏幕Y坐标
+ * @returns 是否删除了元素
+ */
+const eraseElements = (screenX: number, screenY: number): boolean => {
+  const threshold = 5;
+
+  // 辅助函数：点到无限直线距离
+  const pointToLineDistance = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+    const cross = Math.abs((x2 - x1) * (y1 - py) - (y2 - y1) * (x1 - px));
+    return cross / Math.sqrt(lenSq);
+  };
+
+  // 辅助函数：点到线段距离
+  const pointToSegmentDistance = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+    let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const projX = x1 + t * dx;
+    const projY = y1 + t * dy;
+    return Math.hypot(px - projX, py - projY);
+  };
+
+  const elementsToDelete = new Set<number>();
+  const trajectoriesToDelete = new Set<number>();
+
+  // 检查几何元素
+  renderElementList.forEach(el => {
+    if (el.type === 'point') {
+      const pt = el.points[0];
+      const screenPt = TOcanvas2Screen(pt.x, pt.y);
+      const dist = Math.hypot(screenX - screenPt.x, screenY - screenPt.y);
+      if (dist <= threshold) elementsToDelete.add(el.id);
+    }
+    else if (el.type === 'line') {
+      const p1 = el.points[0];
+      const p2 = el.points[1];
+      const s1 = TOcanvas2Screen(p1.x, p1.y);
+      const s2 = TOcanvas2Screen(p2.x, p2.y);
+      const dist = pointToLineDistance(screenX, screenY, s1.x, s1.y, s2.x, s2.y);
+      if (dist <= threshold) elementsToDelete.add(el.id);
+    }
+    else if (el.type === 'segment') {
+      let minDist = Infinity;
+      for (let i = 0; i < el.points.length - 1; i++) {
+        const a = el.points[i];
+        const b = el.points[i + 1];
+        const sa = TOcanvas2Screen(a.x, a.y);
+        const sb = TOcanvas2Screen(b.x, b.y);
+        const dist = pointToSegmentDistance(screenX, screenY, sa.x, sa.y, sb.x, sb.y);
+        minDist = Math.min(minDist, dist);
+      }
+      if (minDist <= threshold) elementsToDelete.add(el.id);
+    }
+  });
+
+  // 检查笔迹轨迹
+  penTrajectoryList.forEach((traj, idx) => {
+    if (traj.list.length < 2) return;
+    let minDist = Infinity;
+    for (let i = 0; i < traj.list.length - 1; i++) {
+      const p1 = traj.list[i];
+      const p2 = traj.list[i + 1];
+      const canvas1 = { x: traj.startPoint.x + p1.x, y: traj.startPoint.y + p1.y };
+      const canvas2 = { x: traj.startPoint.x + p2.x, y: traj.startPoint.y + p2.y };
+      const s1 = TOcanvas2Screen(canvas1.x, canvas1.y);
+      const s2 = TOcanvas2Screen(canvas2.x, canvas2.y);
+      const dist = pointToSegmentDistance(screenX, screenY, s1.x, s1.y, s2.x, s2.y);
+      minDist = Math.min(minDist, dist);
+    }
+    if (minDist <= threshold) trajectoriesToDelete.add(idx);
+  });
+
+  let deleted = false;
+  if (elementsToDelete.size > 0) {
+    renderElementList = renderElementList.filter(el => !elementsToDelete.has(el.id));
+    deleted = true;
+  }
+  if (trajectoriesToDelete.size > 0) {
+    penTrajectoryList = penTrajectoryList.filter((_, idx) => !trajectoriesToDelete.has(idx));
+    deleted = true;
+  }
+  return deleted;
 };
 
 ////////////////////
@@ -1693,16 +1827,15 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
   }
 };
 
-
 /**
  * 进入绘制点事件
  */
 const onInventPoint = () => {
-  // 如果正在绘制其他图形，先退出
-  if (drawStatusLine || drawStatusSegment) {
-    onCancelLine();
-    onCancelSegment();
-  }
+  // 退出其他模式
+  if (drawStatusLine) onCancelLine();
+  if (drawStatusSegment) onCancelSegment();
+  if (drawStatusPen) onCancelPen();
+  if (drawStatusEraser) onCancelEraser();
   
   drawStatusPoint = true;
   drawTempPoints = [];
@@ -1744,11 +1877,11 @@ const onCancelPoint = () => {
  * 进入绘制线事件（两点确定一条无限延伸的直线）
  */
 const onInventLine = () => {
-  // 如果正在绘制其他图形，先退出
-  if (drawStatusPoint || drawStatusSegment) {
-    onCancelPoint();
-    onCancelSegment();
-  }
+  // 退出其他模式
+  if (drawStatusPoint) onCancelPoint();
+  if (drawStatusSegment) onCancelSegment();
+  if (drawStatusPen) onCancelPen();
+  if (drawStatusEraser) onCancelEraser();
   
   drawStatusLine = true;
   drawTempPoints = [];
@@ -1793,11 +1926,11 @@ const onCancelLine = () => {
  * 进入绘制线段事件（多点连续线段）
  */
 const onInventSegment = () => {
-  // 如果正在绘制其他图形，先退出
-  if (drawStatusPoint || drawStatusLine) {
-    onCancelPoint();
-    onCancelLine();
-  }
+  // 退出其他模式
+  if (drawStatusPoint) onCancelPoint();
+  if (drawStatusLine) onCancelLine();
+  if (drawStatusPen) onCancelPen();
+  if (drawStatusEraser) onCancelEraser();
   
   drawStatusSegment = true;
   drawTempPoints = [];
@@ -1819,12 +1952,11 @@ const onInventSegment = () => {
  * 进入笔迹绘制事件
  */
 const onInventPen = () => {
-  // 如果正在绘制其他图形，先退出
-  if (drawStatusPoint || drawStatusLine || drawStatusSegment) {
-    onCancelPoint();
-    onCancelLine();
-    onCancelSegment();
-  }
+  // 退出其他模式
+  if (drawStatusPoint) onCancelPoint();
+  if (drawStatusLine) onCancelLine();
+  if (drawStatusSegment) onCancelSegment();
+  if (drawStatusEraser) onCancelEraser();
   
   drawStatusPen = true;
   drawPenTempTrajectory = null;
@@ -1883,6 +2015,45 @@ const onCancelPen = () => {
 };
 
 /**
+ * 进入橡皮擦模式
+ */
+const onInventEraser = () => {
+  // 退出其他模式
+  if (drawStatusPoint) onCancelPoint();
+  if (drawStatusLine) onCancelLine();
+  if (drawStatusSegment) onCancelSegment();
+  if (drawStatusPen) onCancelPen();
+
+  drawStatusEraser = true;
+  isErasing = false;
+
+  // 改变光标
+  if (cursorManager) {
+    cursorManager.setNowCursorType('eraser');
+  }
+
+  window.addEventListener('keydown', onKeyDown);
+  drawUI();
+  drawGraphics();
+};
+
+/**
+ * 退出橡皮擦模式
+ */
+const onCancelEraser = () => {
+  drawStatusEraser = false;
+  isErasing = false;
+
+  if (cursorManager) {
+    cursorManager.setNowCursorType('default');
+  }
+
+  window.removeEventListener('keydown', onKeyDown);
+  drawUI();
+  drawGraphics();
+};
+
+/**
  * 键盘事件处理（ESC退出绘制）
  */
 const onKeyDown = (e: KeyboardEvent) => {
@@ -1895,6 +2066,8 @@ const onKeyDown = (e: KeyboardEvent) => {
       onCancelSegment();
     } else if (drawStatusPen) {
       onCancelPen();
+    } else if (drawStatusEraser) {
+      onCancelEraser();
     }
   }
 };
@@ -2000,10 +2173,21 @@ const onResizeCanvas = () => {
  * 鼠标按下事件（绑定到UI Canvas）
  */
 const onMousedown = (e: MouseEvent) => {
+  mouseLeftButtonDown = true;
   const screenX = e.offsetX;
   const screenY = e.offsetY;
 
   if (H_getHitEventArea(screenX, screenY)) return;
+
+  // 橡皮擦模式
+  if (drawStatusEraser) {
+    e.preventDefault();
+    isErasing = true;
+    const deleted = eraseElements(screenX, screenY);
+    if (deleted) drawGraphics();
+    drawUI();
+    return;
+  }
 
   // 笔迹绘制模式
   if (drawStatusPen) {
@@ -2040,9 +2224,6 @@ const onMousedown = (e: MouseEvent) => {
 /**
  * 鼠标移动事件（绑定到UI Canvas）
  */
-/**
- * 鼠标移动事件（绑定到UI Canvas）
- */
 const onMouseMove = (e: MouseEvent) => {
   // 更新鼠标位置
   mouseX = e.offsetX;
@@ -2050,6 +2231,16 @@ const onMouseMove = (e: MouseEvent) => {
   hasMousePosition = true;
 
   if (!UI_CANVAS.value) return;
+
+  // 橡皮擦擦除除中
+  if (isErasing) {
+    e.preventDefault();
+    const deleted = eraseElements(mouseX, mouseY);
+    if (deleted) {
+      drawGraphics(); // 有元素被擦除，重绘图形层
+    }
+    drawUI(); // 更新UI层以显示橡皮擦范围预览
+  }
 
   // 如果正在书写笔迹
   if (isWriting && drawPenTempTrajectory) {
@@ -2091,6 +2282,8 @@ const onMouseMove = (e: MouseEvent) => {
   } else {
     if (isMoveCanvas) {
       cursorManager?.setNowCursorType('move');
+    } else if (drawStatusEraser) {
+      cursorManager?.setNowCursorType('eraser');
     } else if (drawStatusPoint || drawStatusLine || drawStatusSegment) {
       cursorManager?.setNowCursorType('crosshair');
     } else if (drawStatusPen) {
@@ -2132,6 +2325,7 @@ const onMouseMove = (e: MouseEvent) => {
  * 鼠标释放事件（绑定到UI Canvas）
  */
 const onMouseUp = () => {
+  mouseLeftButtonDown = false;
   // 如果正在书写，结束笔迹
   if (isWriting && drawPenTempTrajectory) {
     if (drawPenTempTrajectory.list.length > 0) {
@@ -2144,10 +2338,18 @@ const onMouseUp = () => {
     return;
   }
 
+  // 结束擦除
+  if (isErasing) {
+    isErasing = false;
+    drawGraphics(); // 更新状态
+    drawUI();
+    return;
+  }
+
   isDragging = false;
   isMoveCanvas = false;
 
-  if (!(drawStatusPoint || drawStatusLine || drawStatusSegment || drawStatusPen)) {
+  if (!(drawStatusPoint || drawStatusLine || drawStatusSegment || drawStatusPen || drawStatusEraser)) {
     cursorManager?.setNowCursorType('default');
   }
 };
