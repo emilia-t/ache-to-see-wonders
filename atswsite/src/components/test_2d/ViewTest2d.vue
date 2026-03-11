@@ -434,6 +434,14 @@ let lastPenPoint: Point | null = null;    // 上一个笔迹点（用于压力�
 let lastPenTime: number = 0;               // 上一个点的时间戳
 let mouseLeftButtonDown = false; // 鼠标左键是否按下
 let eraserRadius = 5; // 橡皮擦半径大小
+
+let cdtRafCursorId: number | null = null;
+let cdtLastMouseX = 0;//光标绘制节流Cursor drawing throttling
+let cdtLastMouseY = 0;
+
+let selectedElement: Element | null = null; // 当前左键选中的元素
+let selectedElements: Array<Element> = []; // 当前框选的元素列表
+
 ////////////////////
 //<--变量区
 ////////////////////
@@ -1831,207 +1839,176 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
  * 进入绘制点事件
  */
 const onInventPoint = () => {
-  // 退出其他模式
-  if (drawStatusLine) onCancelLine();
-  if (drawStatusSegment) onCancelSegment();
-  if (drawStatusPen) onCancelPen();
-  if (drawStatusEraser) onCancelEraser();
+  onCancelLine(true);
+  onCancelSegment(true);
+  onCancelPen(true);
+  onCancelEraser(true);
   
   drawStatusPoint = true;
   drawTempPoints = [];
   isDrawing = false;
   
-  // 改变鼠标样式
-  if (UI_CANVAS.value) {
-    if(cursorManager){
-      cursorManager.setNowCursorType('crosshair');
-    }
+  if (UI_CANVAS.value && cursorManager) {
+    cursorManager.setNowCursorType('crosshair');
   }
   
-  // 添加键盘监听
   window.addEventListener('keydown', onKeyDown);
-  drawUI(); // 更新按钮高亮
+  drawUI();      // 更新按钮高亮
+  drawGraphics(); // 刷新图形层（清除可能的临时点）
 };
 
 /**
  * 退出绘制点事件
  */
-const onCancelPoint = () => {
+const onCancelPoint = (skipRedraw = false) => {
   drawStatusPoint = false;
   drawTempPoints = [];
-  
-  // 恢复鼠标样式
-  if (UI_CANVAS.value) {
-    if(cursorManager){
-      cursorManager.setNowCursorType('default');
-    }
+  if (UI_CANVAS.value && cursorManager) {// 恢复鼠标样式
+    cursorManager.setNowCursorType('default');
   }
-  
-  // 移除键盘监听
-  window.removeEventListener('keydown', onKeyDown);
-  drawUI(); // 更新按钮高亮
-  drawGraphics(); // 清除可能的临时点
+  window.removeEventListener('keydown', onKeyDown);// 移除键盘监听
+  if (!skipRedraw) {
+    drawUI(); // 更新按钮高亮
+    drawGraphics(); // 清除可能的临时点
+  }
 };
 
 /**
  * 进入绘制线事件（两点确定一条无限延伸的直线）
  */
 const onInventLine = () => {
-  // 退出其他模式
-  if (drawStatusPoint) onCancelPoint();
-  if (drawStatusSegment) onCancelSegment();
-  if (drawStatusPen) onCancelPen();
-  if (drawStatusEraser) onCancelEraser();
+  onCancelPoint(true);
+  onCancelSegment(true);
+  onCancelPen(true);
+  onCancelEraser(true);
   
   drawStatusLine = true;
   drawTempPoints = [];
   drawLineStartPoint = null;
-  isDrawing = true; // 线需要两个点
+  isDrawing = true;
   
-  // 改变鼠标样式
-  if (UI_CANVAS.value) {
-    if(cursorManager){
-      cursorManager.setNowCursorType('crosshair');
-    }
+  if (UI_CANVAS.value && cursorManager) {
+    cursorManager.setNowCursorType('crosshair');
   }
   
-  // 添加键盘监听
   window.addEventListener('keydown', onKeyDown);
   drawUI();
+  drawGraphics();
 };
 
 /**
  * 退出绘制线事件
  */
-const onCancelLine = () => {
+const onCancelLine = (skipRedraw = false) => {
   drawStatusLine = false;
   drawTempPoints = [];
   drawLineStartPoint = null;
   isDrawing = false;
-  
-  // 恢复鼠标样式
-  if (UI_CANVAS.value) {
-    if(cursorManager){
-      cursorManager.setNowCursorType('default');
-    }
+  if (UI_CANVAS.value && cursorManager) {// 恢复鼠标样式
+    cursorManager.setNowCursorType('default');
   }
-  
-  // 移除键盘监听
-  window.removeEventListener('keydown', onKeyDown);
-  drawUI();
-  drawGraphics();
+  window.removeEventListener('keydown', onKeyDown);// 移除键盘监听
+  if (!skipRedraw) {
+    drawUI();
+    drawGraphics();
+  }
 };
 
 /**
  * 进入绘制线段事件（多点连续线段）
  */
 const onInventSegment = () => {
-  // 退出其他模式
-  if (drawStatusPoint) onCancelPoint();
-  if (drawStatusLine) onCancelLine();
-  if (drawStatusPen) onCancelPen();
-  if (drawStatusEraser) onCancelEraser();
+  onCancelPoint(true);
+  onCancelLine(true);
+  onCancelPen(true);
+  onCancelEraser(true);
   
   drawStatusSegment = true;
   drawTempPoints = [];
   isDrawing = true;
   
-  // 改变鼠标样式
-  if (UI_CANVAS.value) {
-    if(cursorManager){
-      cursorManager.setNowCursorType('crosshair');
-    }
+  if (UI_CANVAS.value && cursorManager) {
+    cursorManager.setNowCursorType('crosshair');
   }
   
-  // 添加键盘监听
   window.addEventListener('keydown', onKeyDown);
   drawUI();
+  drawGraphics();
 };
 
 /**
  * 进入笔迹绘制事件
  */
 const onInventPen = () => {
-  // 退出其他模式
-  if (drawStatusPoint) onCancelPoint();
-  if (drawStatusLine) onCancelLine();
-  if (drawStatusSegment) onCancelSegment();
-  if (drawStatusEraser) onCancelEraser();
+  onCancelPoint(true);
+  onCancelLine(true);
+  onCancelSegment(true);
+  onCancelEraser(true);
   
   drawStatusPen = true;
   drawPenTempTrajectory = null;
   isWriting = false;
   
-  // 改变鼠标样式
   if (cursorManager) {
     cursorManager.setNowCursorType('pen');
   }
   
-  // 添加键盘监听
   window.addEventListener('keydown', onKeyDown);
-  drawUI(); // 更新按钮高亮
-  drawGraphics(); // 清除可能的临时图形
+  drawUI();
+  drawGraphics();
 };
 
 /**
  * 退出绘制线段事件
  */
-const onCancelSegment = () => {
+const onCancelSegment = (skipRedraw = false) => {
   drawStatusSegment = false;
   drawTempPoints = [];
   isDrawing = false;
-  
-  // 恢复鼠标样式
-  if (UI_CANVAS.value) {
-    if(cursorManager){
-      cursorManager.setNowCursorType('default');
-    }
+  if (UI_CANVAS.value && cursorManager) {// 恢复鼠标样式
+    cursorManager.setNowCursorType('default');
   }
-  
-  // 移除键盘监听
-  window.removeEventListener('keydown', onKeyDown);
-  drawUI();
-  drawGraphics();
+  window.removeEventListener('keydown', onKeyDown);// 移除键盘监听
+  if (!skipRedraw) {
+    drawUI();
+    drawGraphics();
+  }
 };
 
 /**
  * 退出笔迹绘制事件
  */
-const onCancelPen = () => {
+const onCancelPen = (skipRedraw = false) => {
   drawStatusPen = false;
   isWriting = false;
   drawPenTempTrajectory = null;
   lastPenPoint = null;
-  
-  // 恢复鼠标样式
-  if (cursorManager) {
+  if (cursorManager) {// 恢复鼠标样式
     cursorManager.setNowCursorType('default');
   }
-  
-  // 移除键盘监听
-  window.removeEventListener('keydown', onKeyDown);
-  drawUI();
-  drawGraphics();
+  window.removeEventListener('keydown', onKeyDown);// 移除键盘监听
+  if (!skipRedraw) {
+    drawUI();
+    drawGraphics();
+  }
 };
 
 /**
  * 进入橡皮擦模式
  */
 const onInventEraser = () => {
-  // 退出其他模式
-  if (drawStatusPoint) onCancelPoint();
-  if (drawStatusLine) onCancelLine();
-  if (drawStatusSegment) onCancelSegment();
-  if (drawStatusPen) onCancelPen();
-
+  onCancelPoint(true);
+  onCancelLine(true);
+  onCancelSegment(true);
+  onCancelPen(true);
+  
   drawStatusEraser = true;
   isErasing = false;
-
-  // 改变光标
+  
   if (cursorManager) {
     cursorManager.setNowCursorType('eraser');
   }
-
+  
   window.addEventListener('keydown', onKeyDown);
   drawUI();
   drawGraphics();
@@ -2040,7 +2017,7 @@ const onInventEraser = () => {
 /**
  * 退出橡皮擦模式
  */
-const onCancelEraser = () => {
+const onCancelEraser = (skipRedraw = false) => {
   drawStatusEraser = false;
   isErasing = false;
 
@@ -2049,8 +2026,10 @@ const onCancelEraser = () => {
   }
 
   window.removeEventListener('keydown', onKeyDown);
-  drawUI();
-  drawGraphics();
+  if (!skipRedraw) {
+    drawUI();
+    drawGraphics();
+  }
 };
 
 /**
@@ -2209,7 +2188,7 @@ const onMousedown = (e: MouseEvent) => {
     return; // 阻止画布拖动
   }
 
-  // 原有拖动逻辑
+  // 拖动移动视图逻辑
   const canvasPos = TOscreen2Canvas(screenX, screenY);
   dragStartX = canvasPos.x;
   dragStartY = canvasPos.y;
@@ -2358,7 +2337,13 @@ const onMouseUp = () => {
  * 窗口鼠标移动（用于自定义光标）
  */
 const onWindowMouseMove = (e: MouseEvent) => {
-  cursorManager?.drawCursor('auto', e.clientX, e.clientY,0.2);
+  cdtLastMouseX = e.clientX;
+  cdtLastMouseY = e.clientY;
+  if (cdtRafCursorId) cancelAnimationFrame(cdtRafCursorId);
+  cdtRafCursorId = requestAnimationFrame(() => {
+    cursorManager?.drawCursor('auto', cdtLastMouseX, cdtLastMouseY, 0.2);
+    cdtRafCursorId = null;
+  });
 };
 
 /**
