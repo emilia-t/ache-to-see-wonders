@@ -283,6 +283,8 @@ class CursorManager {
   }
 }
 
+
+
 ////////////////////
 //常量区-->
 ////////////////////
@@ -449,6 +451,29 @@ let selectedElements: Array<Element> = []; // 当前框选的元素列表
 ////////////////////
 //辅助函数区-->
 ////////////////////
+
+// 辅助函数：点到无限直线距离
+const H_pointToLineDistance = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  const cross = Math.abs((x2 - x1) * (y1 - py) - (y2 - y1) * (x1 - px));
+  return cross / Math.sqrt(lenSq);
+};
+
+// 辅助函数：点到线段距离
+const H_pointToSegmentDistance = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const projX = x1 + t * dx;
+  const projY = y1 + t * dy;
+  return Math.hypot(px - projX, py - projY);
+};
 
 /**
  * 道格拉斯-普克算法简化点集
@@ -1632,32 +1657,7 @@ const showClickEffect = (x: number, y: number) => {
  * @param screenY 鼠标屏幕Y坐标
  * @returns 是否删除了元素
  */
-const eraseElements = (screenX: number, screenY: number): boolean => {
-  const threshold = 5;
-
-  // 辅助函数：点到无限直线距离
-  const pointToLineDistance = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
-    const cross = Math.abs((x2 - x1) * (y1 - py) - (y2 - y1) * (x1 - px));
-    return cross / Math.sqrt(lenSq);
-  };
-
-  // 辅助函数：点到线段距离
-  const pointToSegmentDistance = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
-    let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
-    t = Math.max(0, Math.min(1, t));
-    const projX = x1 + t * dx;
-    const projY = y1 + t * dy;
-    return Math.hypot(px - projX, py - projY);
-  };
-
+const eraserElements = (screenX: number, screenY: number): boolean => {
   const elementsToDelete = new Set<number>();
   const trajectoriesToDelete = new Set<number>();
 
@@ -1667,15 +1667,15 @@ const eraseElements = (screenX: number, screenY: number): boolean => {
       const pt = el.points[0];
       const screenPt = TOcanvas2Screen(pt.x, pt.y);
       const dist = Math.hypot(screenX - screenPt.x, screenY - screenPt.y);
-      if (dist <= threshold) elementsToDelete.add(el.id);
+      if (dist <= eraserRadius) elementsToDelete.add(el.id);
     }
     else if (el.type === 'line') {
       const p1 = el.points[0];
       const p2 = el.points[1];
       const s1 = TOcanvas2Screen(p1.x, p1.y);
       const s2 = TOcanvas2Screen(p2.x, p2.y);
-      const dist = pointToLineDistance(screenX, screenY, s1.x, s1.y, s2.x, s2.y);
-      if (dist <= threshold) elementsToDelete.add(el.id);
+      const dist = H_pointToLineDistance(screenX, screenY, s1.x, s1.y, s2.x, s2.y);
+      if (dist <= eraserRadius) elementsToDelete.add(el.id);
     }
     else if (el.type === 'segment') {
       let minDist = Infinity;
@@ -1684,16 +1684,37 @@ const eraseElements = (screenX: number, screenY: number): boolean => {
         const b = el.points[i + 1];
         const sa = TOcanvas2Screen(a.x, a.y);
         const sb = TOcanvas2Screen(b.x, b.y);
-        const dist = pointToSegmentDistance(screenX, screenY, sa.x, sa.y, sb.x, sb.y);
+        const dist = H_pointToSegmentDistance(screenX, screenY, sa.x, sa.y, sb.x, sb.y);
         minDist = Math.min(minDist, dist);
       }
-      if (minDist <= threshold) elementsToDelete.add(el.id);
+      if (minDist <= eraserRadius) elementsToDelete.add(el.id);
     }
   });
 
   // 检查笔迹轨迹
   penTrajectoryList.forEach((traj, idx) => {
     if (traj.list.length < 2) return;
+
+    // 1. 快速计算轨迹在屏幕空间的包围盒
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of traj.list) {
+      const canvasX = traj.startPoint.x + p.x;
+      const canvasY = traj.startPoint.y + p.y;
+      const screen = TOcanvas2Screen(canvasX, canvasY);
+      if (screen.x < minX) minX = screen.x;
+      if (screen.x > maxX) maxX = screen.x;
+      if (screen.y < minY) minY = screen.y;
+      if (screen.y > maxY) maxY = screen.y;
+    }
+
+    // 2. 包围盒与橡皮擦圆相交判断（快速剔除）
+    const radius = eraserRadius; // 使用实际橡皮擦半径
+    if (screenX + radius < minX || screenX - radius > maxX ||
+        screenY + radius < minY || screenY - radius > maxY) {
+      return; // 完全不相交，跳过
+    }
+
+    // 3. 精确检查每条线段
     let minDist = Infinity;
     for (let i = 0; i < traj.list.length - 1; i++) {
       const p1 = traj.list[i];
@@ -1702,10 +1723,12 @@ const eraseElements = (screenX: number, screenY: number): boolean => {
       const canvas2 = { x: traj.startPoint.x + p2.x, y: traj.startPoint.y + p2.y };
       const s1 = TOcanvas2Screen(canvas1.x, canvas1.y);
       const s2 = TOcanvas2Screen(canvas2.x, canvas2.y);
-      const dist = pointToSegmentDistance(screenX, screenY, s1.x, s1.y, s2.x, s2.y);
-      minDist = Math.min(minDist, dist);
+      const dist = H_pointToSegmentDistance(screenX, screenY, s1.x, s1.y, s2.x, s2.y);
+      if (dist < minDist) minDist = dist;
+      if (minDist <= radius) break; // 找到命中即可提前退出
     }
-    if (minDist <= threshold) trajectoriesToDelete.add(idx);
+
+    if (minDist <= radius) trajectoriesToDelete.add(idx);
   });
 
   let deleted = false;
@@ -2162,7 +2185,7 @@ const onMousedown = (e: MouseEvent) => {
   if (drawStatusEraser) {
     e.preventDefault();
     isErasing = true;
-    const deleted = eraseElements(screenX, screenY);
+    const deleted = eraserElements(screenX, screenY);
     if (deleted) drawGraphics();
     drawUI();
     return;
@@ -2214,7 +2237,7 @@ const onMouseMove = (e: MouseEvent) => {
   // 橡皮擦擦除除中
   if (isErasing) {
     e.preventDefault();
-    const deleted = eraseElements(mouseX, mouseY);
+    const deleted = eraserElements(mouseX, mouseY);
     if (deleted) {
       drawGraphics(); // 有元素被擦除，重绘图形层
     }
