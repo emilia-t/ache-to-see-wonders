@@ -1,6 +1,6 @@
-﻿import { DynamicEntity } from '../DynamicEntity';
-import { StaticEntity } from '../../StaticEntity/StaticEntity';
-import type { Point } from '../../../../interface/InterfaceTest2d';
+﻿import { DynamicEntity } from '@/components/test_2d/class/Entity/DynamicEntity/DynamicEntity';
+import { StaticEntity } from '@/components/test_2d/class/Entity/StaticEntity/StaticEntity';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class PlayerDynamicEntity extends DynamicEntity {
   static readonly WIDTH = 50;

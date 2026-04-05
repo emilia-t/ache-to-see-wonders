@@ -1,6 +1,6 @@
-﻿import { DynamicEntity } from '../DynamicEntity';
-import type { NpcAttitude } from '../../../../type/TypeTest2d';
-import type { Point } from '../../../../interface/InterfaceTest2d';
+﻿import { DynamicEntity } from '@/components/test_2d/class/Entity/DynamicEntity/DynamicEntity';
+import type { NpcAttitude } from '@/components/test_2d/type/TypeTest2d';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class NpcDynamicEntity extends DynamicEntity {
   attitude: NpcAttitude; // 友好/中立/敌对

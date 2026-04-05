@@ -1,4 +1,4 @@
-﻿import type { TypeCursorName } from '../type/TypeTest2d';
+﻿import type { TypeCursorName } from '@/components/test_2d/type/TypeTest2d';
 
 export interface Resolution { width: number; height: number }
 export interface PenPoint {x: number; y: number; g: number};//g是压力值，0-1通过鼠标移动速度模拟

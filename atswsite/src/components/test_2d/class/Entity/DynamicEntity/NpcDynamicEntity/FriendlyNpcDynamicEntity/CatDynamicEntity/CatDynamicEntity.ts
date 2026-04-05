@@ -1,5 +1,5 @@
-﻿import { FriendlyNpcDynamicEntity } from '../FriendlyNpcDynamicEntity';
-import type { Point } from '../../../../../../interface/InterfaceTest2d';
+﻿import { FriendlyNpcDynamicEntity } from '@/components/test_2d/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class CatDynamicEntity extends FriendlyNpcDynamicEntity {
   static readonly CAT_HUNGER_TOO_FULL_THRESHOLD = 180; // 超过该饱腹值后不主动拾取烤鱼

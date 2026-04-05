@@ -1,5 +1,5 @@
-﻿import { CatDynamicEntity } from '../CatDynamicEntity';
-import type { Point } from '../../../../../../../interface/InterfaceTest2d';
+﻿import { CatDynamicEntity } from '@/components/test_2d/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/CatDynamicEntity/CatDynamicEntity';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class RagdollCatDynamicEntity extends CatDynamicEntity {
   static readonly TEXTURE_PATH = './textures/cat_ragdoll.png';

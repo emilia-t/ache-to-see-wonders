@@ -1,7 +1,7 @@
-﻿import { Entity } from '../Entity';
-import { StaticEntity } from '../StaticEntity/StaticEntity';
-import type { CollisionBox, Point } from '../../../interface/InterfaceTest2d';
-import type { DynamicEntityKind } from '../../../type/TypeTest2d';
+﻿import { Entity } from '@/components/test_2d/class/Entity/Entity';
+import { StaticEntity } from '@/components/test_2d/class/Entity/StaticEntity/StaticEntity';
+import type { CollisionBox, Point } from '@/components/test_2d/interface/InterfaceTest2d';
+import type { DynamicEntityKind } from '@/components/test_2d/type/TypeTest2d';
 
 class DynamicEntity extends Entity {
   kind: DynamicEntityKind;      // 动态实体类别

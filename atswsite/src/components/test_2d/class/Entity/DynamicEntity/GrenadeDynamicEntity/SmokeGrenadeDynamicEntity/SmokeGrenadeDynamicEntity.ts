@@ -1,5 +1,5 @@
-﻿import { GrenadeDynamicEntity } from '../GrenadeDynamicEntity';
-import type { Point } from '../../../../../interface/InterfaceTest2d';
+﻿import { GrenadeDynamicEntity } from '@/components/test_2d/class/Entity/DynamicEntity/GrenadeDynamicEntity/GrenadeDynamicEntity';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class SmokeGrenadeDynamicEntity extends GrenadeDynamicEntity {
   constructor(

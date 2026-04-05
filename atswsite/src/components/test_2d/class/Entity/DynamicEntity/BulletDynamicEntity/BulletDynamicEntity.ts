@@ -1,7 +1,7 @@
-﻿import { DynamicEntity } from '../DynamicEntity';
-import { StaticEntity } from '../../StaticEntity/StaticEntity';
-import type { BulletRangeType } from '../../../../type/TypeTest2d';
-import type { Point } from '../../../../interface/InterfaceTest2d';
+﻿import { DynamicEntity } from '@/components/test_2d/class/Entity/DynamicEntity/DynamicEntity';
+import { StaticEntity } from '@/components/test_2d/class/Entity/StaticEntity/StaticEntity';
+import type { BulletRangeType } from '@/components/test_2d/type/TypeTest2d';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class BulletDynamicEntity extends DynamicEntity {
   static readonly WIDTH = 12;

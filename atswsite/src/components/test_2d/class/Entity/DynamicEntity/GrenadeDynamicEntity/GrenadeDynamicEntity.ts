@@ -1,6 +1,6 @@
-﻿import { DynamicEntity } from '../DynamicEntity';
-import type { GrenadePurpose } from '../../../../type/TypeTest2d';
-import type { Point } from '../../../../interface/InterfaceTest2d';
+﻿import { DynamicEntity } from '@/components/test_2d/class/Entity/DynamicEntity/DynamicEntity';
+import type { GrenadePurpose } from '@/components/test_2d/type/TypeTest2d';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class GrenadeDynamicEntity extends DynamicEntity {
   purpose: GrenadePurpose;// 投掷物类型

@@ -1,4 +1,4 @@
-﻿import type { CollisionBox, Point, Texture } from '../../interface/InterfaceTest2d';
+﻿import type { CollisionBox, Point, Texture } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class Entity {
   private static nextEntityId = 100;

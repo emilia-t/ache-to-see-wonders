@@ -1,5 +1,5 @@
-﻿import { Entity } from '../Entity';
-import type { Point } from '../../../interface/InterfaceTest2d';
+﻿import { Entity } from '@/components/test_2d/class/Entity/Entity';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class ItemEntity extends Entity {
   lifetimeTotal: number; // 初始寿命（秒）

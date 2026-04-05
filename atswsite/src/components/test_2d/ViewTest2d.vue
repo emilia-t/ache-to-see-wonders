@@ -10,7 +10,7 @@ import type {
   NpcAttitude,
   GrenadePurpose,
   BulletRangeType,
-} from './type/TypeTest2d';
+} from '@/components/test_2d/type/TypeTest2d';
 import type {
   Resolution,
   PenPoint,
@@ -26,7 +26,7 @@ import type {
   CachedImage,
   CollisionBox,
   Texture,
-} from './interface/InterfaceTest2d';
+} from '@/components/test_2d/interface/InterfaceTest2d';
 import {
   CursorManager,
   Entity,
@@ -52,7 +52,7 @@ import {
   SniperBulletDynamicEntity,
   CatDynamicEntity,
   RagdollCatDynamicEntity,
-} from './class';
+} from '@/components/test_2d/class';
 
 
 ////////////////////
@@ -2356,7 +2356,6 @@ const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
     }
 
     if (entity.setTarget(target, staticEntityList)) {
-      console.log(`设置新目标: (${target.x.toFixed(2)}, ${target.y.toFixed(2)})`);
       return true;
     }
 
@@ -2364,11 +2363,9 @@ const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
   }
 
   if (entity.tryFallbackTarget(staticEntityList)) {
-    console.warn(`常规目标重算失败（尝试 ${maxAttempts} 次），已启用兜底移动策略`);
     return true;
   }
 
-  console.warn(`无法找到可抵达目标点（尝试 ${maxAttempts} 次），兜底策略也失败`);
   return false;
 };
 

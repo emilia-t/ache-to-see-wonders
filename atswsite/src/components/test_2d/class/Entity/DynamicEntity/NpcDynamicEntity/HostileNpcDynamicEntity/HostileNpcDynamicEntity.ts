@@ -1,5 +1,5 @@
-﻿import { NpcDynamicEntity } from '../NpcDynamicEntity';
-import type { Point } from '../../../../../interface/InterfaceTest2d';
+﻿import { NpcDynamicEntity } from '@/components/test_2d/class/Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class HostileNpcDynamicEntity extends NpcDynamicEntity {
   constructor(

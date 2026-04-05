@@ -1,5 +1,5 @@
-﻿import type { CachedImage } from '../../interface/InterfaceTest2d';
-import type { TypeCursorName, TypeEffectName } from '../../type/TypeTest2d';
+﻿import type { CachedImage } from '@/components/test_2d/interface/InterfaceTest2d';
+import type { TypeCursorName, TypeEffectName } from '@/components/test_2d/type/TypeTest2d';
 
 class CursorManager {
   private cursorFilePath = {

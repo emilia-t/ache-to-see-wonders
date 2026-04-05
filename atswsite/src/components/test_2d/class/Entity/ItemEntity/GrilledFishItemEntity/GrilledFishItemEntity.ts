@@ -1,5 +1,5 @@
-﻿import { ItemEntity } from '../ItemEntity';
-import type { Point } from '../../../../interface/InterfaceTest2d';
+﻿import { ItemEntity } from '@/components/test_2d/class/Entity/ItemEntity/ItemEntity';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class GrilledFishItemEntity extends ItemEntity {
   static readonly WIDTH = 40;

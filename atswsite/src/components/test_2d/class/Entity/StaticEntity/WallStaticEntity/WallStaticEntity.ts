@@ -1,5 +1,5 @@
-﻿import { StaticEntity } from '../StaticEntity';
-import type { Point } from '../../../../interface/InterfaceTest2d';
+﻿import { StaticEntity } from '@/components/test_2d/class/Entity/StaticEntity/StaticEntity';
+import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 
 class WallStaticEntity extends StaticEntity {
   static readonly WIDTH = 50;
