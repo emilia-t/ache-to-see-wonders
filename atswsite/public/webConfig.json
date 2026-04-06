@@ -76,6 +76,18 @@
         "online_state": false,
         "visit_count": 0,
         "heart_count": 0
+      },
+      {
+        "key": "db1",
+        "title": "画板",
+        "description": "测试项目",
+        "cover": "/cover/drawboard_cover.png",
+        "targetUrl": "/drawboard",
+        "mode": "single_person",
+        "online_count": 0,
+        "online_state": false,
+        "visit_count": 0,
+        "heart_count": 0
       }
     ]
   },
@@ -83,6 +95,12 @@
     "annotation": "Some logs", 
     "version": "2",
     "list": [
+      {
+        "id":11,
+        "time": "2026-04-05",
+        "title": "增加画板",
+        "descript": "增加画板功能"
+      },
       {
         "id":10,
         "time": "2026-03-22",

@@ -79,6 +79,15 @@ const routes =[
       title:"2D测试"
     }
   }
+  ,
+  {
+    path: '/drawboard',
+    name: 'drawboard',
+    component: () => import('@/components/PageDrawBoard.vue'),
+    meta:{
+      title:"画板"
+    }
+  }
 ];
 
 const router = createRouter({
