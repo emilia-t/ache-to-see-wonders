@@ -67,7 +67,7 @@ const BT1_INI: any[] = [];
 const LOCAL_STORAGE_KEY = 'viewTest2dState';
 const DEBUG_TERMINAL_MAX_LOGS = 120;
 const RDEC_ITERATIONS = 3; // 解析动态实体碰撞算法迭代次数
-const RDEC_SEPARATION_EPSILON = 0.1; // 碰撞分离时的微小偏移量，避免实体卡在一起
+const RDEC_SEPARATION_EPSILON = 0.1; // 碰撞分离时的微小偏移量,避免实体卡在一起
 ////////////////////
 //<--常量区
 ////////////////////
@@ -123,9 +123,9 @@ let debugShowInterestRange = false;
 let debugTerminalVisible = false;
 let debugTerminalInput = '';
 let debugTerminalLogs: string[] = [];
-let debugTerminalScrollOffset = 0; // 终端日志向上滚动的行偏移（0=显示最新日志）
+let debugTerminalScrollOffset = 0; // 终端日志向上滚动的行偏移(0=显示最新日志)
 let debugTerminalHistory: string[] = [];
-let debugTerminalHistoryIndex = -1; // 调试终端历史命令索引，-1表示当前输入行，0及以上表示历史命令
+let debugTerminalHistoryIndex = -1; // 调试终端历史命令索引,-1表示当前输入行,0及以上表示历史命令
 let debugTerminalInputDraft = '';
 let perspectiveMode: PerspectiveMode = 'third_person';
 let firstPersonMoveW = false;
@@ -168,7 +168,7 @@ function H_simplifyPoints(points: PenPoint[], tolerance: number): PenPoint[] {
     }
   }
 
-  // 如果最大距离大于容差，则递归简化两段
+  // 如果最大距离大于容差,则递归简化两段
   if (maxDist > tolerance) {
     const left = points.slice(0, maxIndex + 1);
     const right = points.slice(maxIndex);
@@ -194,7 +194,7 @@ function H_perpendicularDistance(p: PenPoint, p1: PenPoint, p2: PenPoint): numbe
   const lenSq = dx * dx + dy * dy;
 
   if (lenSq === 0) {
-    // p1 和 p2 重合，直接计算到 p1 的距离
+    // p1 和 p2 重合,直接计算到 p1 的距离
     return Math.hypot(x0 - x1, y0 - y1);
   }
 
@@ -254,7 +254,7 @@ const startSetting = () => {
       offsetYY = height / 2;
   }
 
-  if (UI_CANVAS.value) {// 添加事件监听（全部绑定到UI Canvas）
+  if (UI_CANVAS.value) {// 添加事件监听(全部绑定到UI Canvas)
     UI_CANVAS.value.addEventListener('mousedown', onMousedown);
     UI_CANVAS.value.addEventListener('mousemove', onMouseMove);
     UI_CANVAS.value.addEventListener('mouseup', onMouseUp);
@@ -274,7 +274,7 @@ const startSetting = () => {
     }
   }
 
-  // 初始化测试实体（移除所有静态障碍物）
+  // 初始化测试实体(移除所有静态障碍物)
   staticEntityList = [];
   dynamicEntityList = [];
   projectileEntityList = [];
@@ -285,7 +285,7 @@ const startSetting = () => {
 
   const catSpawnCenter = { x: -50, y: -50 };
 
-  // 动态实体示例：猫-随机游走
+  // 动态实体示例:猫-随机游走
   const cat1 = new RagdollCatDynamicEntity(
       { x: catSpawnCenter.x - 50, y: catSpawnCenter.y + 50 },
       'Cat a'
@@ -304,7 +304,7 @@ const startSetting = () => {
   dynamicEntityList.push(cat1);
   dynamicEntityList.push(cat2);
 
-  // 物品实体示例：烤鱼，可被动态实体拾取
+  // 物品实体示例:烤鱼,可被动态实体拾取
   itemEntityList.push(
     new GrilledFishItemEntity({ x: catSpawnCenter.x - 100, y: catSpawnCenter.y - 40 }, 'Grilled Fish A'),
     new GrilledFishItemEntity({ x: catSpawnCenter.x + 80, y: catSpawnCenter.y + 20 }, 'Grilled Fish B'),
@@ -391,7 +391,7 @@ const createEventArea = () => {
 };
 
 /**
- * 创建坐标轴刻度标记（图形层）
+ * 创建坐标轴刻度标记(图形层)
  */
 const createAxisMark = () => {
   if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
@@ -410,13 +410,13 @@ const createAxisMark = () => {
   const canvasLeftTop = TOscreen2Canvas(0, 0);
   const canvasRightBottom = TOscreen2Canvas(width, height);
 
-  // X轴刻度（在X轴上绘制）
+  // X轴刻度(在X轴上绘制)
   if (offsetYY >= 0 && offsetYY <= height) {
     // 计算X轴可见区域的坐标范围
     const minX = Math.min(canvasLeftTop.x, canvasRightBottom.x);
     const maxX = Math.max(canvasLeftTop.x, canvasRightBottom.x);
 
-    // 计算第一个刻度的坐标（按gridSize取整）
+    // 计算第一个刻度的坐标(按gridSize取整)
     let firstTickX = Math.ceil(minX / 50) * 50;
 
     // 绘制X轴刻度
@@ -439,13 +439,13 @@ const createAxisMark = () => {
     }
   }
 
-  // Y轴刻度（在Y轴上绘制）
+  // Y轴刻度(在Y轴上绘制)
   if (offsetXX >= 0 && offsetXX <= width) {
     // 计算Y轴可见区域的坐标范围
     const minY = Math.min(canvasLeftTop.y, canvasRightBottom.y);
     const maxY = Math.max(canvasLeftTop.y, canvasRightBottom.y);
 
-    // 计算第一个刻度的坐标（按gridSize取整）
+    // 计算第一个刻度的坐标(按gridSize取整)
     let firstTickY = Math.ceil(minY / 50) * 50;
 
     // 绘制Y轴刻度
@@ -472,7 +472,7 @@ const createAxisMark = () => {
 };
 
 /**
- * 创建坐标辅助轴（带刻度）（图形层）
+ * 创建坐标辅助轴(带刻度)(图形层)
  * @param xColor X轴颜色
  * @param yColor Y轴颜色
  */
@@ -484,7 +484,7 @@ const createAxis = (xColor: RGB, yColor: RGB) => {
   // 保存当前上下文状态
   ctxGraphics.save();
 
-  // 绘制X轴（红色）
+  // 绘制X轴(红色)
   ctxGraphics.beginPath();
   ctxGraphics.strokeStyle = `rgb(${xColor.r}, ${xColor.g}, ${xColor.b})`;
   ctxGraphics.lineWidth = 2;
@@ -492,7 +492,7 @@ const createAxis = (xColor: RGB, yColor: RGB) => {
   ctxGraphics.lineTo(width, offsetYY);
   ctxGraphics.stroke();
 
-  // 绘制Y轴（绿色）
+  // 绘制Y轴(绿色)
   ctxGraphics.beginPath();
   ctxGraphics.strokeStyle = `rgb(${yColor.r}, ${yColor.g}, ${yColor.b})`;
   ctxGraphics.lineWidth = 2;
@@ -500,7 +500,7 @@ const createAxis = (xColor: RGB, yColor: RGB) => {
   ctxGraphics.lineTo(offsetXX, height);
   ctxGraphics.stroke();
 
-  // 绘制箭头（X轴箭头）
+  // 绘制箭头(X轴箭头)
   ctxGraphics.beginPath();
   ctxGraphics.fillStyle = `rgb(${xColor.r}, ${xColor.g}, ${xColor.b})`;
   // 右箭头
@@ -516,7 +516,7 @@ const createAxis = (xColor: RGB, yColor: RGB) => {
   ctxGraphics.lineTo(10, offsetYY + 5);
   ctxGraphics.fill();
 
-  // 绘制箭头（Y轴箭头）
+  // 绘制箭头(Y轴箭头)
   ctxGraphics.beginPath();
   ctxGraphics.fillStyle = `rgb(${yColor.r}, ${yColor.g}, ${yColor.b})`;
   // 上箭头
@@ -552,13 +552,13 @@ const createAxis = (xColor: RGB, yColor: RGB) => {
 };
 
 /**
- * 绘制网格辅助线（图形层）
+ * 绘制网格辅助线(图形层)
  */
 const createGrid = () => {
   if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
 
   const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
-  const gridSize = 50 * scale; // 网格大小，随缩放比例变化
+  const gridSize = 50 * scale; // 网格大小,随缩放比例变化
 
   ctxGraphics.save();
   ctxGraphics.strokeStyle = "#e0e0e0";
@@ -600,7 +600,7 @@ const createGrid = () => {
 const TOscreen2Canvas = (screenX: number, screenY: number) => {
   return {
     x: screenX - offsetXX,
-    y: offsetYY - screenY  // 因为屏幕Y轴向下，画布Y轴向上
+    y: offsetYY - screenY  // 因为屏幕Y轴向下,画布Y轴向上
   };
 };
 
@@ -618,7 +618,7 @@ const TOcanvas2Screen = (canvasX: number, canvasY: number) => {
 };
 
 /**
- * 绘制顶部提示信息（UI层）
+ * 绘制顶部提示信息(UI层)
  */
 const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   if (!CtxUi || !CANVAS) return;
@@ -646,7 +646,7 @@ const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
 };
 
 /**
- * 绘制调试终端（UI层）
+ * 绘制调试终端(UI层)
  */
 const drawDebugTerminal = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   if (!debugTerminalVisible) return;
@@ -712,7 +712,7 @@ const getDebugTerminalRect = (canvas: HTMLCanvasElement) => {
 };
 
 /**
- * 绘制比例尺（UI层）
+ * 绘制比例尺(UI层)
  */
 const drawUIRuler = (CtxUi: CanvasRenderingContext2D,CANVAS: HTMLCanvasElement) => {
   const padding = 20;
@@ -769,7 +769,7 @@ const drawUIRuler = (CtxUi: CanvasRenderingContext2D,CANVAS: HTMLCanvasElement) 
 };
 
 /**
- * 绘制图形层（网格、轴、元素、临时预览）
+ * 绘制图形层(网格、轴、元素、临时预览)
  */
 const drawGraphics = () => {
   if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
@@ -832,14 +832,14 @@ const drawEntities = () => {
     drawDebugMovementRange();
   }
 
-  // 绘制兴趣范围调试圆（烤鱼吸引半径）
+  // 绘制兴趣范围调试圆(烤鱼吸引半径)
   if (debugShowInterestRange) {
     drawDebugInterestRange();
   }
 };
 
 /**
- * 绘制UI层（按钮、标尺、提示）
+ * 绘制UI层(按钮、标尺、提示)
  */
 const drawUI = () => {
   if (!ctxUi || !UI_CANVAS.value) return;
@@ -862,7 +862,7 @@ const drawSingleEntity = (entity: Entity) => {
   const left = screenPos.x - halfW;
   const top = screenPos.y - halfH;
 
-  // 物品实体：按寿命分段透明 + 独立消失特效
+  // 物品实体:按寿命分段透明 + 独立消失特效
   if (entity.type === 'item') {
     const item = entity as ItemEntity;
     const lifeOpacity = item.getLifetimeOpacity();
@@ -886,7 +886,7 @@ const drawSingleEntity = (entity: Entity) => {
     }
     ctxEntity.restore();
 
-    // 物品消失特效：金色碎光与径向光晕（与动态实体死亡特效区分）
+    // 物品消失特效:金色碎光与径向光晕(与动态实体死亡特效区分)
     if (item.isDisappearing) {
       const p = clampedDisappearProgress;
       const baseRadius = Math.max(entity.width, entity.height) * (0.3 + p * 0.9);
@@ -944,7 +944,7 @@ const drawSingleEntity = (entity: Entity) => {
     return;
   }
 
-  // 动态实体死亡特效：贴图淡出 + 扩散光环
+  // 动态实体死亡特效:贴图淡出 + 扩散光环
   if (entity.type === 'dynamic') {
     const dynamicEntity = entity as DynamicEntity;
     if (dynamicEntity instanceof BulletDynamicEntity) {
@@ -1017,7 +1017,7 @@ const drawSingleEntity = (entity: Entity) => {
     ctxEntity.strokeRect(left, top, entity.width, entity.height);
   }
 
-  // 动态实体受伤时：在原贴图上叠加半透明红色（仅作用于非透明像素）
+  // 动态实体受伤时:在原贴图上叠加半透明红色(仅作用于非透明像素)
   if (entity.type === 'dynamic') {
     const dynamicEntity = entity as DynamicEntity;
     if (dynamicEntity.damageFlashTimer > 0) {
@@ -1030,7 +1030,7 @@ const drawSingleEntity = (entity: Entity) => {
     }
   }
 
-  // 动态实体顶部状态条：生命值（绿）+ 饥饿值（黄）
+  // 动态实体顶部状态条:生命值(绿)+ 饥饿值(黄)
   if (entity.type === 'dynamic') {
     const dynamicEntity = entity as DynamicEntity;
     const healthMax = dynamicEntity instanceof CatDynamicEntity ? 50 : 100;
@@ -1073,7 +1073,7 @@ const drawSingleEntity = (entity: Entity) => {
     ctxEntity.fillText(entity.tag, screenPos.x, screenPos.y + halfH + 20);
   }
 
-  // 动态实体调试文本：从下到上逐行叠加显示
+  // 动态实体调试文本:从下到上逐行叠加显示
   if (entity.type === 'dynamic' && (debugShowMovementPassion || debugShowMovementSpeed || debugShowHealth || debugShowHunger)) {
     const dynamicEntity = entity as DynamicEntity;
     const debugLines: string[] = [];
@@ -1104,14 +1104,14 @@ const drawSingleEntity = (entity: Entity) => {
     }
   }
 
-  // 恢复默认文本排版设置，避免影响其他绘制
+  // 恢复默认文本排版设置,避免影响其他绘制
   ctxEntity.textAlign = 'start';
   ctxEntity.textBaseline = 'alphabetic';
   ctxEntity.shadowColor = 'transparent';
 };
 
 /**
- * 绘制动态实体的历史移动轨迹（调试用）
+ * 绘制动态实体的历史移动轨迹(调试用)
  * 显示曲线路径、历史目标点、当前目标点
  */
 const drawDebugHistoricalTrajectory = () => {
@@ -1119,7 +1119,7 @@ const drawDebugHistoricalTrajectory = () => {
   ctxEntity.save();
 
   for (const entity of dynamicEntityList) {
-    // 1. 绘制平滑曲线路径（计划路径）
+    // 1. 绘制平滑曲线路径(计划路径)
     if (entity.curvePoints && entity.curvePoints.length > 1) {
       ctxEntity.beginPath();
       ctxEntity.lineWidth = 2;
@@ -1135,7 +1135,7 @@ const drawDebugHistoricalTrajectory = () => {
       ctxEntity.stroke();
     }
 
-    // 2. 绘制历史目标点（targetHistory）
+    // 2. 绘制历史目标点(targetHistory)
     if (entity.targetHistory && entity.targetHistory.length > 0) {
       ctxEntity.fillStyle = 'rgba(255, 165, 0, 0.8)'; // 橙色
       ctxEntity.strokeStyle = '#000';
@@ -1150,7 +1150,7 @@ const drawDebugHistoricalTrajectory = () => {
       }
     }
 
-    // 3. 绘制下一个目标点（nextTarget）
+    // 3. 绘制下一个目标点(nextTarget)
     const nextTarget = entity.nextTarget;
     if (nextTarget && !(nextTarget.x === entity.position.x && nextTarget.y === entity.position.y)) {
       const screenPos = TOcanvas2Screen(nextTarget.x, nextTarget.y);
@@ -1187,7 +1187,7 @@ const drawDebugCollisionBoxes = () => {
 };
 
 /**
- * 绘制动态实体朝向箭头（调试用）
+ * 绘制动态实体朝向箭头(调试用)
  */
 const drawDebugFacingDirection = () => {
   if (!ctxEntity) return;
@@ -1239,7 +1239,7 @@ const drawDebugFacingDirection = () => {
 };
 
 /**
- * 绘制动态实体随机游走范围（调试用）
+ * 绘制动态实体随机游走范围(调试用)
  */
 const drawDebugMovementRange = () => {
   if (!ctxEntity) return;
@@ -1260,7 +1260,7 @@ const drawDebugMovementRange = () => {
 };
 
 /**
- * 绘制猫的兴趣范围（烤鱼吸引半径，调试用）
+ * 绘制猫的兴趣范围(烤鱼吸引半径,调试用)
  */
 const drawDebugInterestRange = () => {
   if (!ctxEntity) return;
@@ -1443,7 +1443,7 @@ const getActiveGrilledFishById = (itemId: number): GrilledFishItemEntity | null 
 
 /**
  * 为动态实体生成随机目标点-随机游走
- * 目标点在实体附近圆形范围内，并避开静态实体
+ * 目标点在实体附近圆形范围内,并避开静态实体
  */
 const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
   if (entity instanceof CatDynamicEntity) {
@@ -1498,8 +1498,8 @@ const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
 };
 
 /**
- * 处理动态实体之间的碰撞挤压（AABB 分离）
- * 通过最小重叠轴把两个实体各推开一半，形成互相挤压而非穿透的效果
+ * 处理动态实体之间的碰撞挤压(AABB 分离)
+ * 通过最小重叠轴把两个实体各推开一半,形成互相挤压而非穿透的效果
  */
 const resolveDynamicEntityCollisions = () => {
   if (dynamicEntityList.length < 2) return;
@@ -1555,7 +1555,7 @@ const updateDynamicEntities = (deltaTime: number) => {
     entity.updateDeathEffect(deltaTime);
   }
 
-  // 2) 统一做动态实体间碰撞挤压，避免彼此穿透
+  // 2) 统一做动态实体间碰撞挤压,避免彼此穿透
   resolveDynamicEntityCollisions();
 
   // 3) 再处理停滞检测、驻足计时与下一目标分配
@@ -1565,18 +1565,18 @@ const updateDynamicEntities = (deltaTime: number) => {
     entity.updateStayDuration(deltaTime);
     entity.updateStaticCompressionEffects(deltaTime, staticEntityList);
 
-    // 猫优先追逐附近烤鱼：可达时直接改目标
+    // 猫优先追逐附近烤鱼:可达时直接改目标
     if (entity instanceof CatDynamicEntity && !entity.isDead) {
       const canSeekFish = entity.hungerMeter <= CatDynamicEntity.CAT_HUNGER_TOO_FULL_THRESHOLD;
       if (!canSeekFish) {
-        // 非常饱腹时，不再主动追鱼；若正在追，立即取消
+        // 非常饱腹时,不再主动追鱼；若正在追,立即取消
         if (entity.chasingItemId !== null) {
           entity.clearChasingItem();
           entity.stop();
           entity.stayDurationRemaining = 0.3 + Math.random() * 0.7;
         }
       } else {
-        // 当前追逐目标已消失（被拾取/进入消失特效/移除）时，立即中断追逐
+        // 当前追逐目标已消失(被拾取/进入消失特效/移除)时,立即中断追逐
         if (entity.chasingItemId !== null) {
           const activeTargetFish = getActiveGrilledFishById(entity.chasingItemId);
           if (!activeTargetFish) {
@@ -1610,13 +1610,13 @@ const updateDynamicEntities = (deltaTime: number) => {
       }
     }
 
-    // 超过 10 秒未位移：强制重新生成目标并重新规划路径
+    // 超过 10 秒未位移:强制重新生成目标并重新规划路径
     if (entity.updateNoMovementWatchdog(deltaTime)) {
       setRandomTargetForDynamic(entity);
       continue;
     }
 
-    // 非移动且驻足结束后，再生成随机目标
+    // 非移动且驻足结束后,再生成随机目标
     if (entity.canGetNewWanderTarget(deltaTime, staticEntityList)) {
       setRandomTargetForDynamic(entity);
     }
@@ -1989,7 +1989,7 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
     return;
   }
 
-  // 终端打开时，接管输入
+  // 终端打开时,接管输入
   if (debugTerminalVisible) {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -2104,7 +2104,7 @@ const onGlobalKeyUp = (e: KeyboardEvent) => {
 };
 
 /**
- * 画布点击事件处理（绑定到UI Canvas）
+ * 画布点击事件处理(绑定到UI Canvas)
  */
 const onCanvasClick = (e: MouseEvent) => {
   if (!UI_CANVAS.value || !ctxGraphics) return;
@@ -2147,10 +2147,10 @@ const onCanvasWheel = (e: WheelEvent) => {
   const step = Math.max(1, Math.round(Math.abs(e.deltaY) / 40));
 
   if (e.deltaY < 0) {
-    // 向上滚动：查看更早的日志
+    // 向上滚动:查看更早的日志
     debugTerminalScrollOffset = Math.min(maxScrollOffset, debugTerminalScrollOffset + step);
   } else if (e.deltaY > 0) {
-    // 向下滚动：回到更新的日志
+    // 向下滚动:回到更新的日志
     debugTerminalScrollOffset = Math.max(0, debugTerminalScrollOffset - step);
   }
 
@@ -2185,7 +2185,7 @@ const onResizeCanvas = () => {
     drawEntities(); // 重绘实体层
   }
 
-  // 如果还没有设置偏移量，初始化为画布中心
+  // 如果还没有设置偏移量,初始化为画布中心
   if (offsetXX === 0 && offsetYY === 0) {
     const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
     offsetXX = width / 2;
@@ -2198,7 +2198,7 @@ const onResizeCanvas = () => {
 };
 
 /**
- * 鼠标按下事件（绑定到UI Canvas）
+ * 鼠标按下事件(绑定到UI Canvas)
  */
 const onMousedown = (e: MouseEvent) => {
   const screenX = e.offsetX;
@@ -2224,7 +2224,7 @@ const onMousedown = (e: MouseEvent) => {
 };
 
 /**
- * 鼠标移动事件（绑定到UI Canvas）
+ * 鼠标移动事件(绑定到UI Canvas)
  */
 const onMouseMove = (e: MouseEvent) => {
   mouseX = e.offsetX;
@@ -2261,7 +2261,7 @@ const onMouseMove = (e: MouseEvent) => {
 };
 
 /**
- * 鼠标释放事件（绑定到UI Canvas）
+ * 鼠标释放事件(绑定到UI Canvas)
  */
 const onMouseUp = () => {
   isDragging = false;
@@ -2270,7 +2270,7 @@ const onMouseUp = () => {
 };
 
 /**
- * 窗口鼠标移动（用于自定义光标）
+ * 窗口鼠标移动(用于自定义光标)
  */
 const onWindowMouseMove = (e: MouseEvent) => {
   cdtLastMouseX = e.clientX;
@@ -2283,14 +2283,14 @@ const onWindowMouseMove = (e: MouseEvent) => {
 };
 
 /**
- * 窗口鼠标离开（隐藏光标）
+ * 窗口鼠标离开(隐藏光标)
  */
 const onWindowMouseLeave = () => {
   cursorManager?.setFocused(false);
 };
 
 /**
- * 窗口鼠标进入（显示光标）
+ * 窗口鼠标进入(显示光标)
  */
 const onWindowMouseEnter = () => {
   cursorManager?.setFocused(true);
