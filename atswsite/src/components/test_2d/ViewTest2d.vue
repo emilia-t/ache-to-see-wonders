@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 // The relative position of this file: src/components/test_2d/ViewTest2d.vue
+// Warning! Please use an editor that supports UTF-8 to read the code!
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 
 import type {
