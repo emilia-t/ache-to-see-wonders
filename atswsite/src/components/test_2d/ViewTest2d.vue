@@ -115,7 +115,7 @@ let debugShowTrajectory = false;
 let debugShowFacingDirection = false;
 let debugShowMovementPassion = false;
 let debugShowMovementSpeed = false;
-let debugShowMovementHealth = false;
+let debugShowHealth = false;
 let debugShowHunger = false;
 let debugShowTag = false;
 let debugShowMovementRange = false;
@@ -123,7 +123,10 @@ let debugShowInterestRange = false;
 let debugTerminalVisible = false;
 let debugTerminalInput = '';
 let debugTerminalLogs: string[] = [];
-let debugTerminalScrollOffset = 0; // 终端日志向上滚动的行偏移（0=最新）
+let debugTerminalScrollOffset = 0; // 终端日志向上滚动的行偏移（0=显示最新日志）
+let debugTerminalHistory: string[] = [];
+let debugTerminalHistoryIndex = -1; // 调试终端历史命令索引，-1表示当前输入行，0及以上表示历史命令
+let debugTerminalInputDraft = '';
 let perspectiveMode: PerspectiveMode = 'third_person';
 let firstPersonMoveW = false;
 let firstPersonMoveA = false;
@@ -587,23 +590,6 @@ const createGrid = () => {
 ////////////////////
 //其他函数区-->
 ////////////////////
-
-/**
- * 清空画布所有内容
- */
-const graphicsClear = () => {
-
-  // 恢复鼠标样式
-  if (UI_CANVAS.value) {
-    if(cursorManager){
-      cursorManager.setNowCursorType('default');
-    }
-  }
-
-  // 重绘
-  drawGraphics();
-  drawUI();
-};
 
 /**
  * 将屏幕坐标转换为画布坐标
@@ -1088,13 +1074,13 @@ const drawSingleEntity = (entity: Entity) => {
   }
 
   // 动态实体调试文本：从下到上逐行叠加显示
-  if (entity.type === 'dynamic' && (debugShowMovementPassion || debugShowMovementSpeed || debugShowMovementHealth || debugShowHunger)) {
+  if (entity.type === 'dynamic' && (debugShowMovementPassion || debugShowMovementSpeed || debugShowHealth || debugShowHunger)) {
     const dynamicEntity = entity as DynamicEntity;
     const debugLines: string[] = [];
     if (debugShowHunger && dynamicEntity instanceof CatDynamicEntity) {
       debugLines.push(`hunger: ${dynamicEntity.hungerMeter.toFixed(0)}`);
     }
-    if (debugShowMovementHealth) {
+    if (debugShowHealth) {
       debugLines.push(`health: ${dynamicEntity.health.toFixed(0)}`);
     }
     if (debugShowMovementSpeed) {
@@ -1460,7 +1446,6 @@ const getActiveGrilledFishById = (itemId: number): GrilledFishItemEntity | null 
  * 目标点在实体附近圆形范围内，并避开静态实体
  */
 const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
-  if (!GRAPHICS_CANVAS.value) return false;
   if (entity instanceof CatDynamicEntity) {
     entity.clearChasingItem();
   }
@@ -1694,6 +1679,17 @@ const pushDebugTerminalLog = (text: string) => {
   }
 };
 
+const pushDebugTerminalHistory = (text: string) => {
+  const commandText = text.trim();
+  if (!commandText) return;
+
+  debugTerminalHistory = debugTerminalHistory.filter(cmd => cmd !== commandText);
+  debugTerminalHistory.push(commandText);
+  if (debugTerminalHistory.length > 10) {// 最大记忆10条历史命令
+    debugTerminalHistory = debugTerminalHistory.slice(debugTerminalHistory.length - 10);
+  }
+};
+
 const parseDebugSwitchCommand = (args: string[], currentValue: boolean): boolean | null => {
   if (args.length === 0) return !currentValue;
   const option = args[0].toLowerCase();
@@ -1751,11 +1747,11 @@ const DEBUG_COMMAND_SPECS = [
   { name: '/facing', args: ['on', 'off', 'toggle'] },
   { name: '/show_tag', args: ['on', 'off', 'toggle'] },
   { name: '/show_hunger', args: ['on', 'off', 'toggle'] },
+  { name: '/show_health', args: ['on', 'off', 'toggle'] },
   { name: '/perception_range', args: ['on', 'off', 'toggle'] },
   { name: '/movement_range', args: ['on', 'off', 'toggle'] },
   { name: '/movement_speed', args: ['on', 'off', 'toggle'] },
   { name: '/movement_passion', args: ['on', 'off', 'toggle'] },
-  { name: '/movement_health', args: ['on', 'off', 'toggle'] },
   { name: '/all', args: ['on', 'off'] },
   { name: '/clear', args: [] as string[] },
 ];
@@ -1824,7 +1820,7 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
   const cmd = rawCmd.replace(/^\//, '').toLowerCase();
 
   switch (cmd) {
-    case 'help':
+    case 'help':{
       pushDebugTerminalLog('Commands:');
       pushDebugTerminalLog('/help');
       pushDebugTerminalLog('/status');
@@ -1835,27 +1831,29 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       pushDebugTerminalLog('/facing [on|off|toggle]');
       pushDebugTerminalLog('/show_tag [on|off|toggle]');
       pushDebugTerminalLog('/show_hunger [on|off|toggle]');
+      pushDebugTerminalLog('/show_health [on|off|toggle]');
       pushDebugTerminalLog('/perception_range [on|off|toggle]');
       pushDebugTerminalLog('/movement_range [on|off|toggle]');
       pushDebugTerminalLog('/movement_speed [on|off|toggle]');
       pushDebugTerminalLog('/movement_passion [on|off|toggle]');
-      pushDebugTerminalLog('/movement_health [on|off|toggle]');
       pushDebugTerminalLog('/all [on|off]');
       pushDebugTerminalLog('/clear');
       break;
-    case 'status':
+    }
+    case 'status':{
       pushDebugTerminalLog(`Perspective: ${perspectiveMode === 'first_person' ? 'FIRST_PERSON' : 'THIRD_PERSON'}`);
       pushDebugTerminalLog(`Trajectory: ${debugShowTrajectory ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`CollisionBoxes: ${debugCollisionBoxes ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`FacingArrow: ${debugShowFacingDirection ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`TagText: ${debugShowTag ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`HungerText: ${debugShowHunger ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`HealthText: ${debugShowHealth ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`InterestRange: ${debugShowInterestRange ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`MovementRange: ${debugShowMovementRange ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`MovementSpeedText: ${debugShowMovementSpeed ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`MovementPassionText: ${debugShowMovementPassion ? 'ON' : 'OFF'}`);
-      pushDebugTerminalLog(`MovementHealthText: ${debugShowMovementHealth ? 'ON' : 'OFF'}`);
       break;
+    }
     case 'set_perspective': {
       const nextMode = parsePerspectiveMode(args[0]);
       if (!nextMode) {
@@ -1893,36 +1891,46 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       );
       break;
     }
-    case 'trajectory':
+    case 'trajectory':{
       applyDebugFlagCommand('Trajectory', debugShowTrajectory, args, (v) => { debugShowTrajectory = v; });
       break;
-    case 'collision':
+    }
+    case 'collision':{
       applyDebugFlagCommand('CollisionBoxes', debugCollisionBoxes, args, (v) => { debugCollisionBoxes = v; });
       break;
-    case 'facing':
+    }
+    case 'facing':{
       applyDebugFlagCommand('FacingArrow', debugShowFacingDirection, args, (v) => { debugShowFacingDirection = v; });
       break;
-    case 'show_tag':
+    }
+    case 'show_tag':{
       applyDebugFlagCommand('TagText', debugShowTag, args, (v) => { debugShowTag = v; });
       break;
-    case 'show_hunger':
+    }
+    case 'show_hunger':{
       applyDebugFlagCommand('HungerText', debugShowHunger, args, (v) => { debugShowHunger = v; });
       break;
-    case 'perception_range':
+    }
+    case 'show_health':{
+      applyDebugFlagCommand('HealthText', debugShowHealth, args, (v) => { debugShowHealth = v; });
+      break;
+    }
+    case 'perception_range':{
       applyDebugFlagCommand('InterestRange', debugShowInterestRange, args, (v) => { debugShowInterestRange = v; });
       break;
-    case 'movement_range':
+    }
+    case 'movement_range':{
       applyDebugFlagCommand('MovementRange', debugShowMovementRange, args, (v) => { debugShowMovementRange = v; });
       break;
-    case 'movement_speed':
+    }
+    case 'movement_speed':{
       applyDebugFlagCommand('MovementSpeedText', debugShowMovementSpeed, args, (v) => { debugShowMovementSpeed = v; });
       break;
-    case 'movement_passion':
+    }
+    case 'movement_passion':{
       applyDebugFlagCommand('MovementPassionText', debugShowMovementPassion, args, (v) => { debugShowMovementPassion = v; });
       break;
-    case 'movement_health':
-      applyDebugFlagCommand('MovementHealthText', debugShowMovementHealth, args, (v) => { debugShowMovementHealth = v; });
-      break;
+    }
     case 'all': {
       if (args.length === 0) {
         pushDebugTerminalLog('[ERR] Missing option for all. Use: on | off');
@@ -1941,23 +1949,25 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       debugShowFacingDirection = nextValue;
       debugShowTag = nextValue;
       debugShowHunger = nextValue;
+      debugShowHealth = nextValue;
       debugShowInterestRange = nextValue;
       debugShowMovementRange = nextValue;
       debugShowMovementSpeed = nextValue;
       debugShowMovementPassion = nextValue;
-      debugShowMovementHealth = nextValue;
       pushDebugTerminalLog(`[OK] All debug features: ${nextValue ? 'ON' : 'OFF'}`);
       drawEntities();
       break;
     }
-    case 'clear':
+    case 'clear':{
       debugTerminalLogs = [];
       debugTerminalScrollOffset = 0;
       break;
-    default:
+    }
+    default:{
       pushDebugTerminalLog(`[ERR] Unknown command: ${rawCmd}`);
       pushDebugTerminalLog("Type /help to list commands.");
       break;
+    }
   }
 };
 
@@ -1971,6 +1981,8 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
     debugTerminalVisible = !debugTerminalVisible;
     if (debugTerminalVisible) {
       debugTerminalScrollOffset = 0;
+      debugTerminalHistoryIndex = -1;
+      debugTerminalInputDraft = '';
       pushDebugTerminalLog('[SYS] Debug terminal opened. Type /help');
     }
     drawUI();
@@ -1982,36 +1994,71 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       executeDebugTerminalCommand(debugTerminalInput);
+      pushDebugTerminalHistory(debugTerminalInput);
       debugTerminalInput = '';
+      debugTerminalHistoryIndex = -1;
+      debugTerminalInputDraft = '';
       drawUI();
       return;
     }
     if (e.key === 'Backspace') {
       e.preventDefault();
       debugTerminalInput = debugTerminalInput.slice(0, -1);
+      debugTerminalHistoryIndex = -1;
+      drawUI();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (debugTerminalHistory.length === 0) return;
+      if (debugTerminalHistoryIndex === -1) {
+        debugTerminalInputDraft = debugTerminalInput;
+        debugTerminalHistoryIndex = debugTerminalHistory.length - 1;
+      } else if (debugTerminalHistoryIndex > 0) {
+        debugTerminalHistoryIndex -= 1;
+      }
+      debugTerminalInput = debugTerminalHistory[debugTerminalHistoryIndex];
+      drawUI();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (debugTerminalHistoryIndex === -1) return;
+      if (debugTerminalHistoryIndex < debugTerminalHistory.length - 1) {
+        debugTerminalHistoryIndex += 1;
+        debugTerminalInput = debugTerminalHistory[debugTerminalHistoryIndex];
+      } else {
+        debugTerminalHistoryIndex = -1;
+        debugTerminalInput = debugTerminalInputDraft;
+      }
       drawUI();
       return;
     }
     if (e.key === 'Escape') {
       e.preventDefault();
       debugTerminalVisible = false;
+      debugTerminalHistoryIndex = -1;
+      debugTerminalInputDraft = '';
       drawUI();
       return;
     }
     if (e.key === 'Tab') {
       e.preventDefault();
       autoCompleteDebugCommand();
+      debugTerminalHistoryIndex = -1;
       drawUI();
       return;
     }
     if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
       e.preventDefault();
       debugTerminalInput += e.key;
+      debugTerminalHistoryIndex = -1;
       drawUI();
     }
     return;
   }
 
+  // 单个按键
   if (!e.ctrlKey && !e.metaKey && !e.altKey) {
     const key = e.key.toLowerCase();
     if (key === 'j' && !e.repeat) {
@@ -2036,15 +2083,12 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
     }
   }
 
-  // 仅当按下 Ctrl 或 Command 时才处理
-  if (e.ctrlKey || e.metaKey) {
-    switch (e.key.toLowerCase()) {
-      case 'f':
-        e.preventDefault();
-        graphicsClear();
-        break;
-    }
-  }
+  // 多个按键
+  // if (e.ctrlKey || e.metaKey) {
+  //   switch (e.key.toLowerCase()) {
+      
+  //   }
+  // }
 };
 
 const onGlobalKeyUp = (e: KeyboardEvent) => {
@@ -2294,9 +2338,13 @@ onUnmounted(() => {
 </script>
 <template>
   <div class="view-test2d-container">
+    <!-- 图形层可以渲染背景 -->
     <canvas id="canvas-graphics" ref="GRAPHICS_CANVAS"></canvas>
+    <!-- 实体渲染 -->
     <canvas id="canvas-entity" ref="ENTITY_CANVAS"></canvas>
+    <!-- UI用户界面层 -->
     <canvas id="canvas-ui" ref="UI_CANVAS"></canvas>
+    <!-- 鼠标指针 -->
     <canvas id="canvas-cursor"></canvas>
   </div>
 </template>
@@ -2307,3 +2355,4 @@ onUnmounted(() => {
 #canvas-ui{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:auto;cursor:none;}
 #canvas-cursor{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
 </style>
+

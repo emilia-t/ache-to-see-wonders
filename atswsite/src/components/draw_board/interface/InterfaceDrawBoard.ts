@@ -11,13 +11,7 @@ export interface InherentProp {
   color: RGB;
   opacity: number;
 }
-export interface DrawElement {
-  id: number;
-  type: 'point' | 'line' | 'segment';
-  points: Point[];
-  inherentProp: InherentProp;
-  customProp: Record<string, unknown>;
-}
+
 export interface PenPoint { x: number; y: number; g: number }
 export interface PenTrajectory {
   id: number;
