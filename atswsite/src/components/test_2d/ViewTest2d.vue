@@ -4,53 +4,27 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 
 import type {
-  TypeCursorName,
-  TypeEffectName,
-  PerspectiveMode,
-  DynamicEntityKind,
-  NpcAttitude,
-  GrenadePurpose,
-  BulletRangeType,
+  PerspectiveMode
 } from '@/components/test_2d/type/TypeTest2d';
 import type {
-  Resolution,
-  PenPoint,
-  PenTrajectory,
   RGB,
   Point,
   EventArea,
-  InherentProp,
-  Element,
-  PointElement,
-  LineElement,
-  SegmentElement,
-  CachedImage,
-  CollisionBox,
-  Texture,
+  CanvasEffectEventPayload,
+  LoadedEffectSprite,
+  ActiveCanvasEffect
 } from '@/components/test_2d/interface/InterfaceTest2d';
 import {
   CursorManager,
   Entity,
   StaticEntity,
-  BoxStaticEntity,
-  WallStaticEntity,
   ItemEntity,
   GrilledFishItemEntity,
   DynamicEntity,
   NpcDynamicEntity,
-  FriendlyNpcDynamicEntity,
-  NeutralNpcDynamicEntity,
-  HostileNpcDynamicEntity,
   PlayerDynamicEntity,
-  GrenadeDynamicEntity,
-  SmokeGrenadeDynamicEntity,
-  FragGrenadeDynamicEntity,
-  StunGrenadeDynamicEntity,
   BulletDynamicEntity,
-  BuckshotBulletDynamicEntity,
   OrdinaryBulletDynamicEntity,
-  LaserBulletDynamicEntity,
-  SniperBulletDynamicEntity,
   CatDynamicEntity,
   RagdollCatDynamicEntity,
 } from '@/components/test_2d/class';
@@ -66,7 +40,6 @@ const EFFECTS_CANVAS = ref<HTMLCanvasElement | null>(null);
 const BT1_HEIGHT = 50;
 const BT1_WIDTH = 105;
 const BT1_INI: any[] = [];
-const LOCAL_STORAGE_KEY = 'viewTest2dState';
 const DEBUG_TERMINAL_MAX_LOGS = 120;
 const RDEC_ITERATIONS = 3; // 解析动态实体碰撞算法迭代次数
 const RDEC_SEPARATION_EPSILON = 0.1; // 碰撞分离时的微小偏移量,避免实体卡在一起
@@ -149,33 +122,6 @@ let playerFireMode = false;
 let cooldownNormalAttack = 0; //cooldown time
 let nextCanvasEffectId = 1;
 
-// 特效播放事件
-type CanvasEffectEventPayload = {
-  kind: string;
-  position: Point;
-  width: number;
-  height: number;
-  tag?: string;
-  entityType: Entity['type'];
-};
-// 加载雪碧图特效图片
-type LoadedEffectSprite = {
-  img: HTMLImageElement;
-  loaded: boolean;
-  path: string;
-};
-// 当前播放的特效列表
-type ActiveCanvasEffect = {
-  id: number;
-  kind: string;
-  worldX: number;
-  worldY: number;
-  width: number;
-  height: number;
-  tag?: string;
-  spritePath: string;
-  elapsed: number;
-};
 // 当前播放的特效列表
 let activeCanvasEffects: ActiveCanvasEffect[] = [];
 // 雪碧图特效索引
@@ -183,7 +129,6 @@ let effectSpriteMap: Record<string, LoadedEffectSprite | null> = {
   [EFFECT_PATH_DYNAMIC_ENTITY_DEATH]: null
 };
 const emittedDynamicDeathEffectEntityIds = new Set<number>();
-const emittedItemDisappearEffectEntityIds = new Set<number>();
 
 
 ////////////////////
@@ -193,67 +138,6 @@ const emittedItemDisappearEffectEntityIds = new Set<number>();
 ////////////////////
 //辅助函数区-->
 ////////////////////
-
-/**
- * 道格拉斯-普克算法简化点集
- * @param points 原始点数组 (PenPoint[])
- * @param tolerance 容差 (像素单位)
- * @returns 简化后的点数组
- */
-function H_simplifyPoints(points: PenPoint[], tolerance: number): PenPoint[] {
-  if (points.length <= 2) return points;
-
-  // 找到距离首尾连线最远的点
-  const first = points[0];
-  const last = points[points.length - 1];
-  let maxDist = 0;
-  let maxIndex = 0;
-
-  for (let i = 1; i < points.length - 1; i++) {
-    const dist = H_perpendicularDistance(points[i], first, last);
-    if (dist > maxDist) {
-      maxDist = dist;
-      maxIndex = i;
-    }
-  }
-
-  // 如果最大距离大于容差,则递归简化两段
-  if (maxDist > tolerance) {
-    const left = points.slice(0, maxIndex + 1);
-    const right = points.slice(maxIndex);
-    const simplifiedLeft = H_simplifyPoints(left, tolerance);
-    const simplifiedRight = H_simplifyPoints(right, tolerance);
-    // 合并时注意去掉重复的中间点
-    return simplifiedLeft.slice(0, -1).concat(simplifiedRight);
-  } else {
-    // 否则只保留首尾点
-    return [first, last];
-  }
-}
-
-/**
- * 计算点到线段的最短距离
- */
-function H_perpendicularDistance(p: PenPoint, p1: PenPoint, p2: PenPoint): number {
-  const x0 = p.x, y0 = p.y;
-  const x1 = p1.x, y1 = p1.y;
-  const x2 = p2.x, y2 = p2.y;
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const lenSq = dx * dx + dy * dy;
-
-  if (lenSq === 0) {
-    // p1 和 p2 重合,直接计算到 p1 的距离
-    return Math.hypot(x0 - x1, y0 - y1);
-  }
-
-  // 投影参数 t
-  let t = ((x0 - x1) * dx + (y0 - y1) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-  const projX = x1 + t * dx;
-  const projY = y1 + t * dy;
-  return Math.hypot(x0 - projX, y0 - projY);
-}
 
 const H_getCanvasCssSize = (canvas: HTMLCanvasElement) => {
   const width = canvas.clientWidth || window.innerWidth;
@@ -2183,7 +2067,6 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
     }
     case 'show_debug_board': {
       applyDebugFlagCommand('MovementSpeedText', debugBoardVisible, args, (v) => { debugBoardVisible = v; });
-      //drawUI();
       break;
     }
     case 'clear':{

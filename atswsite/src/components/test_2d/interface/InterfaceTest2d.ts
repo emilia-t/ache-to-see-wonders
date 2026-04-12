@@ -1,4 +1,5 @@
 ﻿import type { TypeCursorName } from '@/components/test_2d/type/TypeTest2d';
+import type { Entity } from '@/components/test_2d/class/Entity/Entity';
 
 export interface Resolution { width: number; height: number }
 export interface PenPoint {x: number; y: number; g: number};//g是压力值，0-1通过鼠标移动速度模拟
@@ -66,3 +67,31 @@ export interface Texture {
   loaded: boolean;
   path: string;
 }
+
+// 特效播放事件
+export interface CanvasEffectEventPayload {
+  kind: string;
+  position: Point;
+  width: number;
+  height: number;
+  tag?: string;
+  entityType: Entity['type'];
+};
+// 加载雪碧图特效图片
+export interface LoadedEffectSprite  {
+  img: HTMLImageElement;
+  loaded: boolean;
+  path: string;
+};
+// 当前播放的特效列表
+export interface ActiveCanvasEffect {
+  id: number;
+  kind: string;
+  worldX: number;
+  worldY: number;
+  width: number;
+  height: number;
+  tag?: string;
+  spritePath: string;
+  elapsed: number;
+};
