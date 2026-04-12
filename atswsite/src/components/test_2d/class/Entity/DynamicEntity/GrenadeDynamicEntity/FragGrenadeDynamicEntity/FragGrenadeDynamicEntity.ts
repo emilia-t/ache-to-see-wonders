@@ -8,7 +8,7 @@ class FragGrenadeDynamicEntity extends GrenadeDynamicEntity {
     height: number,
     texturePath: string,
     name: string = 'Frag Grenade',
-    tag?: string
+    tag: string
   ) {
     super(position, width, height, texturePath, name, 'frag', tag);
   }

@@ -1,6 +1,7 @@
 ﻿import { DynamicEntity } from '@/components/test_2d/class/Entity/DynamicEntity/DynamicEntity';
 import { StaticEntity } from '@/components/test_2d/class/Entity/StaticEntity/StaticEntity';
 import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
+import { ItemEntity } from '@/components/test_2d/class/Entity/ItemEntity/ItemEntity';
 
 class PlayerDynamicEntity extends DynamicEntity {
   static readonly WIDTH = 50;
@@ -118,6 +119,23 @@ class PlayerDynamicEntity extends DynamicEntity {
 
   override canGetNewWanderTarget(_dt: number, _staticEntities: StaticEntity[]) {
     return false;
+  }
+
+  /**
+   * 拾取物品检测
+   * @param item 
+   * @returns 
+   */
+  tryPickupItem(item: ItemEntity): boolean {
+    return false;
+  }
+
+  /**
+   * 拾取物品
+   * @param item 
+   */
+  pickupItem(item: ItemEntity): void {
+    
   }
 }
 

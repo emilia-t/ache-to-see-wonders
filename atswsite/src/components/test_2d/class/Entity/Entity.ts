@@ -12,7 +12,7 @@ class Entity {
   name: string;
   collisionBox: CollisionBox;
   fillColor?: string;
-  tag?: string;              // 属性标签，如 "箱子", "猫"
+  tag: string;              // 属性标签，如 "箱子", "猫"
 
   constructor(
     type: 'static' | 'dynamic' | 'item',
@@ -21,7 +21,7 @@ class Entity {
     height: number,
     texturePath: string,
     name: string,
-    tag?: string
+    tag: string
   ) {
     this.id = Entity.nextEntityId++;
     this.type = type;

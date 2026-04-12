@@ -14,7 +14,7 @@ class ItemEntity extends Entity {
     height: number,
     texturePath: string,
     name: string,
-    tag?: string,
+    tag: string,
     lifetimeSeconds: number = 300
   ) {
     super('item', position, width, height, texturePath, name, tag);

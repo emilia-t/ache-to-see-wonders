@@ -1,5 +1,7 @@
 ﻿import { FriendlyNpcDynamicEntity } from '@/components/test_2d/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
 import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
+import { ItemEntity } from '@/components/test_2d/class/Entity/ItemEntity/ItemEntity';
+import { GrilledFishItemEntity } from '../../../../ItemEntity/FoodItemEntity/GrilledFishItemEntity/GrilledFishItemEntity';
 
 class CatDynamicEntity extends FriendlyNpcDynamicEntity {
   static readonly CAT_HUNGER_TOO_FULL_THRESHOLD = 180; // 超过该饱腹值后不主动拾取烤鱼
@@ -15,7 +17,7 @@ class CatDynamicEntity extends FriendlyNpcDynamicEntity {
     texturePath: string,
     name: string = 'Cat'
   ) {
-    super(position, width, height, texturePath, name, 'cat');
+    super(position, width, height, texturePath, name, 50 ,'cat');
     this.chasingItemId = null;
     this.hungerMeter = 100;
     this.hungerDecayTimer = 0;
@@ -59,6 +61,30 @@ class CatDynamicEntity extends FriendlyNpcDynamicEntity {
       }
     } else {
       this.hungerDamageTimer = 0;
+    }
+  }
+
+  /**
+   * 尝试拾取物品(拾取前的检测)
+   * @param item 
+   */
+  tryPickupItem(item: ItemEntity): boolean {
+      if (this.isDead) return false;
+      if (item.isReadyToRemove()) return false;
+      if (this.hungerMeter > CatDynamicEntity.CAT_HUNGER_TOO_FULL_THRESHOLD) return false;
+      const distance = Math.hypot(this.position.x - item.position.x, this.position.y - item.position.y);
+      if (distance > this.pickupRange) return false;
+      if (item instanceof GrilledFishItemEntity) return true;
+      return false;
+  }
+
+  /**
+   * 拾取物品
+   * @param item 
+   */
+  pickupItem(item: ItemEntity): void {
+    if (item instanceof GrilledFishItemEntity){
+      this.addHunger(item.hungerMeterIncrease);
     }
   }
 }

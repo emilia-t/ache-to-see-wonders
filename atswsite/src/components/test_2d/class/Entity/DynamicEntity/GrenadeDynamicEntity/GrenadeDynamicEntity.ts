@@ -12,7 +12,7 @@ class GrenadeDynamicEntity extends DynamicEntity {
     texturePath: string,
     name: string,
     purpose: GrenadePurpose,
-    tag?: string
+    tag: string
   ) {
     super(position, width, height, texturePath, name, 'grenade', tag);
     this.purpose = purpose;

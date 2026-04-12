@@ -41,7 +41,7 @@ class DynamicEntity extends Entity {
     texturePath: string,
     name: string,
     kind: DynamicEntityKind,
-    tag?: string
+    tag: string
   ) {
     super('dynamic', position, width, height, texturePath, name, tag);
     this.kind = kind;

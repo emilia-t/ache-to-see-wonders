@@ -66,4 +66,3 @@ export interface Texture {
   loaded: boolean;
   path: string;
 }
-

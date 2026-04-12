@@ -62,6 +62,7 @@ import {
 const GRAPHICS_CANVAS = ref<HTMLCanvasElement | null>(null);
 const UI_CANVAS = ref<HTMLCanvasElement | null>(null);
 const ENTITY_CANVAS = ref<HTMLCanvasElement | null>(null);
+const EFFECTS_CANVAS = ref<HTMLCanvasElement | null>(null);
 const BT1_HEIGHT = 50;
 const BT1_WIDTH = 105;
 const BT1_INI: any[] = [];
@@ -69,6 +70,12 @@ const LOCAL_STORAGE_KEY = 'viewTest2dState';
 const DEBUG_TERMINAL_MAX_LOGS = 120;
 const RDEC_ITERATIONS = 3; // 解析动态实体碰撞算法迭代次数
 const RDEC_SEPARATION_EPSILON = 0.1; // 碰撞分离时的微小偏移量,避免实体卡在一起
+const EFFECT_SPRITE_FRAME_WIDTH = 100;
+const EFFECT_SPRITE_FRAME_HEIGHT = 100;
+const EFFECT_SPRITE_FRAME_COUNT = 30;
+const EFFECT_SPRITE_FPS = 30;
+const EFFECT_SPRITE_DURATION = EFFECT_SPRITE_FRAME_COUNT / EFFECT_SPRITE_FPS;
+const EFFECT_PATH_DYNAMIC_ENTITY_DEATH = './effects/dynamic_entity_death_default.png';
 ////////////////////
 //<--常量区
 ////////////////////
@@ -80,6 +87,7 @@ let cursorManager: CursorManager | null = null;
 let ctxGraphics: CanvasRenderingContext2D | null = null;
 let ctxUi: CanvasRenderingContext2D | null = null;
 let ctxEntity: CanvasRenderingContext2D | null = null;
+let ctxEffects: CanvasRenderingContext2D | null = null;
 
 let offsetXX = 0;  // 原点在x轴上的偏移
 let offsetYY = 0;  // 原点在y轴上的偏移
@@ -128,6 +136,9 @@ let debugTerminalScrollOffset = 0; // 终端日志向上滚动的行偏移(0=显
 let debugTerminalHistory: string[] = [];
 let debugTerminalHistoryIndex = -1; // 调试终端历史命令索引,-1表示当前输入行,0及以上表示历史命令
 let debugTerminalInputDraft = '';
+let debugBoardVisible = false;
+let mouseWorldX = 0; // 鼠标世界坐标X
+let mouseWorldY = 0; // 鼠标世界坐标Y
 let perspectiveMode: PerspectiveMode = 'third_person';
 let firstPersonMoveW = false;
 let firstPersonMoveA = false;
@@ -136,6 +147,43 @@ let firstPersonMoveD = false;
 let playerEntity: PlayerDynamicEntity | null = null;
 let playerFireMode = false;
 let cooldownNormalAttack = 0; //cooldown time
+let nextCanvasEffectId = 1;
+
+// 特效播放事件
+type CanvasEffectEventPayload = {
+  kind: string;
+  position: Point;
+  width: number;
+  height: number;
+  tag?: string;
+  entityType: Entity['type'];
+};
+// 加载雪碧图特效图片
+type LoadedEffectSprite = {
+  img: HTMLImageElement;
+  loaded: boolean;
+  path: string;
+};
+// 当前播放的特效列表
+type ActiveCanvasEffect = {
+  id: number;
+  kind: string;
+  worldX: number;
+  worldY: number;
+  width: number;
+  height: number;
+  tag?: string;
+  spritePath: string;
+  elapsed: number;
+};
+// 当前播放的特效列表
+let activeCanvasEffects: ActiveCanvasEffect[] = [];
+// 雪碧图特效索引
+let effectSpriteMap: Record<string, LoadedEffectSprite | null> = {
+  [EFFECT_PATH_DYNAMIC_ENTITY_DEATH]: null
+};
+const emittedDynamicDeathEffectEntityIds = new Set<number>();
+const emittedItemDisappearEffectEntityIds = new Set<number>();
 
 
 ////////////////////
@@ -276,6 +324,14 @@ const startSetting = () => {
   }
 
   // 初始化测试实体(移除所有静态障碍物)
+  // init effects canvas context
+  if (EFFECTS_CANVAS.value) {
+    ctxEffects = EFFECTS_CANVAS.value.getContext('2d');
+    if (ctxEffects) {
+      H_applyDprToCanvas(EFFECTS_CANVAS.value, ctxEffects);
+    }
+  }
+
   staticEntityList = [];
   dynamicEntityList = [];
   projectileEntityList = [];
@@ -283,6 +339,9 @@ const startSetting = () => {
   renderEntityList = [];
   playerFireMode = false;
   cooldownNormalAttack = 0;
+  nextCanvasEffectId = 1;
+  activeCanvasEffects = [];
+  emittedDynamicDeathEffectEntityIds.clear();
 
   const catSpawnCenter = { x: -50, y: -50 };
 
@@ -320,12 +379,17 @@ const startSetting = () => {
 
 
   // 加载纹理并开始动画
-  loadEntityTextures().then(() => {
+  // load textures and start animation
+  Promise.all([loadEntityTextures(), loadEffectTextures()]).then(() => {
     drawEntities();
-    // 启动动画循环
+    updateAndDrawEffects(0);
+    // start animation loop
     animationFrameId = requestAnimationFrame(animateEntities);
   });
   
+  // UI层渲染循环
+
+
   cursorManager = new CursorManager("canvas-cursor");
   window.addEventListener('mousemove', onWindowMouseMove);
   window.addEventListener('resize', onResizeCanvas);
@@ -619,6 +683,155 @@ const TOcanvas2Screen = (canvasX: number, canvasY: number) => {
 };
 
 /**
+ * 特效播放前进行的可视范围判断
+ * @param worldX 
+ * @param worldY 
+ * @param width 
+ * @param height 
+ */
+const isWorldRectInVisibleRange = (worldX: number, worldY: number, width: number, height: number) => {
+  const baseCanvas = EFFECTS_CANVAS.value || ENTITY_CANVAS.value || GRAPHICS_CANVAS.value;
+  if (!baseCanvas) return false;
+  const screenPos = TOcanvas2Screen(worldX, worldY);
+  const halfW = width / 2;
+  const halfH = height / 2;
+  const left = screenPos.x - halfW;
+  const top = screenPos.y - halfH;
+  const right = left + width;
+  const bottom = top + height;
+  const { width: canvasWidth, height: canvasHeight } = H_getCanvasCssSize(baseCanvas);
+  return right >= 0 && bottom >= 0 && left <= canvasWidth && top <= canvasHeight;
+};
+
+/**
+ * 获取雪碧图特效图片路径
+ * @param kind 
+ */
+const getEffectSpritePathByKind = (kind: string) => {
+  switch (kind) {
+    case 'dynamic_entity_death':
+      return EFFECT_PATH_DYNAMIC_ENTITY_DEATH;
+    default:
+      console.warn(`Unknown effect kind: ${kind}`);
+      return '';
+  }
+};
+
+/**
+ * 触发播放特效事件
+ * @param payload 
+ */
+const emitCanvasEffectEvent = (payload: CanvasEffectEventPayload) => {
+  if (!isWorldRectInVisibleRange(payload.position.x, payload.position.y, payload.width, payload.height)) return false;
+
+  const spritePath = getEffectSpritePathByKind(payload.kind);
+  activeCanvasEffects.push({
+    id: nextCanvasEffectId++,
+    kind: payload.kind,
+    worldX: payload.position.x,
+    worldY: payload.position.y,
+    width: payload.width,
+    height: payload.height,
+    tag: payload.tag,
+    spritePath,
+    elapsed: 0,
+  });
+  return true;
+};
+
+/**
+ * 动态实体死亡时触发播放死亡特效
+ * @param entity 
+ */
+const tryEmitDynamicDeathEffect = (entity: DynamicEntity) => {
+  if (emittedDynamicDeathEffectEntityIds.has(entity.id)) return false;
+  emittedDynamicDeathEffectEntityIds.add(entity.id);
+  return emitCanvasEffectEvent({
+    kind: 'dynamic_entity_death',
+    position: { ...entity.position },
+    width: entity.width,
+    height: entity.height,
+    tag: entity.tag,
+    entityType: entity.type,
+  });
+};
+
+/**
+ * 加载单个雪碧图特效图片
+ * @param path 
+ */
+const loadSingleEffectSprite = (path: string): Promise<void> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = path;
+    img.onload = () => {
+      effectSpriteMap[path] = { img, loaded: true, path };
+      resolve();
+    };
+    img.onerror = () => {
+      console.warn(`Failed to load effect sprite: ${path}`);
+      effectSpriteMap[path] = { img, loaded: false, path };
+      resolve();
+    };
+  });
+};
+
+/**
+ * 加载所有雪碧图特效图片
+ */
+const loadEffectTextures = async () => {
+  await Promise.all([
+    loadSingleEffectSprite(EFFECT_PATH_DYNAMIC_ENTITY_DEATH)
+  ]);
+};
+
+/**
+ * 绘制特效
+ * @param deltaTime 
+ */
+const updateAndDrawEffects = (deltaTime: number) => {
+  if (!ctxEffects || !EFFECTS_CANVAS.value) return;
+  const { width, height } = H_getCanvasCssSize(EFFECTS_CANVAS.value);
+  ctxEffects.clearRect(0, 0, width, height);
+
+  const remainingEffects: ActiveCanvasEffect[] = [];
+  for (const effect of activeCanvasEffects) {
+    const nextElapsed = effect.elapsed + Math.max(0, deltaTime);
+    if (nextElapsed >= EFFECT_SPRITE_DURATION) continue;
+
+    const frameIndex = Math.min(
+      EFFECT_SPRITE_FRAME_COUNT - 1,
+      Math.floor(nextElapsed * EFFECT_SPRITE_FPS)
+    );
+    const sprite = effectSpriteMap[effect.spritePath];
+    const screenPos = TOcanvas2Screen(effect.worldX, effect.worldY);
+    const drawX = screenPos.x - effect.width / 2;
+    const drawY = screenPos.y - effect.height / 2;
+
+    if (sprite && sprite.loaded) {
+      ctxEffects.drawImage(
+        sprite.img,
+        frameIndex * EFFECT_SPRITE_FRAME_WIDTH,
+        0,
+        EFFECT_SPRITE_FRAME_WIDTH,
+        EFFECT_SPRITE_FRAME_HEIGHT,
+        drawX,
+        drawY,
+        effect.width,
+        effect.height
+      );
+    }
+
+    remainingEffects.push({
+      ...effect,
+      elapsed: nextElapsed,
+    });
+  }
+
+  activeCanvasEffects = remainingEffects;
+};
+
+/**
  * 绘制顶部提示信息(UI层)
  */
 const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
@@ -643,6 +856,68 @@ const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
   CtxUi.fill();
   CtxUi.fillStyle = 'rgb(78,78,78)';
   CtxUi.fillText(text, width / 2, y + 8);
+  CtxUi.restore();
+};
+
+/**
+ * 绘制调试面板(UI层)
+ */
+const drawDebugBoard = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
+  if (!debugBoardVisible) return;
+
+  const { width, height } = H_getCanvasCssSize(CANVAS);
+  const panelWidth = 320;
+  const panelHeight = 160;
+  const x = 12;
+  const y = 12;
+
+  CtxUi.save();
+  CtxUi.fillStyle = 'rgba(10, 10, 10, 0.8)';
+  CtxUi.strokeStyle = 'rgba(100, 200, 255, 0.7)';
+  CtxUi.lineWidth = 2;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, x, y, panelWidth, panelHeight, 8);
+  CtxUi.fill();
+  CtxUi.stroke();
+
+  const title = 'Debug Board (/show_debug_board)';
+  CtxUi.font = 'bold 13px Consolas, "Courier New", monospace';
+  CtxUi.fillStyle = '#00E5FF';
+  CtxUi.fillText(title, x + 12, y + 20);
+
+  CtxUi.beginPath();
+  CtxUi.strokeStyle = 'rgba(100, 200, 255, 0.5)';
+  CtxUi.moveTo(x + 8, y + 28);
+  CtxUi.lineTo(x + panelWidth - 8, y + 28);
+  CtxUi.stroke();
+
+  CtxUi.font = '11px Consolas, "Courier New", monospace';
+  CtxUi.fillStyle = '#D9D9D9';
+  const lineHeight = 18;
+  let textY = y + 42;
+
+  // 鼠标屏幕坐标
+  CtxUi.fillText(`Mouse Screen: (${Math.round(mouseX)}, ${Math.round(mouseY)})`, x + 12, textY);
+  textY += lineHeight;
+
+  // 鼠标世界坐标
+  const mouseScreenToWorld = TOscreen2Canvas(mouseX, mouseY);
+  CtxUi.fillText(`Mouse World: (${Math.round(mouseScreenToWorld.x)}, ${Math.round(mouseScreenToWorld.y)})`, x + 12, textY);
+  textY += lineHeight;
+
+  // 玩家世界坐标
+  if (playerEntity && !playerEntity.isDead) {
+    CtxUi.fillText(`Player World: (${Math.round(playerEntity.position.x)}, ${Math.round(playerEntity.position.y)})`, x + 12, textY);
+    textY += lineHeight;
+
+    // 玩家健康值
+    CtxUi.fillStyle = '#FF6B6B';
+    CtxUi.fillText(`Health: ${Math.round(playerEntity.health)}/100`, x + 12, textY);
+  } else {
+    CtxUi.fillStyle = '#FF6B6B';
+    CtxUi.fillText('Player: Dead or Not Found', x + 12, textY);
+  }
+
   CtxUi.restore();
 };
 
@@ -840,7 +1115,7 @@ const drawEntities = () => {
 };
 
 /**
- * 绘制UI层(按钮、标尺、提示)
+ * 绘制UI层
  */
 const drawUI = () => {
   if (!ctxUi || !UI_CANVAS.value) return;
@@ -848,6 +1123,7 @@ const drawUI = () => {
   ctxUi.clearRect(0, 0, width, height);
   drawUIRuler(ctxUi, UI_CANVAS.value);
   drawInstructions(ctxUi, UI_CANVAS.value);
+  drawDebugBoard(ctxUi, UI_CANVAS.value);
   drawDebugTerminal(ctxUi, UI_CANVAS.value);
 };
 
@@ -863,20 +1139,16 @@ const drawSingleEntity = (entity: Entity) => {
   const left = screenPos.x - halfW;
   const top = screenPos.y - halfH;
 
-  // 物品实体:按寿命分段透明 + 独立消失特效
+
+  // 在消失过程中,物品实体从画布实体中移除,效果作用于画布效果
   if (entity.type === 'item') {
     const item = entity as ItemEntity;
+    if (item.isDisappearing) return;
+
     const lifeOpacity = item.getLifetimeOpacity();
-    const disappearProgress = item.isDisappearing && item.disappearDuration > 0
-      ? 1 - item.disappearTimer / item.disappearDuration
-      : 0;
-    const clampedDisappearProgress = Math.max(0, Math.min(1, disappearProgress));
-    const spriteAlpha = item.isDisappearing
-      ? lifeOpacity * (1 - clampedDisappearProgress)
-      : lifeOpacity;
 
     ctxEntity.save();
-    ctxEntity.globalAlpha = Math.max(0, Math.min(1, spriteAlpha));
+    ctxEntity.globalAlpha = Math.max(0, Math.min(1, lifeOpacity));
     if (entity.texture && entity.texture.loaded) {
       ctxEntity.drawImage(entity.texture.img, left, top, entity.width, entity.height);
     } else {
@@ -886,46 +1158,6 @@ const drawSingleEntity = (entity: Entity) => {
       ctxEntity.strokeRect(left, top, entity.width, entity.height);
     }
     ctxEntity.restore();
-
-    // 物品消失特效:金色碎光与径向光晕(与动态实体死亡特效区分)
-    if (item.isDisappearing) {
-      const p = clampedDisappearProgress;
-      const baseRadius = Math.max(entity.width, entity.height) * (0.3 + p * 0.9);
-      const alpha = 1 - p;
-      ctxEntity.save();
-
-      ctxEntity.beginPath();
-      ctxEntity.arc(screenPos.x, screenPos.y, baseRadius, 0, Math.PI * 2);
-      ctxEntity.strokeStyle = `rgba(255, 215, 120, ${alpha})`;
-      ctxEntity.lineWidth = 2;
-      ctxEntity.stroke();
-
-      const rays = 6;
-      for (let i = 0; i < rays; i++) {
-        const angle = p * Math.PI * 2 + (i * Math.PI * 2) / rays;
-        const inner = baseRadius * 0.6;
-        const outer = baseRadius * 1.25;
-        ctxEntity.beginPath();
-        ctxEntity.moveTo(
-          screenPos.x + Math.cos(angle) * inner,
-          screenPos.y + Math.sin(angle) * inner
-        );
-        ctxEntity.lineTo(
-          screenPos.x + Math.cos(angle) * outer,
-          screenPos.y + Math.sin(angle) * outer
-        );
-        ctxEntity.strokeStyle = `rgba(255, 235, 150, ${alpha * 0.9})`;
-        ctxEntity.lineWidth = 1.5;
-        ctxEntity.stroke();
-      }
-
-      ctxEntity.beginPath();
-      ctxEntity.arc(screenPos.x, screenPos.y, baseRadius * 0.45, 0, Math.PI * 2);
-      ctxEntity.fillStyle = `rgba(255, 240, 170, ${alpha * 0.25})`;
-      ctxEntity.fill();
-
-      ctxEntity.restore();
-    }
 
     ctxEntity.font = '12px "Microsoft YaHei"';
     ctxEntity.fillStyle = '#ffffff';
@@ -945,7 +1177,7 @@ const drawSingleEntity = (entity: Entity) => {
     return;
   }
 
-  // 动态实体死亡特效:贴图淡出 + 扩散光环
+  // 动态实体死亡特效
   if (entity.type === 'dynamic') {
     const dynamicEntity = entity as DynamicEntity;
     if (dynamicEntity instanceof BulletDynamicEntity) {
@@ -957,44 +1189,6 @@ const drawSingleEntity = (entity: Entity) => {
       ctxEntity.beginPath();
       ctxEntity.arc(screenPos.x, screenPos.y, entity.width * 0.24, 0, Math.PI * 2);
       ctxEntity.fillStyle = '#fff8cc';
-      ctxEntity.fill();
-      ctxEntity.restore();
-      return;
-    }
-
-    if (dynamicEntity.isDead) {
-      const progress = dynamicEntity.deathEffectDuration <= 0
-        ? 1
-        : 1 - dynamicEntity.deathEffectTimer / dynamicEntity.deathEffectDuration;
-      const clampedProgress = Math.max(0, Math.min(1, progress));
-
-      ctxEntity.save();
-      ctxEntity.globalAlpha = 1 - clampedProgress;
-      if (entity.texture && entity.texture.loaded) {
-        ctxEntity.drawImage(
-          entity.texture.img,
-          left,
-          top,
-          entity.width,
-          entity.height
-        );
-      } else {
-        ctxEntity.fillStyle = entity.fillColor || '#66cc66';
-        ctxEntity.fillRect(left, top, entity.width, entity.height);
-      }
-      ctxEntity.restore();
-
-      ctxEntity.save();
-      const ringRadius = Math.max(entity.width, entity.height) * (0.35 + clampedProgress * 1.1);
-      ctxEntity.beginPath();
-      ctxEntity.arc(screenPos.x, screenPos.y, ringRadius, 0, Math.PI * 2);
-      ctxEntity.strokeStyle = `rgba(255, 80, 20, ${1 - clampedProgress})`;
-      ctxEntity.lineWidth = 3;
-      ctxEntity.stroke();
-
-      ctxEntity.beginPath();
-      ctxEntity.arc(screenPos.x, screenPos.y, ringRadius * 0.55, 0, Math.PI * 2);
-      ctxEntity.fillStyle = `rgba(255, 40, 0, ${(1 - clampedProgress) * 0.25})`;
       ctxEntity.fill();
       ctxEntity.restore();
       return;
@@ -1347,31 +1541,44 @@ const updateDynamicEntityItemPickups = (): boolean => {
   for (const item of itemEntityList) {
     if (item.isDisappearing) continue;
     for (const dynamicEntity of dynamicEntityList) {
-      if (dynamicEntity.isDead || dynamicEntity instanceof PlayerDynamicEntity) continue;
-      const distance = Math.hypot(
-        dynamicEntity.position.x - item.position.x,
-        dynamicEntity.position.y - item.position.y
-      );
-      const pickupRadius = dynamicEntity.width * 0.45 + Math.max(item.width, item.height) * 0.5;
-      if (distance <= pickupRadius) {
-        if (
-          item instanceof GrilledFishItemEntity &&
-          dynamicEntity instanceof CatDynamicEntity &&
-          dynamicEntity.hungerMeter > CatDynamicEntity.CAT_HUNGER_TOO_FULL_THRESHOLD
-        ) {
-          // 非常饱腹时不主动拾取烤鱼
-          continue;
+      if (dynamicEntity.isDead) continue;
+      if (dynamicEntity instanceof NpcDynamicEntity || dynamicEntity instanceof PlayerDynamicEntity){
+        if(dynamicEntity.tryPickupItem(item)){
+          dynamicEntity.pickupItem(item);
+          item.beginDisappear();
+          pickedAny = true;
+          break;
         }
-        item.beginDisappear();
-        if (item instanceof GrilledFishItemEntity && dynamicEntity instanceof CatDynamicEntity) {
-          dynamicEntity.addHunger(20);
-        }
-        pickedAny = true;
-        break;
       }
     }
   }
   return pickedAny;
+};
+
+/**
+ * 统一检测动态实体是否死亡如果死亡则发送播放死亡特效事件并且将实体从 dynamicEntityList 中移除 
+ */
+const removeDeadDynamicEntitiesAndEmitEffects = (): boolean => {
+  if (dynamicEntityList.length === 0) return false;
+
+  let removedAny = false;
+  const aliveEntities: DynamicEntity[] = [];
+  for (const entity of dynamicEntityList) {
+    if (!entity.isDead) {
+      aliveEntities.push(entity);
+      continue;
+    }
+
+    tryEmitDynamicDeathEffect(entity);
+    emittedDynamicDeathEffectEntityIds.delete(entity.id);
+    removedAny = true;
+  }
+
+  if (removedAny) {
+    dynamicEntityList = aliveEntities;
+  }
+
+  return removedAny;
 };
 
 const updateProjectileEntities = (deltaTime: number): boolean => {
@@ -1546,38 +1753,39 @@ const updateDynamicEntities = (deltaTime: number) => {
   const expiredAnyItem = updateItemEntityLifetimes(deltaTime);
   cooldownNormalAttack = Math.max(0, cooldownNormalAttack - deltaTime);
 
-  // 1) 先更新各自移动
+  // 1) update each entity movement/state
   for (const entity of dynamicEntityList) {
     if (entity instanceof CatDynamicEntity) {
       entity.updateHunger(deltaTime);
     }
     entity.update(deltaTime, staticEntityList);
     entity.updateDamageEffect(deltaTime);
-    entity.updateDeathEffect(deltaTime);
   }
 
-  // 2) 统一做动态实体间碰撞挤压,避免彼此穿透
+  const removedAfterMoveUpdate = removeDeadDynamicEntitiesAndEmitEffects();
+
+  // 2) resolve dynamic-entity collision separation
   resolveDynamicEntityCollisions();
 
-  // 3) 再处理停滞检测、驻足计时与下一目标分配
+  // 3) handle stuck checks, stay timer, and target assignment
   for (const entity of dynamicEntityList) {
     if (entity instanceof PlayerDynamicEntity) continue;
     entity.updateCrowdStuckState(deltaTime);
     entity.updateStayDuration(deltaTime);
     entity.updateStaticCompressionEffects(deltaTime, staticEntityList);
 
-    // 猫优先追逐附近烤鱼:可达时直接改目标
+    // cats prefer nearby grilled fish when reachable
     if (entity instanceof CatDynamicEntity && !entity.isDead) {
       const canSeekFish = entity.hungerMeter <= CatDynamicEntity.CAT_HUNGER_TOO_FULL_THRESHOLD;
       if (!canSeekFish) {
-        // 非常饱腹时,不再主动追鱼；若正在追,立即取消
+        // if too full, stop chasing fish immediately
         if (entity.chasingItemId !== null) {
           entity.clearChasingItem();
           entity.stop();
           entity.stayDurationRemaining = 0.3 + Math.random() * 0.7;
         }
       } else {
-        // 当前追逐目标已消失(被拾取/进入消失特效/移除)时,立即中断追逐
+        // if current chased fish is gone, interrupt chasing
         if (entity.chasingItemId !== null) {
           const activeTargetFish = getActiveGrilledFishById(entity.chasingItemId);
           if (!activeTargetFish) {
@@ -1611,23 +1819,29 @@ const updateDynamicEntities = (deltaTime: number) => {
       }
     }
 
-    // 超过 10 秒未位移:强制重新生成目标并重新规划路径
+    // if no movement for 10s, force a new target and repath
     if (entity.updateNoMovementWatchdog(deltaTime)) {
       setRandomTargetForDynamic(entity);
       continue;
     }
 
-    // 非移动且驻足结束后,再生成随机目标
+    // when idle and stay finished, generate a new wander target
     if (entity.canGetNewWanderTarget(deltaTime, staticEntityList)) {
       setRandomTargetForDynamic(entity);
     }
   }
+
   const pickedAnyItem = updateDynamicEntityItemPickups();
   const projectileChanged = updateProjectileEntities(deltaTime);
+  const removedAfterProjectileUpdate = removeDeadDynamicEntitiesAndEmitEffects();
 
-  const aliveEntities = dynamicEntityList.filter(entity => !entity.isDeathEffectFinished());
-  if (aliveEntities.length !== dynamicEntityList.length || pickedAnyItem || expiredAnyItem || projectileChanged) {
-    dynamicEntityList = aliveEntities;
+  if (
+    removedAfterMoveUpdate ||
+    removedAfterProjectileUpdate ||
+    pickedAnyItem ||
+    expiredAnyItem ||
+    projectileChanged
+  ) {
     refreshRenderEntityList();
   }
 };
@@ -1648,17 +1862,22 @@ const applyFirstPersonCameraMovement = (_deltaTime: number) => {
  * @param timestamp 当前时间戳
  */
 const animateEntities = (timestamp: number) => {
-  if (!lastTimestamp) {
+  if (!lastTimestamp) {// 初始帧
     lastTimestamp = timestamp;
     animationFrameId = requestAnimationFrame(animateEntities);
     return;
   }
 
-  const deltaTime = Math.min(0.033, (timestamp - lastTimestamp) / 1000); // 限制最大33ms
+  const deltaTime = Math.min(0.033, (timestamp - lastTimestamp) / 1000); // 当前时间减去上一帧的时间等于此帧的时间-并且限制最大33ms
   if (deltaTime > 0) {
-    applyFirstPersonCameraMovement(deltaTime);
-    updateDynamicEntities(deltaTime);
-    drawEntities();   // 重绘实体层
+    applyFirstPersonCameraMovement(deltaTime);  // 移动第一人称视角(背景)
+    updateDynamicEntities(deltaTime);           // 更新动态实体的坐标等数据
+    drawEntities();                             // 重绘实体层
+    updateAndDrawEffects(deltaTime);            // redraw effect layer
+    if(debugBoardVisible){
+      if (!ctxUi || !UI_CANVAS.value) return;
+      drawDebugBoard(ctxUi, UI_CANVAS.value);
+    }    // 渲染调试面板
   }
 
   lastTimestamp = timestamp;
@@ -1738,6 +1957,7 @@ const applyDebugFlagCommand = (
   drawEntities();
 };
 
+// 自动补全命令输入
 const DEBUG_COMMAND_SPECS = [
   { name: '/help', args: [] as string[] },
   { name: '/status', args: [] as string[] },
@@ -1749,6 +1969,7 @@ const DEBUG_COMMAND_SPECS = [
   { name: '/show_tag', args: ['on', 'off', 'toggle'] },
   { name: '/show_hunger', args: ['on', 'off', 'toggle'] },
   { name: '/show_health', args: ['on', 'off', 'toggle'] },
+  { name: '/show_debug_board', args: ['on', 'off', 'toggle'] },
   { name: '/perception_range', args: ['on', 'off', 'toggle'] },
   { name: '/movement_range', args: ['on', 'off', 'toggle'] },
   { name: '/movement_speed', args: ['on', 'off', 'toggle'] },
@@ -1825,6 +2046,7 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       pushDebugTerminalLog('Commands:');
       pushDebugTerminalLog('/help');
       pushDebugTerminalLog('/status');
+      pushDebugTerminalLog('/show_debug_board');
       pushDebugTerminalLog('/create_a_grilled_fish <absolute|relative> <x:int> <y:int>');
       pushDebugTerminalLog('/set_perspective <first|third>');
       pushDebugTerminalLog('/trajectory [on|off|toggle]');
@@ -1957,6 +2179,11 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       debugShowMovementPassion = nextValue;
       pushDebugTerminalLog(`[OK] All debug features: ${nextValue ? 'ON' : 'OFF'}`);
       drawEntities();
+      break;
+    }
+    case 'show_debug_board': {
+      applyDebugFlagCommand('MovementSpeedText', debugBoardVisible, args, (v) => { debugBoardVisible = v; });
+      //drawUI();
       break;
     }
     case 'clear':{
@@ -2168,6 +2395,9 @@ const onResizeCanvas = () => {
 
   ctxGraphics = GRAPHICS_CANVAS.value.getContext('2d');
   ctxUi = UI_CANVAS.value.getContext('2d');
+  if (EFFECTS_CANVAS.value) {
+    ctxEffects = EFFECTS_CANVAS.value.getContext('2d');
+  }
   if (!ctxGraphics || !ctxUi) return;
 
   // 应用 DPI 适配
@@ -2184,6 +2414,12 @@ const onResizeCanvas = () => {
   if (ENTITY_CANVAS.value && ctxEntity) {
     H_applyDprToCanvas(ENTITY_CANVAS.value, ctxEntity);
     drawEntities(); // 重绘实体层
+  }
+
+  // adjust effects canvas DPR and redraw active effects
+  if (EFFECTS_CANVAS.value && ctxEffects) {
+    H_applyDprToCanvas(EFFECTS_CANVAS.value, ctxEffects);
+    updateAndDrawEffects(0);
   }
 
   // 如果还没有设置偏移量,初始化为画布中心
@@ -2230,6 +2466,10 @@ const onMousedown = (e: MouseEvent) => {
 const onMouseMove = (e: MouseEvent) => {
   mouseX = e.offsetX;
   mouseY = e.offsetY;
+  // 更新鼠标世界坐标,用于调试面板
+  const worldCoord = TOscreen2Canvas(mouseX, mouseY);
+  mouseWorldX = worldCoord.x;
+  mouseWorldY = worldCoord.y;
 
   if (!UI_CANVAS.value) return;
 
@@ -2343,6 +2583,8 @@ onUnmounted(() => {
     <canvas id="canvas-graphics" ref="GRAPHICS_CANVAS"></canvas>
     <!-- 实体渲染 -->
     <canvas id="canvas-entity" ref="ENTITY_CANVAS"></canvas>
+    <!-- 特效层 -->
+    <canvas id="canvas-effects" ref="EFFECTS_CANVAS"></canvas>
     <!-- UI用户界面层 -->
     <canvas id="canvas-ui" ref="UI_CANVAS"></canvas>
     <!-- 鼠标指针 -->
@@ -2353,6 +2595,7 @@ onUnmounted(() => {
 .view-test2d-container{position:fixed;top:0;left:0;width:100vw;height:100vh;overflow:hidden;cursor:none;}
 #canvas-graphics{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
 #canvas-entity{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
+#canvas-effects{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
 #canvas-ui{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:auto;cursor:none;}
 #canvas-cursor{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
 </style>

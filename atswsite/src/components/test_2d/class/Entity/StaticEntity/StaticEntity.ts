@@ -8,7 +8,7 @@ class StaticEntity extends Entity {
     height: number,
     texturePath: string,
     name: string,
-    tag?: string
+    tag: string,
   ) {
     super('static', position, width, height, texturePath, name, tag);
   }

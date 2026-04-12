@@ -4,7 +4,7 @@ export { StaticEntity } from './Entity/StaticEntity/StaticEntity';
 export { BoxStaticEntity } from './Entity/StaticEntity/BoxStaticEntity/BoxStaticEntity';
 export { WallStaticEntity } from './Entity/StaticEntity/WallStaticEntity/WallStaticEntity';
 export { ItemEntity } from './Entity/ItemEntity/ItemEntity';
-export { GrilledFishItemEntity } from './Entity/ItemEntity/GrilledFishItemEntity/GrilledFishItemEntity';
+export { GrilledFishItemEntity } from './Entity/ItemEntity/FoodItemEntity/GrilledFishItemEntity/GrilledFishItemEntity';
 export { DynamicEntity } from './Entity/DynamicEntity/DynamicEntity';
 export { NpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
@@ -23,3 +23,40 @@ export { SniperBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicE
 export { CatDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/CatDynamicEntity/CatDynamicEntity';
 export { RagdollCatDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/CatDynamicEntity/RagdollCatDynamicEntity/RagdollCatDynamicEntity';
 
+export const PrototypeChain = {
+  "CursorManager": "CursorManager",
+  "Entity": {
+    "StaticEntity": {
+      "BoxStaticEntity": "BoxStaticEntity",
+      "WallStaticEntity": "WallStaticEntity"
+    },
+    "ItemEntity": {
+      "FoodItemEntity": {
+        "GrilledFishItemEntity": "GrilledFishItemEntity"
+      }
+    },
+    "DynamicEntity": {
+      "NpcDynamicEntity": {
+        "FriendlyNpcDynamicEntity": {
+          "CatDynamicEntity": {
+            "RagdollCatDynamicEntity": "RagdollCatDynamicEntity"
+          }
+        },
+        "NeutralNpcDynamicEntity": "NeutralNpcDynamicEntity",
+        "HostileNpcDynamicEntity": "HostileNpcDynamicEntity"
+      },
+      "PlayerDynamicEntity": "PlayerDynamicEntity",
+      "GrenadeDynamicEntity": {
+        "SmokeGrenadeDynamicEntity": "SmokeGrenadeDynamicEntity",
+        "FragGrenadeDynamicEntity": "FragGrenadeDynamicEntity",
+        "StunGrenadeDynamicEntity": "StunGrenadeDynamicEntity"
+      },
+      "BulletDynamicEntity": {
+        "BuckshotBulletDynamicEntity": "BuckshotBulletDynamicEntity",
+        "OrdinaryBulletDynamicEntity": "OrdinaryBulletDynamicEntity",
+        "LaserBulletDynamicEntity": "LaserBulletDynamicEntity",
+        "SniperBulletDynamicEntity": "SniperBulletDynamicEntity"
+      }
+    }
+  }
+};
