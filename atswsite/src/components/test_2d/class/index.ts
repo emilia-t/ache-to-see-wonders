@@ -1,4 +1,5 @@
 ﻿export { CursorManager } from './CursorManager/CursorManager';
+export { EffectManager } from './EffectManager/EffectManager';
 export { Entity } from './Entity/Entity';
 export { StaticEntity } from './Entity/StaticEntity/StaticEntity';
 export { BoxStaticEntity } from './Entity/StaticEntity/BoxStaticEntity/BoxStaticEntity';
@@ -25,6 +26,7 @@ export { RagdollCatDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity
 
 export const PrototypeChain = {
   "CursorManager": "CursorManager",
+  "EffectManager": "EffectManager",
   "Entity": {
     "StaticEntity": {
       "BoxStaticEntity": "BoxStaticEntity",

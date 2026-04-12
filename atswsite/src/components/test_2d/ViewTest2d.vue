@@ -10,12 +10,10 @@ import type {
   RGB,
   Point,
   EventArea,
-  CanvasEffectEventPayload,
-  LoadedEffectSprite,
-  ActiveCanvasEffect
 } from '@/components/test_2d/interface/InterfaceTest2d';
 import {
   CursorManager,
+  EffectManager,
   Entity,
   StaticEntity,
   ItemEntity,
@@ -47,7 +45,6 @@ const EFFECT_SPRITE_FRAME_WIDTH = 100;
 const EFFECT_SPRITE_FRAME_HEIGHT = 100;
 const EFFECT_SPRITE_FRAME_COUNT = 30;
 const EFFECT_SPRITE_FPS = 30;
-const EFFECT_SPRITE_DURATION = EFFECT_SPRITE_FRAME_COUNT / EFFECT_SPRITE_FPS;
 const EFFECT_PATH_DYNAMIC_ENTITY_DEATH = './effects/dynamic_entity_death_default.png';
 ////////////////////
 //<--常量区
@@ -60,7 +57,6 @@ let cursorManager: CursorManager | null = null;
 let ctxGraphics: CanvasRenderingContext2D | null = null;
 let ctxUi: CanvasRenderingContext2D | null = null;
 let ctxEntity: CanvasRenderingContext2D | null = null;
-let ctxEffects: CanvasRenderingContext2D | null = null;
 
 let offsetXX = 0;  // 原点在x轴上的偏移
 let offsetYY = 0;  // 原点在y轴上的偏移
@@ -120,15 +116,7 @@ let firstPersonMoveD = false;
 let playerEntity: PlayerDynamicEntity | null = null;
 let playerFireMode = false;
 let cooldownNormalAttack = 0; //cooldown time
-let nextCanvasEffectId = 1;
-
-// 当前播放的特效列表
-let activeCanvasEffects: ActiveCanvasEffect[] = [];
-// 雪碧图特效索引
-let effectSpriteMap: Record<string, LoadedEffectSprite | null> = {
-  [EFFECT_PATH_DYNAMIC_ENTITY_DEATH]: null
-};
-const emittedDynamicDeathEffectEntityIds = new Set<number>();
+let effectManager: EffectManager | null = null;
 
 
 ////////////////////
@@ -207,15 +195,24 @@ const startSetting = () => {
     }
   }
 
-  // 初始化测试实体(移除所有静态障碍物)
-  // init effects canvas context
-  if (EFFECTS_CANVAS.value) {
-    ctxEffects = EFFECTS_CANVAS.value.getContext('2d');
-    if (ctxEffects) {
-      H_applyDprToCanvas(EFFECTS_CANVAS.value, ctxEffects);
-    }
+  // init effect manager
+  if (!effectManager) {
+    effectManager = new EffectManager({
+      frameWidth: EFFECT_SPRITE_FRAME_WIDTH,
+      frameHeight: EFFECT_SPRITE_FRAME_HEIGHT,
+      frameCount: EFFECT_SPRITE_FRAME_COUNT,
+      fps: EFFECT_SPRITE_FPS,
+      effectPathByKind: {
+        dynamic_entity_death: EFFECT_PATH_DYNAMIC_ENTITY_DEATH,
+      },
+      worldToScreen: TOcanvas2Screen,
+      getCanvasCssSize: H_getCanvasCssSize,
+    });
   }
+  effectManager.bindCanvas(EFFECTS_CANVAS.value);
+  effectManager.applyDprToCanvas();
 
+  // initialize test entities (remove all static obstacles)
   staticEntityList = [];
   dynamicEntityList = [];
   projectileEntityList = [];
@@ -223,9 +220,7 @@ const startSetting = () => {
   renderEntityList = [];
   playerFireMode = false;
   cooldownNormalAttack = 0;
-  nextCanvasEffectId = 1;
-  activeCanvasEffects = [];
-  emittedDynamicDeathEffectEntityIds.clear();
+  effectManager?.reset();
 
   const catSpawnCenter = { x: -50, y: -50 };
 
@@ -264,9 +259,9 @@ const startSetting = () => {
 
   // 加载纹理并开始动画
   // load textures and start animation
-  Promise.all([loadEntityTextures(), loadEffectTextures()]).then(() => {
+  Promise.all([loadEntityTextures(), effectManager.loadEffectTextures()]).then(() => {
     drawEntities();
-    updateAndDrawEffects(0);
+    effectManager?.updateAndDraw(0);
     // start animation loop
     animationFrameId = requestAnimationFrame(animateEntities);
   });
@@ -566,158 +561,6 @@ const TOcanvas2Screen = (canvasX: number, canvasY: number) => {
   };
 };
 
-/**
- * 特效播放前进行的可视范围判断
- * @param worldX 
- * @param worldY 
- * @param width 
- * @param height 
- */
-const isWorldRectInVisibleRange = (worldX: number, worldY: number, width: number, height: number) => {
-  const baseCanvas = EFFECTS_CANVAS.value || ENTITY_CANVAS.value || GRAPHICS_CANVAS.value;
-  if (!baseCanvas) return false;
-  const screenPos = TOcanvas2Screen(worldX, worldY);
-  const halfW = width / 2;
-  const halfH = height / 2;
-  const left = screenPos.x - halfW;
-  const top = screenPos.y - halfH;
-  const right = left + width;
-  const bottom = top + height;
-  const { width: canvasWidth, height: canvasHeight } = H_getCanvasCssSize(baseCanvas);
-  return right >= 0 && bottom >= 0 && left <= canvasWidth && top <= canvasHeight;
-};
-
-/**
- * 获取雪碧图特效图片路径
- * @param kind 
- */
-const getEffectSpritePathByKind = (kind: string) => {
-  switch (kind) {
-    case 'dynamic_entity_death':
-      return EFFECT_PATH_DYNAMIC_ENTITY_DEATH;
-    default:
-      console.warn(`Unknown effect kind: ${kind}`);
-      return '';
-  }
-};
-
-/**
- * 触发播放特效事件
- * @param payload 
- */
-const emitCanvasEffectEvent = (payload: CanvasEffectEventPayload) => {
-  if (!isWorldRectInVisibleRange(payload.position.x, payload.position.y, payload.width, payload.height)) return false;
-
-  const spritePath = getEffectSpritePathByKind(payload.kind);
-  activeCanvasEffects.push({
-    id: nextCanvasEffectId++,
-    kind: payload.kind,
-    worldX: payload.position.x,
-    worldY: payload.position.y,
-    width: payload.width,
-    height: payload.height,
-    tag: payload.tag,
-    spritePath,
-    elapsed: 0,
-  });
-  return true;
-};
-
-/**
- * 动态实体死亡时触发播放死亡特效
- * @param entity 
- */
-const tryEmitDynamicDeathEffect = (entity: DynamicEntity) => {
-  if (emittedDynamicDeathEffectEntityIds.has(entity.id)) return false;
-  emittedDynamicDeathEffectEntityIds.add(entity.id);
-  return emitCanvasEffectEvent({
-    kind: 'dynamic_entity_death',
-    position: { ...entity.position },
-    width: entity.width,
-    height: entity.height,
-    tag: entity.tag,
-    entityType: entity.type,
-  });
-};
-
-/**
- * 加载单个雪碧图特效图片
- * @param path 
- */
-const loadSingleEffectSprite = (path: string): Promise<void> => {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.src = path;
-    img.onload = () => {
-      effectSpriteMap[path] = { img, loaded: true, path };
-      resolve();
-    };
-    img.onerror = () => {
-      console.warn(`Failed to load effect sprite: ${path}`);
-      effectSpriteMap[path] = { img, loaded: false, path };
-      resolve();
-    };
-  });
-};
-
-/**
- * 加载所有雪碧图特效图片
- */
-const loadEffectTextures = async () => {
-  await Promise.all([
-    loadSingleEffectSprite(EFFECT_PATH_DYNAMIC_ENTITY_DEATH)
-  ]);
-};
-
-/**
- * 绘制特效
- * @param deltaTime 
- */
-const updateAndDrawEffects = (deltaTime: number) => {
-  if (!ctxEffects || !EFFECTS_CANVAS.value) return;
-  const { width, height } = H_getCanvasCssSize(EFFECTS_CANVAS.value);
-  ctxEffects.clearRect(0, 0, width, height);
-
-  const remainingEffects: ActiveCanvasEffect[] = [];
-  for (const effect of activeCanvasEffects) {
-    const nextElapsed = effect.elapsed + Math.max(0, deltaTime);
-    if (nextElapsed >= EFFECT_SPRITE_DURATION) continue;
-
-    const frameIndex = Math.min(
-      EFFECT_SPRITE_FRAME_COUNT - 1,
-      Math.floor(nextElapsed * EFFECT_SPRITE_FPS)
-    );
-    const sprite = effectSpriteMap[effect.spritePath];
-    const screenPos = TOcanvas2Screen(effect.worldX, effect.worldY);
-    const drawX = screenPos.x - effect.width / 2;
-    const drawY = screenPos.y - effect.height / 2;
-
-    if (sprite && sprite.loaded) {
-      ctxEffects.drawImage(
-        sprite.img,
-        frameIndex * EFFECT_SPRITE_FRAME_WIDTH,
-        0,
-        EFFECT_SPRITE_FRAME_WIDTH,
-        EFFECT_SPRITE_FRAME_HEIGHT,
-        drawX,
-        drawY,
-        effect.width,
-        effect.height
-      );
-    }
-
-    remainingEffects.push({
-      ...effect,
-      elapsed: nextElapsed,
-    });
-  }
-
-  activeCanvasEffects = remainingEffects;
-};
-
-/**
- * 绘制顶部提示信息(UI层)
- */
 const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   if (!CtxUi || !CANVAS) return;
   const { width } = H_getCanvasCssSize(CANVAS);
@@ -1453,8 +1296,7 @@ const removeDeadDynamicEntitiesAndEmitEffects = (): boolean => {
       continue;
     }
 
-    tryEmitDynamicDeathEffect(entity);
-    emittedDynamicDeathEffectEntityIds.delete(entity.id);
+    effectManager?.emitDynamicEntityDeath(entity);
     removedAny = true;
   }
 
@@ -1757,7 +1599,7 @@ const animateEntities = (timestamp: number) => {
     applyFirstPersonCameraMovement(deltaTime);  // 移动第一人称视角(背景)
     updateDynamicEntities(deltaTime);           // 更新动态实体的坐标等数据
     drawEntities();                             // 重绘实体层
-    updateAndDrawEffects(deltaTime);            // redraw effect layer
+    effectManager?.updateAndDraw(deltaTime);    // redraw effect layer
     if(debugBoardVisible){
       if (!ctxUi || !UI_CANVAS.value) return;
       drawDebugBoard(ctxUi, UI_CANVAS.value);
@@ -2278,9 +2120,6 @@ const onResizeCanvas = () => {
 
   ctxGraphics = GRAPHICS_CANVAS.value.getContext('2d');
   ctxUi = UI_CANVAS.value.getContext('2d');
-  if (EFFECTS_CANVAS.value) {
-    ctxEffects = EFFECTS_CANVAS.value.getContext('2d');
-  }
   if (!ctxGraphics || !ctxUi) return;
 
   // 应用 DPI 适配
@@ -2299,11 +2138,10 @@ const onResizeCanvas = () => {
     drawEntities(); // 重绘实体层
   }
 
-  // adjust effects canvas DPR and redraw active effects
-  if (EFFECTS_CANVAS.value && ctxEffects) {
-    H_applyDprToCanvas(EFFECTS_CANVAS.value, ctxEffects);
-    updateAndDrawEffects(0);
-  }
+  // adjust effect layer DPR and redraw
+  effectManager?.bindCanvas(EFFECTS_CANVAS.value);
+  effectManager?.applyDprToCanvas();
+  effectManager?.updateAndDraw(0);
 
   // 如果还没有设置偏移量,初始化为画布中心
   if (offsetXX === 0 && offsetYY === 0) {
@@ -2455,6 +2293,7 @@ onUnmounted(() => {
   window.removeEventListener('mouseenter', onWindowMouseEnter);
   window.removeEventListener('keydown', onGlobalKeyDown);
   window.removeEventListener('keyup', onGlobalKeyUp);
+  effectManager = null;
 });
 ////////////////////
 //<--vue事件处理区
