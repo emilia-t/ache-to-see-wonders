@@ -14,6 +14,5 @@ abstract class HostileNpcDynamicEntity extends NpcDynamicEntity {
     super(position, width, height, texturePath, name, 'hostile', pickupRange, tag);
   }
 }
-
 export { HostileNpcDynamicEntity };
 
