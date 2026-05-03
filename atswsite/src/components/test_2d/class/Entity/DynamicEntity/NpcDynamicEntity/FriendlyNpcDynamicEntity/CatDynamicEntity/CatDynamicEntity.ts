@@ -32,6 +32,9 @@ class CatDynamicEntity extends FriendlyNpcDynamicEntity {
     this.speed = baseSpeed * this.movementPassion;
   }
 
+  /**
+   * 清除正在追逐的物品(如被玩家抢先拾取或过远时)
+   */
   clearChasingItem() {
     this.chasingItemId = null;
   }

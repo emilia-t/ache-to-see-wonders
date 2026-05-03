@@ -4,6 +4,7 @@ export { Entity } from './Entity/Entity';
 export { StaticEntity } from './Entity/StaticEntity/StaticEntity';
 export { BoxStaticEntity } from './Entity/StaticEntity/BoxStaticEntity/BoxStaticEntity';
 export { WallStaticEntity } from './Entity/StaticEntity/WallStaticEntity/WallStaticEntity';
+export { CurbStaticEntity } from './Entity/StaticEntity/CurbStaticEntity/CurbStaticEntity';
 export { ItemEntity } from './Entity/ItemEntity/ItemEntity';
 export { GrilledFishItemEntity } from './Entity/ItemEntity/FoodItemEntity/GrilledFishItemEntity/GrilledFishItemEntity';
 export { DynamicEntity } from './Entity/DynamicEntity/DynamicEntity';
@@ -11,6 +12,7 @@ export { NpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NpcDyn
 export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
 export { NeutralNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/NeutralNpcDynamicEntity';
 export { HostileNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
+export { WhitePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelEntity';
 export { PlayerDynamicEntity } from './Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 export { GrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/GrenadeDynamicEntity';
 export { SmokeGrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/SmokeGrenadeDynamicEntity/SmokeGrenadeDynamicEntity';
@@ -30,7 +32,8 @@ export const PrototypeChain = {
   "Entity": {
     "StaticEntity": {
       "BoxStaticEntity": "BoxStaticEntity",
-      "WallStaticEntity": "WallStaticEntity"
+      "WallStaticEntity": "WallStaticEntity",
+      "CurbStaticEntity": "CurbStaticEntity"
     },
     "ItemEntity": {
       "FoodItemEntity": {
@@ -45,7 +48,9 @@ export const PrototypeChain = {
           }
         },
         "NeutralNpcDynamicEntity": "NeutralNpcDynamicEntity",
-        "HostileNpcDynamicEntity": "HostileNpcDynamicEntity"
+        "HostileNpcDynamicEntity": {
+          "WhitePixelEntity": "WhitePixelEntity"
+        }
       },
       "PlayerDynamicEntity": "PlayerDynamicEntity",
       "GrenadeDynamicEntity": {

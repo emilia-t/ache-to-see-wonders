@@ -1,11 +1,11 @@
-// The relative position of this file: src/class/Instruct.ts
+// The relative position of this file: src/components/test_2d/instruct/Instruct.ts
 // This is the basic class of Instruct class
-import type ServerConfig from "@/interface/ServerConfig";
-import type InstructObject from "@/interface/InstructObject";
-import type LogConfig from "@/interface/LogConfig";
-import type UserData from "@/interface/UserData";
-import type ChineseChessUserData from "@/interface/ChineseChessUserData";
-import Tool from "@/class/Tool";
+import type {ServerConfig} from "@/components/test_2d/interface/InterfaceTest2d";
+import type {InstructObject} from "@/components/test_2d/interface/InterfaceTest2d";
+import type {LogConfig} from "@/components/test_2d/interface/InterfaceTest2d";
+import type {UserData} from "@/components/test_2d/interface/InterfaceTest2d";
+import type {PixelWarUserData} from "@/components/test_2d/interface/InterfaceTest2d";
+import Tool from "@/components/test_2d/instruct/Tool";
 
 export default abstract class Instruct {
     private url: string;
@@ -17,7 +17,7 @@ export default abstract class Instruct {
     private pingInterval: number | null = null;
     private publicKey: string = '';//服务端的公钥 用于部分加密操作
     private serverConfig: ServerConfig | null = null;
-    private userData: UserData | ChineseChessUserData | null = null;
+    private userData: UserData | PixelWarUserData | null = null;
     /*
      * 构造器
      */

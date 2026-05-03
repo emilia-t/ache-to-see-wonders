@@ -4,8 +4,8 @@ import type { Point } from '@/components/test_2d/interface/InterfaceTest2d';
 import { ItemEntity } from '@/components/test_2d/class/Entity/ItemEntity/ItemEntity';
 
 class PlayerDynamicEntity extends DynamicEntity {
-  static readonly WIDTH = 50;
-  static readonly HEIGHT = 50;
+  static readonly WIDTH = 25;
+  static readonly HEIGHT = 25;
   static readonly MOVE_SPEED = 320;
   static playerMoveState = {
     playerMoveW: false,
@@ -22,7 +22,7 @@ class PlayerDynamicEntity extends DynamicEntity {
   ) {
     super(position, PlayerDynamicEntity.WIDTH, PlayerDynamicEntity.HEIGHT, '', name, 'player', 'player');
     this.isme = isme;
-    this.fillColor = '#2d7ff9';
+    this.fillColor = '#2d7ff913';
     this.minMoveSpeed = PlayerDynamicEntity.MOVE_SPEED;
     this.maxMoveSpeed = PlayerDynamicEntity.MOVE_SPEED;
     this.speed = PlayerDynamicEntity.MOVE_SPEED;

@@ -95,3 +95,46 @@ export interface ActiveCanvasEffect {
   spritePath: string;
   elapsed: number;
 };
+
+export interface UserData {
+    id: number; // ID
+    anonymous_user: boolean; // 用户是否是匿名的
+    email: string; // 电子邮箱
+    password: string | null; // 一般为空，仅保留字段
+    name: string; // 用户名
+    qq: number; // QQ 号码
+    theme_color: string; // 主题颜色（暗黑和亮色）
+    head_img: string; // 头像的URI
+}
+
+export interface PixelWarUserData extends UserData {
+    /* 游戏账号相关数据 */
+    player_score: number; // 玩家得分
+}
+
+export interface LogConfig {
+    code: number;
+    time: string;
+    text: string;
+    from: string;
+    type: string;
+    data: any;
+}
+
+export interface InstructObject {
+    type: string;
+    class: string;
+    conveyor: string;
+    time: string;
+    data: any;
+}
+
+export interface ServerConfig {
+    version: string;// 服务端运行版本
+    anonymous_login: boolean;
+    key: string;
+    url: string;
+    name: string;
+    online_number: number;
+    max_online: number;
+}

@@ -16,6 +16,8 @@ import {
   EffectManager,
   Entity,
   StaticEntity,
+  CurbStaticEntity,
+  WhitePixelEntity,
   ItemEntity,
   GrilledFishItemEntity,
   DynamicEntity,
@@ -27,6 +29,12 @@ import {
   RagdollCatDynamicEntity,
 } from '@/components/test_2d/class';
 
+import ServiceWorker from '@/components/test_2d/service/Service?worker';
+const serviceWorker = new ServiceWorker();
+serviceWorker.postMessage(100);//发送消息到服务端
+serviceWorker.addEventListener('message', (event) => {
+  // 处理消息
+});
 
 ////////////////////
 //常量区-->
@@ -222,6 +230,39 @@ const startSetting = () => {
   cooldownNormalAttack = 0;
   effectManager?.reset();
 
+
+
+  const wallHalfSide = 10000;   // 边长的一半，因为边长 = 400 * 50 = 20000
+  const step = 50;              // 边界宽度/高度
+  const offset = 25;      // 中心点偏移量 = 25
+
+  // 底边 (y = -wallHalfSide)
+  for (let x = -wallHalfSide + offset; x <= wallHalfSide - offset; x += step) {
+    staticEntityList.push(new CurbStaticEntity({ x, y: -wallHalfSide - 25 }));
+  }
+  // 顶边 (y = wallHalfSide)
+  for (let x = -wallHalfSide + offset; x <= wallHalfSide - offset; x += step) {
+    staticEntityList.push(new CurbStaticEntity({ x, y: wallHalfSide + 25 }));
+  }
+  // 左边 (x = -wallHalfSide)
+  for (let y = -wallHalfSide + offset; y <= wallHalfSide - offset; y += step) {
+    staticEntityList.push(new CurbStaticEntity({ x: -wallHalfSide - 25, y }));
+  }
+  // 右边 (x = wallHalfSide)
+  for (let y = -wallHalfSide + offset; y <= wallHalfSide - offset; y += step) {
+    staticEntityList.push(new CurbStaticEntity({ x: wallHalfSide + 25, y }));
+  }
+
+  staticEntityList.push(new CurbStaticEntity({ x: wallHalfSide + 25, y: wallHalfSide + 25 }));
+  staticEntityList.push(new CurbStaticEntity({ x: wallHalfSide + 25, y: -wallHalfSide - 25 }));
+  staticEntityList.push(new CurbStaticEntity({ x: -wallHalfSide - 25, y: wallHalfSide + 25 }));
+  staticEntityList.push(new CurbStaticEntity({ x: -wallHalfSide - 25, y: -wallHalfSide - 25 }));
+
+
+
+  const whitePixelEntity = new WhitePixelEntity({ x: 0, y: 0 });
+  dynamicEntityList.push(whitePixelEntity);
+
   const catSpawnCenter = { x: -50, y: -50 };
 
   // 动态实体示例:猫-随机游走
@@ -235,7 +276,7 @@ const startSetting = () => {
   );
   playerEntity = new PlayerDynamicEntity(
       { x: catSpawnCenter.x, y: catSpawnCenter.y + 180 },
-      'Player',
+      'xxxxx',
       true
   );
   
@@ -886,13 +927,16 @@ const drawSingleEntity = (entity: Entity) => {
     }
     ctxEntity.restore();
 
-    ctxEntity.font = '12px "Microsoft YaHei"';
-    ctxEntity.fillStyle = '#ffffff';
-    ctxEntity.shadowColor = 'rgba(0,0,0,0.5)';
-    ctxEntity.shadowBlur = 2;
-    ctxEntity.textAlign = 'center';
-    ctxEntity.textBaseline = 'top';
-    ctxEntity.fillText(entity.name, screenPos.x, screenPos.y + halfH + 6);
+    if (entity instanceof PlayerDynamicEntity) {
+      ctxEntity.font = '12px "Microsoft YaHei"';
+      ctxEntity.fillStyle = '#ffffff';
+      ctxEntity.shadowColor = 'rgba(0,0,0,0.5)';
+      ctxEntity.shadowBlur = 2;
+      ctxEntity.textAlign = 'center';
+      ctxEntity.textBaseline = 'top';
+      ctxEntity.fillText(entity.name, screenPos.x, screenPos.y + halfH + 6);
+    }
+
     if (debugShowTag && entity.tag) {
       ctxEntity.font = '10px Arial';
       ctxEntity.fillStyle = '#ffff00';
@@ -932,11 +976,19 @@ const drawSingleEntity = (entity: Entity) => {
       entity.height
     );
   } else {
-    // 默认颜色填充-根据类型不同
-    ctxEntity.fillStyle = entity.fillColor || (entity.type === 'static' ? '#aaaaaa' : '#66cc66');
-    ctxEntity.fillRect(left, top, entity.width, entity.height);
-    ctxEntity.strokeStyle = '#000';
-    ctxEntity.strokeRect(left, top, entity.width, entity.height);
+    if(entity.texturePath === ''){
+      // 颜色贴图-根据贴图路径指定颜色
+      ctxEntity.fillStyle = entity.fillColor || '#999';
+      ctxEntity.fillRect(left, top, entity.width, entity.height);
+      ctxEntity.strokeStyle = entity.strokeColor || '#000';
+      ctxEntity.strokeRect(left, top, entity.width, entity.height);
+    }else{
+      // 默认颜色填充-根据类型不同
+      ctxEntity.fillStyle = entity.fillColor || (entity.type === 'static' ? '#aaaaaa' : '#66cc66');
+      ctxEntity.fillRect(left, top, entity.width, entity.height);
+      ctxEntity.strokeStyle = entity.strokeColor || '#000';
+      ctxEntity.strokeRect(left, top, entity.width, entity.height);
+    }
   }
 
   // 动态实体受伤时:在原贴图上叠加半透明红色(仅作用于非透明像素)
@@ -957,9 +1009,6 @@ const drawSingleEntity = (entity: Entity) => {
     const dynamicEntity = entity as DynamicEntity;
     const healthMax = dynamicEntity instanceof CatDynamicEntity ? 50 : 100;
     const healthRatio = Math.max(0, Math.min(1, dynamicEntity.health / healthMax));
-    const hungerRatio = dynamicEntity instanceof CatDynamicEntity
-      ? Math.max(0, Math.min(1, dynamicEntity.hungerMeter / 200))
-      : 0;
     const barWidth = Math.max(36, entity.width);
     const barHeight = 4;
     const barX = screenPos.x - barWidth / 2;
@@ -971,24 +1020,32 @@ const drawSingleEntity = (entity: Entity) => {
     // 血条值
     ctxEntity.fillStyle = '#2ecc71';
     ctxEntity.fillRect(barX, topY, barWidth * healthRatio, barHeight);
-
-    // 饥饿条底
-    const hungerY = topY + barHeight + 3;
-    ctxEntity.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctxEntity.fillRect(barX, hungerY, barWidth, barHeight);
-    // 饥饿条值
-    ctxEntity.fillStyle = '#f1c40f';
-    ctxEntity.fillRect(barX, hungerY, barWidth * hungerRatio, barHeight);
+    
+    if('hungerMeter' in dynamicEntity){
+      const hungerRatio = dynamicEntity instanceof CatDynamicEntity
+      ? Math.max(0, Math.min(1, dynamicEntity.hungerMeter / 200))
+      : 0;
+      // 饥饿条底
+      const hungerY = topY + barHeight + 3;
+      ctxEntity.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctxEntity.fillRect(barX, hungerY, barWidth, barHeight);
+      // 饥饿条值
+      ctxEntity.fillStyle = '#f1c40f';
+      ctxEntity.fillRect(barX, hungerY, barWidth * hungerRatio, barHeight);
+    }
   }
 
-  // 绘制属性标签-名称
-  ctxEntity.font = '12px "Microsoft YaHei"';
-  ctxEntity.fillStyle = '#ffffff';
-  ctxEntity.shadowColor = 'rgba(0,0,0,0.5)';
-  ctxEntity.shadowBlur = 2;
-  ctxEntity.textAlign = 'center';
-  ctxEntity.textBaseline = 'top';
-  ctxEntity.fillText(entity.name, screenPos.x, screenPos.y + halfH + 6);
+  if (entity instanceof PlayerDynamicEntity) {
+    // 绘制属性标签-名称
+    ctxEntity.font = '12px "Microsoft YaHei"';
+    ctxEntity.fillStyle = '#ffffff';
+    ctxEntity.shadowColor = 'rgba(0,0,0,0.5)';
+    ctxEntity.shadowBlur = 2;
+    ctxEntity.textAlign = 'center';
+    ctxEntity.textBaseline = 'top';
+    ctxEntity.fillText(entity.name, screenPos.x, screenPos.y + halfH + 6);
+  }
+  
   if (debugShowTag && entity.tag) {
     ctxEntity.font = '10px Arial';
     ctxEntity.fillStyle = '#ffff00';
@@ -1329,7 +1386,7 @@ const updateProjectileEntities = (deltaTime: number): boolean => {
       const hitRadius = entity.width * 0.45 + bullet.width * 0.5;
 
       if (hitDistance <= hitRadius) {
-        entity.applyDamage(BulletDynamicEntity.DAMAGE);
+        entity.applyDamage(bullet.damage);
         bullet.shouldRemove = true;
         changed = true;
         break;
@@ -2271,6 +2328,9 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  // 关闭服务端
+  serviceWorker.terminate();
+
   if (UI_CANVAS.value) {
     UI_CANVAS.value.removeEventListener('mousedown', onMousedown);
     UI_CANVAS.value.removeEventListener('mousemove', onMouseMove);

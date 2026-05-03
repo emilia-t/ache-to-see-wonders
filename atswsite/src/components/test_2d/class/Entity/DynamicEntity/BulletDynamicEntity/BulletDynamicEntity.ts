@@ -7,7 +7,7 @@ class BulletDynamicEntity extends DynamicEntity {
   static readonly WIDTH = 12;
   static readonly HEIGHT = 12;
   static readonly MOVE_SPEED = 720;
-  static readonly DAMAGE = 34;
+  static readonly DEFAULT_DAMAGE = 30;
   static readonly MAX_LIFETIME = 1.2;
 
   velocity: Point;
@@ -15,13 +15,15 @@ class BulletDynamicEntity extends DynamicEntity {
   lifetimeRemaining: number;
   shouldRemove: boolean;
   rangeType: BulletRangeType;// 子弹射程类型（短/长）
+  damage: number;
 
   constructor(
     position: Point,
     direction: Point,
     ownerId: number | null,
     rangeType: BulletRangeType,
-    name: string = 'Bullet'
+    name: string = 'Bullet',
+    damage: number = BulletDynamicEntity.DEFAULT_DAMAGE
   ) {
     super(position, BulletDynamicEntity.WIDTH, BulletDynamicEntity.HEIGHT, '', name, 'bullet', 'bullet');
     this.rangeType = rangeType;
@@ -43,6 +45,7 @@ class BulletDynamicEntity extends DynamicEntity {
     this.isMoving = true;
     this.facingDirection = { ...direction };
     this.lastMoveDirection = { ...direction };
+    this.damage = damage;
   }
 
   private collidesWithStatic(newPos: Point, staticEntities: StaticEntity[]) {

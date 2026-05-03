@@ -128,7 +128,7 @@ class DynamicEntity extends Entity {
     );
     this.lastStuckCheckPos = { ...this.position };
 
-    // 已停着的不计入“拥挤停滞”
+    // 已停着的不计入"拥挤停滞"
     if (!this.isMoving) {
       this.crowdStuckTimer = 0;
       return;
@@ -403,7 +403,7 @@ class DynamicEntity extends Entity {
     return true;
   }
 
-  // 对避障折线做圆角化，尽量保持曲线观感；若圆角后不安全则回退为原折线
+  // 对避障折线做圆角化，尽量保持曲线观感;若圆角后不安全则回退为原折线
   private buildRoundedAvoidanceSamples(points: Point[], boxes: CollisionBox[]): Point[] {
     if (points.length <= 2) return this.buildPolylineSamples(points);
 
@@ -461,11 +461,11 @@ class DynamicEntity extends Entity {
     return this.buildPolylineSamples(points, 12);
   }
 
-  // 当常规寻路失败时的兜底：优先脱离静态实体；否则尝试近邻目标，避免长期静止
+  // 当常规寻路失败时的兜底:优先脱离静态实体;否则尝试近邻目标，避免长期静止
   tryFallbackTarget(staticEntities: StaticEntity[]): boolean {
     const current = { ...this.position };
 
-    // 1) 若当前被挤在静态实体内，优先做“脱困位移”
+    // 1) 若当前被挤在静态实体内，优先做"脱困位移"
     if (this.isInsideStaticEntity(staticEntities)) {
       let bestDir: Point | null = null;
       let bestScore = -Infinity;
@@ -487,7 +487,7 @@ class DynamicEntity extends Entity {
         }
       }
 
-      // 直接做一小步脱困位移，不生成“忽略障碍”的远目标点
+      // 直接做一小步脱困位移，不生成"忽略障碍"的远目标点
       if (bestDir && bestScore > 0.0001) {
         this.position = {
           x: current.x + bestDir.x * escapeDistance,
@@ -518,7 +518,7 @@ class DynamicEntity extends Entity {
       }
     }
 
-    // 3) 不再使用“忽略障碍”的目标，避免生成围栏外不可达点
+    // 3) 不再使用"忽略障碍"的目标，避免生成围栏外不可达点
     return false;
   }
 
@@ -548,7 +548,7 @@ class DynamicEntity extends Entity {
     // 每次设新目标都从当前位置重新规划，避免沿用旧目标点
     const newHistory: Point[] = [];
 
-    // 仅在直达且非“直线优先”时使用前导锚点，保持连续曲线
+    // 仅在直达且非"直线优先"时使用前导锚点，保持连续曲线
     if (plannedPath.length === 2 && !preferStraight && this.lastMoveDirection) {
       const tailLen = Math.min(Math.max(distance * 0.2, 20), 80);
       newHistory.push({
@@ -560,7 +560,7 @@ class DynamicEntity extends Entity {
 
     const inflatedBoxes = this.getInflatedStaticBoxes(staticEntities);
 
-    // 直达路径可加入一个弯曲控制点；避障路径则直接使用规划拐点
+    // 直达路径可加入一个弯曲控制点;避障路径则直接使用规划拐点
     if (plannedPath.length === 2 && !preferStraight && distance > 30) {
       const midX = (currentPos.x + target.x) / 2;
       const midY = (currentPos.y + target.y) / 2;
@@ -600,7 +600,7 @@ class DynamicEntity extends Entity {
     newHistory.push({ ...target });
     this.targetHistory = newHistory;
 
-    // 直达路径默认平滑曲线；若“直线优先”则改用折线采样（本质直线）
+    // 直达路径默认平滑曲线;若"直线优先"则改用折线采样（本质直线）
     if (plannedPath.length === 2 && !preferStraight) {
       this.generateSmoothPath();
 
@@ -664,7 +664,7 @@ class DynamicEntity extends Entity {
     return this.getTotalStaticOverlap(this.position, staticEntities) > 0.0001;
   }
 
-  // 被挤压在静态实体中时：每 1 秒扣 2 点血
+  // 被挤压在静态实体中时:每 1 秒扣 2 点血
   updateStaticCompressionEffects(dt: number, staticEntities: StaticEntity[]) {
     if (this.isDead) return;
     const insideNow = this.isInsideStaticEntity(staticEntities);
@@ -758,7 +758,7 @@ class DynamicEntity extends Entity {
       }
     }
 
-    // 碰撞检测：如果当前已挤在静态实体内，允许“减少重叠”的位移，以便脱困
+    // 碰撞检测:如果当前已挤在静态实体内，允许"减少重叠"的位移，以便脱困
     const oldOverlap = this.getTotalStaticOverlap(this.position, staticEntities);
     const newOverlap = this.getTotalStaticOverlap(newPos, staticEntities);
     const collided = newOverlap > 0.0001 && newOverlap + 0.0001 >= oldOverlap;
@@ -784,7 +784,7 @@ class DynamicEntity extends Entity {
         this.enterStayStateAfterArrival();
       }
     } else {
-      // 在静态实体外碰撞仍停止；若已在静态实体内，保留移动状态以便后续脱困
+      // 在静态实体外碰撞仍停止;若已在静态实体内，保留移动状态以便后续脱困
       if (oldOverlap <= 0.0001) {
         this.stop();
         this.curvePoints = [this.position];

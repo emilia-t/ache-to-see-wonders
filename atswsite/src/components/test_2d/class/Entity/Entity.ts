@@ -11,7 +11,8 @@ class Entity {
   texture: Texture | null;
   name: string;
   collisionBox: CollisionBox;
-  fillColor?: string;
+  fillColor?: string;    // 填充颜色
+  strokeColor?: string;  // 描边颜色
   tag: string;              // 属性标签，如 "箱子", "猫"
 
   constructor(
