@@ -2,7 +2,7 @@
 // The relative position of this file: src/components/PagePixelWar.vue
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import ViewFilingLicense from '@/components/ViewFilingLicense.vue'
-import ViewPixelWar from '@/components/test_2d/ViewPixelWar.vue'
+import ViewPixelWar from '@/components/pixel_war/ViewPixelWar.vue'
 onMounted(() => {
   
 })
