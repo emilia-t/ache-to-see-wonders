@@ -66,11 +66,11 @@
         "heart_count": 0
       },
       {
-        "key": "t2",
-        "title": "2d测试",
-        "description": "测试项目",
-        "cover": "/cover/test2d_cover.png",
-        "targetUrl": "/test2d",
+        "key": "pw1",
+        "title": "像素战争：单机",
+        "description": "像素战争：单机",
+        "cover": "/cover/empty_cover.png",
+        "targetUrl": "/pixel-war",
         "mode": "single_person",
         "online_count": 0,
         "online_state": false,

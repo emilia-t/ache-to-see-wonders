@@ -72,11 +72,11 @@ const routes =[
   }
   ,
   {
-    path: '/test2d',
-    name: 'test2d',
-    component: () => import('@/components/PageTest2d.vue'),
+    path: '/pixel-war',
+    name: 'pixel-war',
+    component: () => import('@/components/PagePixelWar.vue'),
     meta:{
-      title:"2D测试"
+      title:"像素战争：单机"
     }
   }
   ,
