@@ -9,31 +9,31 @@ class DynamicEntity extends Entity {
   healthMax: number;            // 最大生命值
   health: number;               // 生命值
   speed: number;                // 当前有效移动速度-单位/秒
-  wanderRange: number;          // 随机游走半径（固定属性）
-  perceptionRange: number;      // 感知范围（固定属性）
-  minMoveSpeed: number;         // 最小运动速度（固定属性，10~200）
-  maxMoveSpeed: number;         // 最大运动速度（固定属性，10~200）
-  movementPassion: number;      // 运动激情值（每次换目标重置，80%~120%）
-  isMoving: boolean;
-  facingDirection: Point;       // 朝向矢量（单位向量，世界坐标）
-  stayDurationRemaining: number; // 到点后随机驻足剩余时间（秒）
-  targetHistory: Point[];       // 目标点历史记录
-  curvePoints: Point[];         // 平滑路径采样点
-  currentCurveIndex: number;    // 当前路径上的索引
-  lastMoveDirection: Point | null; // 上一段移动的单位方向，用于路径衔接
-  insideStaticDamageTimer: number; // 被挤压在静态实体内的伤害计时器
-  wasInsideStaticEntity: boolean; // 上一帧是否处于静态实体内部
-  insideStaticRetargetCooldown: number; // 被挤压时重新寻路冷却（秒）
-  insideStaticBlockedTimer: number; // 被挤压且无法前进时的阻塞计时器
-  damageFlashTimer: number; // 受伤发红特效计时器（秒）
-  crowdStuckTimer: number; // 动态实体群体拥挤导致停滞的计时器
-  crowdRetargetCooldown: number; // 停滞后重新寻路冷却，避免所有实体同频
-  lastStuckCheckPos: Point; // 用于判断是否卡住的上一帧位置
-  noMoveDuration: number; // 连续未位移时长（秒）
-  noMoveLastPos: Point; // 未位移检测的上一位置
-  isDead: boolean; // 是否已死亡
-  deathEffectTimer: number; // 死亡特效剩余时长（秒）
-  deathEffectDuration: number; // 死亡特效总时长（秒）
+  wanderRange: number;          // 随机游走半径(固定属性)
+  perceptionRange: number;      // 感知范围(固定属性)
+  minMoveSpeed: number;         // 最小运动速度(固定属性，10~200)
+  maxMoveSpeed: number;         // 最大运动速度(固定属性，10~200)
+  movementPassion: number;      // 运动激情值(每次换目标重置，80%~120%)
+  isMoving: boolean;            // 当前是否处于移动状态
+  facingDirection: Point;             // 朝向矢量(单位向量，世界坐标)
+  stayDurationRemaining: number;      // 到点后随机驻足剩余时间(秒)
+  targetHistory: Point[];             // 目标点历史记录
+  curvePoints: Point[];               // 平滑路径采样点
+  currentCurveIndex: number;          // 当前路径上的索引
+  lastMoveDirection: Point | null;    // 上一段移动的单位方向，用于路径衔接
+  insideStaticDamageTimer: number;    // 被挤压在静态实体内的伤害计时器
+  wasInsideStaticEntity: boolean;     // 上一帧是否处于静态实体内部
+  insideStaticRetargetCD: number;     // 被挤压时重新寻路冷却(秒)
+  insideStaticBlockedTimer: number;   // 被挤压且无法前进时的阻塞计时器
+  damageFlashTimer: number;           // 受伤发红特效计时器(秒)
+  crowdStuckTimer: number;            // 动态实体群体拥挤导致停滞的计时器
+  crowdRetargetCooldown: number;      // 停滞后重新寻路冷却，避免所有实体同频
+  lastStuckCheckPos: Point;           // 用于判断是否卡住的上一帧位置
+  noMoveDuration: number;             // 连续未位移时长(秒)
+  noMoveLastPos: Point;               // 未位移检测的上一位置
+  isDead: boolean;                    // 是否已死亡
+  deathEffectTimer: number;           // 死亡特效剩余时长(秒)
+  deathEffectDuration: number;        // 死亡特效总时长(秒)
 
   constructor(
     position: Point,
@@ -59,7 +59,7 @@ class DynamicEntity extends Entity {
     this.refreshMoveSpeedForNewTarget();
     this.nextTarget = { ...position };
     this.isMoving = false;
-    this.facingDirection = { x: 0, y: 1 }; // 默认朝北（向上）
+    this.facingDirection = { x: 0, y: 1 }; // 默认朝北(向上)
     this.stayDurationRemaining = 0;
     this.targetHistory = [{ ...position }];
     this.curvePoints = [];
@@ -67,7 +67,7 @@ class DynamicEntity extends Entity {
     this.lastMoveDirection = null;
     this.insideStaticDamageTimer = 0;
     this.wasInsideStaticEntity = false;
-    this.insideStaticRetargetCooldown = 0;
+    this.insideStaticRetargetCD = 0;
     this.insideStaticBlockedTimer = 0;
     this.damageFlashTimer = 0;
     this.crowdStuckTimer = 0;
@@ -172,7 +172,7 @@ class DynamicEntity extends Entity {
       this.noMoveLastPos = { ...this.position };
       this.isMoving = false;
       this.stayDurationRemaining = 0;
-      this.insideStaticRetargetCooldown = 0;
+      this.insideStaticRetargetCD = 0;
       return true;
     }
     return false;
@@ -186,7 +186,7 @@ class DynamicEntity extends Entity {
   }
 
   /**
-   * 根据 targetHistory 生成平滑路径点（CatmullRom 样条采样）
+   * 根据 targetHistory 生成平滑路径点(CatmullRom 样条采样)
    */
   generateSmoothPath() {
     const points = this.targetHistory;
@@ -201,7 +201,7 @@ class DynamicEntity extends Entity {
 
     // 为生成 CatmullRom 曲线，需要前后扩展点
     const extended = [...points];
-    // 首尾扩展（用于保证曲线经过首尾点）
+    // 首尾扩展(用于保证曲线经过首尾点)
     extended.unshift({
       x: points[0].x - (points[1].x - points[0].x),
       y: points[0].y - (points[1].y - points[0].y)
@@ -211,7 +211,7 @@ class DynamicEntity extends Entity {
       y: points[points.length - 1].y + (points[points.length - 1].y - points[points.length - 2].y)
     });
 
-    // 对每三个控制点之间插值（CatmullRom 曲线）
+    // 对每三个控制点之间插值(CatmullRom 曲线)
     for (let i = 1; i < extended.length - 2; i++) {
       const p0 = extended[i - 1];
       const p1 = extended[i];
@@ -272,7 +272,7 @@ class DynamicEntity extends Entity {
     return false;
   }
 
-  // 线段与 AABB 相交检测（Liang-Barsky）
+  // 线段与 AABB 相交检测(Liang-Barsky)
   private isSegmentIntersectBox(a: Point, b: Point, box: CollisionBox): boolean {
     const xMin = box.x;
     const xMax = box.x + box.width;
@@ -505,7 +505,7 @@ class DynamicEntity extends Entity {
       }
     }
 
-    // 2) 不在静态实体内（或脱困失败）时，尝试近邻随机点
+    // 2) 不在静态实体内(或脱困失败)时，尝试近邻随机点
     const radiusList = [80, 140, 200];
     for (const radius of radiusList) {
       for (let i = 0; i < 12; i++) {
@@ -602,7 +602,7 @@ class DynamicEntity extends Entity {
     newHistory.push({ ...target });
     this.targetHistory = newHistory;
 
-    // 直达路径默认平滑曲线;若"直线优先"则改用折线采样（本质直线）
+    // 直达路径默认平滑曲线;若"直线优先"则改用折线采样(本质直线)
     if (plannedPath.length === 2 && !preferStraight) {
       this.generateSmoothPath();
 
@@ -691,19 +691,19 @@ class DynamicEntity extends Entity {
     }
   }
 
-  // 当前是否可分配新的游走目标（被挤压时做 1 秒节流，避免疯狂重算）
+  // 当前是否可分配新的游走目标(被挤压时做 1 秒节流，避免疯狂重算)
   canGetNewWanderTarget(dt: number, staticEntities: StaticEntity[]) {
     if (this.isDead) return false;
     if (this.isMoving || this.stayDurationRemaining > 0) return false;
 
     if (!this.isInsideStaticEntity(staticEntities)) {
-      this.insideStaticRetargetCooldown = 0;
+      this.insideStaticRetargetCD = 0;
       return true;
     }
 
-    this.insideStaticRetargetCooldown = Math.max(0, this.insideStaticRetargetCooldown - dt);
-    if (this.insideStaticRetargetCooldown <= 0) {
-      this.insideStaticRetargetCooldown = 1;
+    this.insideStaticRetargetCD = Math.max(0, this.insideStaticRetargetCD - dt);
+    if (this.insideStaticRetargetCD <= 0) {
+      this.insideStaticRetargetCD = 1;
       return true;
     }
     return false;

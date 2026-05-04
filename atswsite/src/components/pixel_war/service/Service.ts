@@ -179,11 +179,11 @@ const updateDynamicEntityItemPickups = (): boolean => {
   return pickedAny;
 };
 
-const removeDeadDynamicEntities = (): boolean => {
+const removeFinishedDeadDynamicEntities = (): boolean => {
   const oldNpcLength = MAP_DATA.dynamicEntitie.npcDynamicEntitys.length;
   const oldPlayerLength = MAP_DATA.dynamicEntitie.playerDynamicEntitys.length;
-  MAP_DATA.dynamicEntitie.npcDynamicEntitys = MAP_DATA.dynamicEntitie.npcDynamicEntitys.filter(entity => !entity.isDead);
-  MAP_DATA.dynamicEntitie.playerDynamicEntitys = MAP_DATA.dynamicEntitie.playerDynamicEntitys.filter(entity => !entity.isDead);
+  MAP_DATA.dynamicEntitie.npcDynamicEntitys = MAP_DATA.dynamicEntitie.npcDynamicEntitys.filter(entity => !entity.isDeathEffectFinished());
+  MAP_DATA.dynamicEntitie.playerDynamicEntitys = MAP_DATA.dynamicEntitie.playerDynamicEntitys.filter(entity => !entity.isDeathEffectFinished());
   return (
     oldNpcLength !== MAP_DATA.dynamicEntitie.npcDynamicEntitys.length ||
     oldPlayerLength !== MAP_DATA.dynamicEntitie.playerDynamicEntitys.length
@@ -263,7 +263,7 @@ const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
 };
 
 const resolveDynamicEntityCollisions = () => {
-  const dynamicEntityList = getDynamicEntityList();
+  const dynamicEntityList = getDynamicEntityList().filter(entity => !entity.isDead);
   if (dynamicEntityList.length < 2) return;
 
   for (let iter = 0; iter < RDEC_ITERATIONS; iter++) {
@@ -303,9 +303,10 @@ const updateDynamicEntities = (deltaTime: number) => {
   for (const entity of dynamicEntityList) {
     entity.update(deltaTime, MAP_DATA.staticEntities);
     entity.updateDamageEffect(deltaTime);
+    entity.updateDeathEffect(deltaTime);
   }
 
-  removeDeadDynamicEntities();
+  removeFinishedDeadDynamicEntities();
   resolveDynamicEntityCollisions();
 
   for (const entity of getDynamicEntityList()) {
@@ -331,7 +332,7 @@ const updateGame = (deltaTime: number) => {
   updateDynamicEntities(deltaTime);
   updateDynamicEntityItemPickups();
   updateProjectileEntities(deltaTime);
-  removeDeadDynamicEntities();
+  removeFinishedDeadDynamicEntities();
 };
 ////////////////////
 //<--游戏逻辑区
