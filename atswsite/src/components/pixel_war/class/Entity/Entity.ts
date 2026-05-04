@@ -3,7 +3,7 @@
 class Entity {
   private static nextEntityId = 100;
   id: number;
-  type: 'static' | 'dynamic' | 'item';
+  type: 'static' | 'dynamic' | 'item' | 'empty';
   position: Point;           // 世界坐标-画布坐标
   width: number;
   height: number;
@@ -16,7 +16,7 @@ class Entity {
   tag: string;              // 属性标签，如 "箱子", "猫"
 
   constructor(
-    type: 'static' | 'dynamic' | 'item',
+    type: 'static' | 'dynamic' | 'item' | 'empty',
     position: Point,
     width: number,
     height: number,

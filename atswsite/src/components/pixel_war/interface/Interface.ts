@@ -1,5 +1,11 @@
 ﻿import type { TypeCursorName } from '@/components/pixel_war/type/Type';
 import type { Entity } from '@/components/pixel_war/class/Entity/Entity';
+import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
+import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
+import type { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/BulletDynamicEntity';
+import type { GrenadeDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/GrenadeDynamicEntity/GrenadeDynamicEntity';
+import type { NpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
+import type { PlayerDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 
 export interface Resolution { width: number; height: number }
 export interface PenPoint {x: number; y: number; g: number};//g是压力值，0-1通过鼠标移动速度模拟
@@ -138,3 +144,34 @@ export interface ServerConfig {
     online_number: number;
     max_online: number;
 }
+
+export interface Tick {
+  tickCount: number;
+  tickTime: number;
+}
+
+export interface TickTimer {
+  interval: 20;
+  id: number;
+  status: 'running' | 'stopped' | 'initial';
+  tick: Tick;
+}
+
+export interface DataPackage {
+  tick: Tick;
+  data: {
+    instructs: Array<InstructObject>;
+  };
+}
+
+export interface MapData {
+  dynamicEntitie: {
+    bulletDynamicEntitys: Array<BulletDynamicEntity>;
+    grenadeDynamicEntitys: Array<GrenadeDynamicEntity>;
+    npcDynamicEntitys: Array<NpcDynamicEntity>;
+    playerDynamicEntitys: Array<PlayerDynamicEntity>;
+  };
+  staticEntities: Array<StaticEntity>;
+  itemEntities: Array<ItemEntity>; 
+}
+

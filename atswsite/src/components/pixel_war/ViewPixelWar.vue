@@ -1,7 +1,14 @@
 ﻿<script setup lang="ts">
 // The relative position of this file: src/components/pixel_war/ViewPixelWar.vue
 // Warning! Please use an editor that supports UTF-8 to read the code!
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, h } from 'vue';
+import { Instruct } from '@/components/pixel_war/instruct/Instruct';
+
+import type { DynamicEntityKind } from '@/components/pixel_war/type/Type';
+import type { BulletTag } from '@/components/pixel_war/type/Type';
+import type { DataPackage } from '@/components/pixel_war/interface/Interface';
+import type { MapData } from '@/components/pixel_war/interface/Interface';
+import type { InstructObject } from '@/components/pixel_war/interface/Interface';
 
 import type {
   PerspectiveMode
@@ -10,31 +17,63 @@ import type {
   RGB,
   Point,
   EventArea,
+  Tick,
 } from '@/components/pixel_war/interface/Interface';
 import {
   CursorManager,
   EffectManager,
   Entity,
+  EmptyEntity,
   StaticEntity,
+  BoxStaticEntity,
+  WallStaticEntity,
   CurbStaticEntity,
-  WhitePixelEntity,
   ItemEntity,
-  GrilledFishItemEntity,
+  HealingGemItemEntity,
   DynamicEntity,
-  NpcDynamicEntity,
   PlayerDynamicEntity,
+  WhitePixelEntity,
   BulletDynamicEntity,
-  OrdinaryBulletDynamicEntity,
-  CatDynamicEntity,
-  RagdollCatDynamicEntity,
+  BuckshotBulletDynamicEntity,
+  SniperBulletDynamicEntity,
+  LaserBulletDynamicEntity,
+  OrdinaryBulletDynamicEntity
 } from '@/components/pixel_war/class';
 
 import ServiceWorker from '@/components/pixel_war/service/Service?worker';
 const serviceWorker = new ServiceWorker();
-serviceWorker.postMessage(100);//发送消息到服务端
-serviceWorker.addEventListener('message', (event) => {
-  // 处理消息
+//serviceWorker.postMessage(100);//发送消息到服务端
+serviceWorker.addEventListener('message', (event: MessageEvent) => {
+  handleWorkerMessage(event);
 });
+const handleWorkerMessage = (event: MessageEvent) => {
+  let dpkg = event.data as DataPackage;
+  let tick = dpkg.tick as Tick;
+  let instructs = dpkg.data.instructs as Array<InstructObject>;
+  for (let instruct of instructs) {
+    let type = instruct.type;
+    switch (type) {
+      case 'test':{
+        console.log('Received test instruct from worker:', instruct);
+        break;
+      }
+      case 'map_data_initial':{
+        console.log('Received map data initial instruct from worker:', instruct);
+        applyMapDataSnapshot(instruct.data as MapData);
+        drawEntities();
+        drawUI();
+        break;
+      }
+      case 'map_data_update':{
+        applyMapDataSnapshot(instruct.data as MapData);
+        break;
+      }
+      default:{
+        console.warn('Received unknown instruct type from worker:', type, instruct);
+      }
+    }
+  }
+};
 
 ////////////////////
 //常量区-->
@@ -43,9 +82,6 @@ const GRAPHICS_CANVAS = ref<HTMLCanvasElement | null>(null);
 const UI_CANVAS = ref<HTMLCanvasElement | null>(null);
 const ENTITY_CANVAS = ref<HTMLCanvasElement | null>(null);
 const EFFECTS_CANVAS = ref<HTMLCanvasElement | null>(null);
-const BT1_HEIGHT = 50;
-const BT1_WIDTH = 105;
-const BT1_INI: any[] = [];
 const DEBUG_TERMINAL_MAX_LOGS = 120;
 const RDEC_ITERATIONS = 3; // 解析动态实体碰撞算法迭代次数
 const RDEC_SEPARATION_EPSILON = 0.1; // 碰撞分离时的微小偏移量,避免实体卡在一起
@@ -95,6 +131,7 @@ let staticEntityList: StaticEntity[] = [];                  // 静态实体列�
 let dynamicEntityList: DynamicEntity[] = [];                // 动态实体列表
 let projectileEntityList: BulletDynamicEntity[] = [];   // 投射物动态实体列表
 let itemEntityList: ItemEntity[] = [];                      // 物品实体列表
+const entityCache = new Map<number, Entity>();              // 服务端实体快照对应的本地渲染实体缓存
 
 let debugCollisionBoxes = false;
 let debugShowTrajectory = false;
@@ -167,6 +204,160 @@ const H_getHitEventArea = (x: number, y: number): EventArea | null => {
   }
   return null;
 };
+
+const H_getWorkerTickPackage = (instructs: InstructObject[]): DataPackage => {
+  return {
+    tick: {
+      tickCount: 0,
+      tickTime: performance.now(),
+    },
+    data: {
+      instructs,
+    },
+  };
+};
+
+const H_hydrateEntitySnapshot = <T extends Entity>(entity: T, snapshot: T): T => {
+  const texture = entity.texture;
+  Object.assign(entity, snapshot);
+  entity.texture = texture;
+  entity.updateCollisionBox();
+  return entity;
+};
+
+const H_getBulletDirectionFromSnapshot = (snapshot: any): Point => {
+  const velocity = snapshot.velocity || { x: 1, y: 0 };
+  const len = Math.hypot(velocity.x, velocity.y);
+  if (len < 0.0001) return { x: 1, y: 0 };
+  return {
+    x: velocity.x / len,
+    y: velocity.y / len,
+  };
+};
+
+const H_createEntityFromSnapshot = (snapshot: any): Entity => {
+  // 静态实体
+  if (snapshot.type === 'static') {
+    const tag = snapshot.tag;
+    switch (tag) {
+      case 'wall':
+        return new WallStaticEntity(snapshot.position, snapshot.name, tag);
+      case 'curb':
+        return new CurbStaticEntity(snapshot.position, snapshot.name, tag);
+      case 'box':
+        return new BoxStaticEntity(snapshot.position, snapshot.name, tag);
+    }
+  }
+  // 物体实体
+  if (snapshot.type === 'item') {
+    const tag = snapshot.tag;
+    switch (tag) {
+      case 'healing_gem':
+        return new HealingGemItemEntity(snapshot.position, snapshot.name, tag);
+    }
+  }
+  // 动态实体
+  const kind = snapshot.kind as DynamicEntityKind;
+  if (kind === 'npc') {
+    const tag = snapshot.tag;
+    switch (tag){
+      case 'white_pixel':
+        return new WhitePixelEntity(snapshot.position);
+    }
+  }
+  else if(kind === 'player'){
+    return new PlayerDynamicEntity(snapshot.position, snapshot.name, snapshot.isme);
+  }
+  else if(kind === 'bullet'){
+    const bulletTag = snapshot.tag as BulletTag;
+    switch(bulletTag){
+      case 'ordinary_bullet':
+        return new OrdinaryBulletDynamicEntity(
+          snapshot.position,
+          H_getBulletDirectionFromSnapshot(snapshot),
+          snapshot.ownerId,
+          snapshot.name
+        );
+      case 'laser_bullet':
+        return new LaserBulletDynamicEntity(
+          snapshot.position,
+          H_getBulletDirectionFromSnapshot(snapshot),
+          snapshot.ownerId,
+          snapshot.name
+        );
+      case 'sniper_bullet':
+        return new SniperBulletDynamicEntity(
+          snapshot.position,
+          H_getBulletDirectionFromSnapshot(snapshot),
+          snapshot.ownerId,
+          snapshot.name
+        );
+      case 'buckshot_bullet':
+        return new BuckshotBulletDynamicEntity(
+          snapshot.position,
+          H_getBulletDirectionFromSnapshot(snapshot),
+          snapshot.ownerId,
+          snapshot.name
+        );
+    }
+  }
+  else{//grenade
+    //empty
+    return new EmptyEntity();
+  }
+  return new EmptyEntity();
+};
+
+const H_getRenderableEntityFromSnapshot = <T extends Entity>(snapshot: T): T => {
+  const cached = entityCache.get(snapshot.id) as T | undefined;
+  if (cached) return H_hydrateEntitySnapshot(cached, snapshot);
+
+  const entity = H_hydrateEntitySnapshot(H_createEntityFromSnapshot(snapshot) as T, snapshot);
+  entityCache.set(entity.id, entity);
+  entity.loadTexture().then(() => {
+    drawEntities();
+  });
+  return entity;
+};
+
+const applyMapDataSnapshot = (mapData: MapData) => {
+  const aliveIds = new Set<number>();
+  const hydrateList = <T extends Entity>(list: T[]): T[] => {
+    return list.map((entity) => {
+      aliveIds.add(entity.id);
+      return H_getRenderableEntityFromSnapshot(entity);
+    });
+  };
+
+  staticEntityList = hydrateList(mapData.staticEntities) as StaticEntity[];
+  itemEntityList = hydrateList(mapData.itemEntities) as ItemEntity[];
+  dynamicEntityList = hydrateList([
+    ...mapData.dynamicEntitie.playerDynamicEntitys,
+    ...mapData.dynamicEntitie.npcDynamicEntitys,
+  ]) as DynamicEntity[];
+  projectileEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
+  playerEntity = dynamicEntityList.find(entity => entity instanceof PlayerDynamicEntity) as PlayerDynamicEntity || null;
+  refreshRenderEntityList();
+
+  for (const id of entityCache.keys()) {
+    if (!aliveIds.has(id)) {
+      entityCache.delete(id);
+    }
+  }
+};
+
+const sendClientInstruct = (instruct: InstructObject) => {
+  serviceWorker.postMessage(H_getWorkerTickPackage([instruct]));
+};
+
+const sendPlayerMoveInput = () => {
+  sendClientInstruct(Instruct.I_PlayerMoveInput({
+    playerMoveW: PlayerDynamicEntity.playerMoveState.playerMoveW,
+    playerMoveA: PlayerDynamicEntity.playerMoveState.playerMoveA,
+    playerMoveS: PlayerDynamicEntity.playerMoveState.playerMoveS,
+    playerMoveD: PlayerDynamicEntity.playerMoveState.playerMoveD,
+  }));
+};
 ////////////////////
 //<--辅助函数区
 ////////////////////
@@ -176,7 +367,6 @@ const H_getHitEventArea = (x: number, y: number): EventArea | null => {
 ////////////////////
 const startSetting = () => {
   onResizeCanvas();
-  createEventArea();
   if (GRAPHICS_CANVAS.value) {
       const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
       offsetXX = width / 2;// 初始化原点偏移量为画布中心
@@ -230,74 +420,6 @@ const startSetting = () => {
   cooldownNormalAttack = 0;
   effectManager?.reset();
 
-
-
-  const wallHalfSide = 10000;   // 边长的一半，因为边长 = 400 * 50 = 20000
-  const step = 50;              // 边界宽度/高度
-  const offset = 25;      // 中心点偏移量 = 25
-
-  // 底边 (y = -wallHalfSide)
-  for (let x = -wallHalfSide + offset; x <= wallHalfSide - offset; x += step) {
-    staticEntityList.push(new CurbStaticEntity({ x, y: -wallHalfSide - 25 }));
-  }
-  // 顶边 (y = wallHalfSide)
-  for (let x = -wallHalfSide + offset; x <= wallHalfSide - offset; x += step) {
-    staticEntityList.push(new CurbStaticEntity({ x, y: wallHalfSide + 25 }));
-  }
-  // 左边 (x = -wallHalfSide)
-  for (let y = -wallHalfSide + offset; y <= wallHalfSide - offset; y += step) {
-    staticEntityList.push(new CurbStaticEntity({ x: -wallHalfSide - 25, y }));
-  }
-  // 右边 (x = wallHalfSide)
-  for (let y = -wallHalfSide + offset; y <= wallHalfSide - offset; y += step) {
-    staticEntityList.push(new CurbStaticEntity({ x: wallHalfSide + 25, y }));
-  }
-
-  staticEntityList.push(new CurbStaticEntity({ x: wallHalfSide + 25, y: wallHalfSide + 25 }));
-  staticEntityList.push(new CurbStaticEntity({ x: wallHalfSide + 25, y: -wallHalfSide - 25 }));
-  staticEntityList.push(new CurbStaticEntity({ x: -wallHalfSide - 25, y: wallHalfSide + 25 }));
-  staticEntityList.push(new CurbStaticEntity({ x: -wallHalfSide - 25, y: -wallHalfSide - 25 }));
-
-
-
-  const whitePixelEntity = new WhitePixelEntity({ x: 0, y: 0 });
-  dynamicEntityList.push(whitePixelEntity);
-
-  const catSpawnCenter = { x: -50, y: -50 };
-
-  // 动态实体示例:猫-随机游走
-  const cat1 = new RagdollCatDynamicEntity(
-      { x: catSpawnCenter.x - 50, y: catSpawnCenter.y + 50 },
-      'Cat a'
-  );
-  const cat2 = new RagdollCatDynamicEntity(
-      { x: catSpawnCenter.x +50, y: catSpawnCenter.y -50 },
-      'Cat b'
-  );
-  playerEntity = new PlayerDynamicEntity(
-      { x: catSpawnCenter.x, y: catSpawnCenter.y + 180 },
-      'xxxxx',
-      true
-  );
-  
-  dynamicEntityList.push(playerEntity);
-  dynamicEntityList.push(cat1);
-  dynamicEntityList.push(cat2);
-
-  // 物品实体示例:烤鱼,可被动态实体拾取
-  itemEntityList.push(
-    new GrilledFishItemEntity({ x: catSpawnCenter.x - 100, y: catSpawnCenter.y - 40 }, 'Grilled Fish A'),
-    new GrilledFishItemEntity({ x: catSpawnCenter.x + 80, y: catSpawnCenter.y + 20 }, 'Grilled Fish B'),
-    new GrilledFishItemEntity({ x: catSpawnCenter.x + 50, y: catSpawnCenter.y + 300 }, 'Grilled Fish D'),
-    new GrilledFishItemEntity({ x: catSpawnCenter.x - 50, y: catSpawnCenter.y + 250 }, 'Grilled Fish E'),
-    new GrilledFishItemEntity({ x: catSpawnCenter.x -200, y: catSpawnCenter.y + 50 }, 'Grilled Fish F'),
-    new GrilledFishItemEntity({ x: catSpawnCenter.x + 100, y: catSpawnCenter.y -200 }, 'Grilled Fish G')
-  );
-  // 将实体合并到 renderEntityList
-  renderEntityList = [...staticEntityList, ...itemEntityList, ...dynamicEntityList, ...projectileEntityList];
-
-
-
   // 加载纹理并开始动画
   // load textures and start animation
   Promise.all([loadEntityTextures(), effectManager.loadEffectTextures()]).then(() => {
@@ -342,37 +464,6 @@ const createRoundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w:
   ctx.quadraticCurveTo(x, y + h, x, y + h - r);
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
-};
-
-const createEventArea = () => {
-  eventArea = []; // 清空后重新创建
-  // 为每个按钮创建事件区域
-  BT1_INI.forEach(button => {
-    eventArea.push({
-      id: button.id,
-      rect: {
-        x: button.x,
-        y: button.y,
-        width: BT1_WIDTH,
-        height: BT1_HEIGHT
-      },
-      type: 'button',
-      data: button,
-      cursor: 'pointer',
-      onClick: (e, area) => {
-        if (area.data?.onClick) {
-          area.data.onClick();
-        }
-      },
-      onHover: (e, area, isHovering) => {
-        if (isHovering) {
-          UI_CANVAS.value!.style.cursor = 'pointer';
-        } else {
-          UI_CANVAS.value!.style.cursor = 'default';
-        }
-      }
-    });
-  });
 };
 
 /**
@@ -876,7 +967,7 @@ const drawEntities = () => {
     drawDebugMovementRange();
   }
 
-  // 绘制兴趣范围调试圆(烤鱼吸引半径)
+  // 绘制兴趣范围调试圆
   if (debugShowInterestRange) {
     drawDebugInterestRange();
   }
@@ -1007,8 +1098,7 @@ const drawSingleEntity = (entity: Entity) => {
   // 动态实体顶部状态条:生命值(绿)+ 饥饿值(黄)
   if (entity.type === 'dynamic') {
     const dynamicEntity = entity as DynamicEntity;
-    const healthMax = dynamicEntity instanceof CatDynamicEntity ? 50 : 100;
-    const healthRatio = Math.max(0, Math.min(1, dynamicEntity.health / healthMax));
+    const healthRatio = Math.max(0, Math.min(1, dynamicEntity.health / dynamicEntity.healthMax));
     const barWidth = Math.max(36, entity.width);
     const barHeight = 4;
     const barX = screenPos.x - barWidth / 2;
@@ -1020,19 +1110,6 @@ const drawSingleEntity = (entity: Entity) => {
     // 血条值
     ctxEntity.fillStyle = '#2ecc71';
     ctxEntity.fillRect(barX, topY, barWidth * healthRatio, barHeight);
-    
-    if('hungerMeter' in dynamicEntity){
-      const hungerRatio = dynamicEntity instanceof CatDynamicEntity
-      ? Math.max(0, Math.min(1, dynamicEntity.hungerMeter / 200))
-      : 0;
-      // 饥饿条底
-      const hungerY = topY + barHeight + 3;
-      ctxEntity.fillStyle = 'rgba(0, 0, 0, 0.5)';
-      ctxEntity.fillRect(barX, hungerY, barWidth, barHeight);
-      // 饥饿条值
-      ctxEntity.fillStyle = '#f1c40f';
-      ctxEntity.fillRect(barX, hungerY, barWidth * hungerRatio, barHeight);
-    }
   }
 
   if (entity instanceof PlayerDynamicEntity) {
@@ -1056,9 +1133,6 @@ const drawSingleEntity = (entity: Entity) => {
   if (entity.type === 'dynamic' && (debugShowMovementPassion || debugShowMovementSpeed || debugShowHealth || debugShowHunger)) {
     const dynamicEntity = entity as DynamicEntity;
     const debugLines: string[] = [];
-    if (debugShowHunger && dynamicEntity instanceof CatDynamicEntity) {
-      debugLines.push(`hunger: ${dynamicEntity.hungerMeter.toFixed(0)}`);
-    }
     if (debugShowHealth) {
       debugLines.push(`health: ${dynamicEntity.health.toFixed(0)}`);
     }
@@ -1239,7 +1313,7 @@ const drawDebugMovementRange = () => {
 };
 
 /**
- * 绘制猫的兴趣范围(烤鱼吸引半径,调试用)
+ * 绘制实体的兴趣范围
  */
 const drawDebugInterestRange = () => {
   if (!ctxEntity) return;
@@ -1249,7 +1323,7 @@ const drawDebugInterestRange = () => {
   ctxEntity.setLineDash([4, 4]);
 
   for (const entity of dynamicEntityList) {
-    if (!(entity instanceof CatDynamicEntity)) continue;
+    if (entity.perceptionRange === 0) continue;
     const center = TOcanvas2Screen(entity.position.x, entity.position.y);
     ctxEntity.beginPath();
     ctxEntity.arc(center.x, center.y, Math.max(1, entity.perceptionRange), 0, Math.PI * 2);
@@ -1272,362 +1346,6 @@ const refreshRenderEntityList = () => {
   renderEntityList = [...staticEntityList, ...itemEntityList, ...dynamicEntityList, ...projectileEntityList];
 };
 
-const spawnPlayerBullet = (screenX: number, screenY: number) => {
-  if (!playerEntity || playerEntity.isDead || !UI_CANVAS.value) return false;
-  if (cooldownNormalAttack > 0) return false;
-
-  const targetCanvas = TOscreen2Canvas(screenX, screenY);
-  const dx = targetCanvas.x - playerEntity.position.x;
-  const dy = targetCanvas.y - playerEntity.position.y;
-  const len = Math.hypot(dx, dy);
-  if (len < 0.0001) return false;
-
-  const direction = { x: dx / len, y: dy / len };
-  const spawnDistance = playerEntity.width * 0.6;
-  const bullet = new OrdinaryBulletDynamicEntity(
-    {
-      x: playerEntity.position.x + direction.x * spawnDistance,
-      y: playerEntity.position.y + direction.y * spawnDistance,
-    },
-    direction,
-    playerEntity.id
-  );
-
-  projectileEntityList.push(bullet);
-  refreshRenderEntityList();
-  cooldownNormalAttack = 0.12;
-  drawEntities();
-  return true;
-};
-
-const updateItemEntityLifetimes = (deltaTime: number): boolean => {
-  if (itemEntityList.length === 0) return false;
-  let removedAny = false;
-  const remainingItems: ItemEntity[] = [];
-  for (const item of itemEntityList) {
-    item.updateLifetime(deltaTime);
-    if (item.isReadyToRemove()) {
-      removedAny = true;
-      continue;
-    }
-    remainingItems.push(item);
-  }
-  if (removedAny) {
-    itemEntityList = remainingItems;
-  }
-  return removedAny;
-};
-
-const updateDynamicEntityItemPickups = (): boolean => {
-  if (itemEntityList.length === 0 || dynamicEntityList.length === 0) return false;
-
-  let pickedAny = false;
-  for (const item of itemEntityList) {
-    if (item.isDisappearing) continue;
-    for (const dynamicEntity of dynamicEntityList) {
-      if (dynamicEntity.isDead) continue;
-      if (dynamicEntity instanceof NpcDynamicEntity || dynamicEntity instanceof PlayerDynamicEntity){
-        if(dynamicEntity.tryPickupItem(item)){
-          dynamicEntity.pickupItem(item);
-          item.beginDisappear();
-          pickedAny = true;
-          break;
-        }
-      }
-    }
-  }
-  return pickedAny;
-};
-
-/**
- * 统一检测动态实体是否死亡如果死亡则发送播放死亡特效事件并且将实体从 dynamicEntityList 中移除 
- */
-const removeDeadDynamicEntitiesAndEmitEffects = (): boolean => {
-  if (dynamicEntityList.length === 0) return false;
-
-  let removedAny = false;
-  const aliveEntities: DynamicEntity[] = [];
-  for (const entity of dynamicEntityList) {
-    if (!entity.isDead) {
-      aliveEntities.push(entity);
-      continue;
-    }
-
-    effectManager?.emitDynamicEntityDeath(entity);
-    removedAny = true;
-  }
-
-  if (removedAny) {
-    dynamicEntityList = aliveEntities;
-  }
-
-  return removedAny;
-};
-
-const updateProjectileEntities = (deltaTime: number): boolean => {
-  if (projectileEntityList.length === 0) return false;
-
-  let changed = false;
-
-  for (const bullet of projectileEntityList) {
-    bullet.update(deltaTime, staticEntityList);
-    if (bullet.shouldRemove) {
-      changed = true;
-      continue;
-    }
-
-    for (const entity of dynamicEntityList) {
-      if (entity.isDead || entity.id === bullet.ownerId) continue;
-
-      const hitDistance = Math.hypot(
-        entity.position.x - bullet.position.x,
-        entity.position.y - bullet.position.y
-      );
-      const hitRadius = entity.width * 0.45 + bullet.width * 0.5;
-
-      if (hitDistance <= hitRadius) {
-        entity.applyDamage(bullet.damage);
-        bullet.shouldRemove = true;
-        changed = true;
-        break;
-      }
-    }
-  }
-
-  const aliveBullets = projectileEntityList.filter(bullet => !bullet.shouldRemove);
-  if (aliveBullets.length !== projectileEntityList.length) {
-    projectileEntityList = aliveBullets;
-    changed = true;
-  }
-
-  if (changed) {
-    refreshRenderEntityList();
-  }
-
-  return changed;
-};
-
-const findNearestGrilledFishForCat = (cat: CatDynamicEntity, radius: number): GrilledFishItemEntity | null => {
-  let nearest: GrilledFishItemEntity | null = null;
-  let minDistance = radius;
-  for (const item of itemEntityList) {
-    if (!(item instanceof GrilledFishItemEntity)) continue;
-    if (item.isDisappearing) continue;
-    const distance = Math.hypot(cat.position.x - item.position.x, cat.position.y - item.position.y);
-    if (distance <= minDistance) {
-      minDistance = distance;
-      nearest = item;
-    }
-  }
-  return nearest;
-};
-
-const getActiveGrilledFishById = (itemId: number): GrilledFishItemEntity | null => {
-  for (const item of itemEntityList) {
-    if (!(item instanceof GrilledFishItemEntity)) continue;
-    if (item.id !== itemId) continue;
-    if (item.isDisappearing) return null;
-    return item;
-  }
-  return null;
-};
-
-/**
- * 为动态实体生成随机目标点-随机游走
- * 目标点在实体附近圆形范围内,并避开静态实体
- */
-const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
-  if (entity instanceof CatDynamicEntity) {
-    entity.clearChasingItem();
-  }
-
-  const radius = Math.max(1, entity.wanderRange);
-  const center = entity.position;
-
-  let attempts = 0;
-  const maxAttempts = 60;
-
-  while (attempts < maxAttempts) {
-    const angle = Math.random() * Math.PI * 2;
-    // 使用 sqrt(rand) 让点在圆面积上分布更均匀
-    const dist = radius * Math.sqrt(Math.random());
-    const target: Point = {
-      x: center.x + Math.cos(angle) * dist,
-      y: center.y + Math.sin(angle) * dist,
-    };
-
-    let safe = true;
-    for (const se of staticEntityList) {
-      const box = se.collisionBox;
-      if (
-        target.x >= box.x &&
-        target.x <= box.x + box.width &&
-        target.y >= box.y &&
-        target.y <= box.y + box.height
-      ) {
-        safe = false;
-        break;
-      }
-    }
-    if (!safe) {
-      attempts++;
-      continue;
-    }
-
-    if (entity.setTarget(target, staticEntityList)) {
-      return true;
-    }
-
-    attempts++;
-  }
-
-  if (entity.tryFallbackTarget(staticEntityList)) {
-    return true;
-  }
-
-  return false;
-};
-
-/**
- * 处理动态实体之间的碰撞挤压(AABB 分离)
- * 通过最小重叠轴把两个实体各推开一半,形成互相挤压而非穿透的效果
- */
-const resolveDynamicEntityCollisions = () => {
-  if (dynamicEntityList.length < 2) return;
-
-  for (let iter = 0; iter < RDEC_ITERATIONS; iter++) {
-    for (let i = 0; i < dynamicEntityList.length - 1; i++) {
-      const entityA = dynamicEntityList[i];
-      for (let j = i + 1; j < dynamicEntityList.length; j++) {
-        const entityB = dynamicEntityList[j];
-
-        const boxA = entityA.collisionBox;
-        const boxB = entityB.collisionBox;
-
-        const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);
-        const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
-
-        if (overlapX <= 0 || overlapY <= 0) continue;
-
-        if (overlapX < overlapY) {
-          const pushX = overlapX / 2 + RDEC_SEPARATION_EPSILON;
-          const direction = entityA.position.x <= entityB.position.x ? -1 : 1;
-          entityA.position.x += direction * pushX;
-          entityB.position.x -= direction * pushX;
-        } else {
-          const pushY = overlapY / 2 + RDEC_SEPARATION_EPSILON;
-          const direction = entityA.position.y <= entityB.position.y ? -1 : 1;
-          entityA.position.y += direction * pushY;
-          entityB.position.y -= direction * pushY;
-        }
-
-        entityA.updateCollisionBox();
-        entityB.updateCollisionBox();
-      }
-    }
-  }
-};
-
-/**
- * 更新动态实体-每帧调用
- * @param deltaTime 时间差-秒
- */
-const updateDynamicEntities = (deltaTime: number) => {
-  const expiredAnyItem = updateItemEntityLifetimes(deltaTime);
-  cooldownNormalAttack = Math.max(0, cooldownNormalAttack - deltaTime);
-
-  // 1) update each entity movement/state
-  for (const entity of dynamicEntityList) {
-    if (entity instanceof CatDynamicEntity) {
-      entity.updateHunger(deltaTime);
-    }
-    entity.update(deltaTime, staticEntityList);
-    entity.updateDamageEffect(deltaTime);
-  }
-
-  const removedAfterMoveUpdate = removeDeadDynamicEntitiesAndEmitEffects();
-
-  // 2) resolve dynamic-entity collision separation
-  resolveDynamicEntityCollisions();
-
-  // 3) handle stuck checks, stay timer, and target assignment
-  for (const entity of dynamicEntityList) {
-    if (entity instanceof PlayerDynamicEntity) continue;
-    entity.updateCrowdStuckState(deltaTime);
-    entity.updateStayDuration(deltaTime);
-    entity.updateStaticCompressionEffects(deltaTime, staticEntityList);
-
-    // cats prefer nearby grilled fish when reachable
-    if (entity instanceof CatDynamicEntity && !entity.isDead) {
-      const canSeekFish = entity.hungerMeter <= CatDynamicEntity.CAT_HUNGER_TOO_FULL_THRESHOLD;
-      if (!canSeekFish) {
-        // if too full, stop chasing fish immediately
-        if (entity.chasingItemId !== null) {
-          entity.clearChasingItem();
-          entity.stop();
-          entity.stayDurationRemaining = 0.3 + Math.random() * 0.7;
-        }
-      } else {
-        // if current chased fish is gone, interrupt chasing
-        if (entity.chasingItemId !== null) {
-          const activeTargetFish = getActiveGrilledFishById(entity.chasingItemId);
-          if (!activeTargetFish) {
-            entity.clearChasingItem();
-            entity.stop();
-            entity.stayDurationRemaining = 0.3 + Math.random() * 0.7;
-            continue;
-          }
-        }
-
-        const nearestFish = findNearestGrilledFishForCat(entity, entity.perceptionRange);
-        if (nearestFish) {
-          const alreadyHeadingToFish =
-            entity.isMoving &&
-            Math.hypot(
-              entity.nextTarget.x - nearestFish.position.x,
-              entity.nextTarget.y - nearestFish.position.y
-            ) < 8;
-          if (!alreadyHeadingToFish) {
-            const redirected = entity.setTarget(
-              { ...nearestFish.position },
-              staticEntityList,
-              { preferStraight: true }
-            );
-            if (redirected) {
-              entity.chasingItemId = nearestFish.id;
-              continue;
-            }
-          }
-        }
-      }
-    }
-
-    // if no movement for 10s, force a new target and repath
-    if (entity.updateNoMovementWatchdog(deltaTime)) {
-      setRandomTargetForDynamic(entity);
-      continue;
-    }
-
-    // when idle and stay finished, generate a new wander target
-    if (entity.canGetNewWanderTarget(deltaTime, staticEntityList)) {
-      setRandomTargetForDynamic(entity);
-    }
-  }
-
-  const pickedAnyItem = updateDynamicEntityItemPickups();
-  const projectileChanged = updateProjectileEntities(deltaTime);
-  const removedAfterProjectileUpdate = removeDeadDynamicEntitiesAndEmitEffects();
-
-  if (
-    removedAfterMoveUpdate ||
-    removedAfterProjectileUpdate ||
-    pickedAnyItem ||
-    expiredAnyItem ||
-    projectileChanged
-  ) {
-    refreshRenderEntityList();
-  }
-};
 
 const applyFirstPersonCameraMovement = (_deltaTime: number) => {
   if (perspectiveMode !== 'first_person') return;
@@ -1654,7 +1372,6 @@ const animateEntities = (timestamp: number) => {
   const deltaTime = Math.min(0.033, (timestamp - lastTimestamp) / 1000); // 当前时间减去上一帧的时间等于此帧的时间-并且限制最大33ms
   if (deltaTime > 0) {
     applyFirstPersonCameraMovement(deltaTime);  // 移动第一人称视角(背景)
-    updateDynamicEntities(deltaTime);           // 更新动态实体的坐标等数据
     drawEntities();                             // 重绘实体层
     effectManager?.updateAndDraw(deltaTime);    // redraw effect layer
     if(debugBoardVisible){
@@ -1744,7 +1461,6 @@ const applyDebugFlagCommand = (
 const DEBUG_COMMAND_SPECS = [
   { name: '/help', args: [] as string[] },
   { name: '/status', args: [] as string[] },
-  { name: '/create_a_grilled_fish', args: ['absolute', 'relative'] },
   { name: '/set_perspective', args: ['first', 'third'] },
   { name: '/trajectory', args: ['on', 'off', 'toggle'] },
   { name: '/collision', args: ['on', 'off', 'toggle'] },
@@ -1805,16 +1521,6 @@ const autoCompleteDebugCommand = () => {
 
 const isIntegerToken = (value: string) => /^-?\d+$/.test(value);
 
-const createGrilledFishAt = (position: Point, name?: string) => {
-  const index = itemEntityList.filter(item => item instanceof GrilledFishItemEntity).length + 1;
-  const fish = new GrilledFishItemEntity(position, name || `Grilled Fish ${index}`);
-  itemEntityList.push(fish);
-  refreshRenderEntityList();
-  fish.loadTexture().then(() => {
-    drawEntities();
-  });
-};
-
 const executeDebugTerminalCommand = (rawCommand: string) => {
   const commandText = rawCommand.trim();
   if (!commandText) return;
@@ -1830,7 +1536,6 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       pushDebugTerminalLog('/help');
       pushDebugTerminalLog('/status');
       pushDebugTerminalLog('/show_debug_board');
-      pushDebugTerminalLog('/create_a_grilled_fish <absolute|relative> <x:int> <y:int>');
       pushDebugTerminalLog('/set_perspective <first|third>');
       pushDebugTerminalLog('/trajectory [on|off|toggle]');
       pushDebugTerminalLog('/collision [on|off|toggle]');
@@ -1868,33 +1573,6 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       }
       setPerspectiveMode(nextMode);
       pushDebugTerminalLog(`[OK] Perspective: ${nextMode === 'first_person' ? 'FIRST_PERSON' : 'THIRD_PERSON'}`);
-      break;
-    }
-    case 'create_a_grilled_fish': {
-      if (args.length < 3) {
-        pushDebugTerminalLog('[ERR] Missing args. Use: /create_a_grilled_fish <absolute|relative> <x:int> <y:int>');
-        break;
-      }
-      const type = args[0].toLowerCase();
-      const xToken = args[1];
-      const yToken = args[2];
-
-      if (type !== 'absolute' && type !== 'relative') {
-        pushDebugTerminalLog('[ERR] Invalid type. Use: absolute | relative');
-        break;
-      }
-      if (!isIntegerToken(xToken) || !isIntegerToken(yToken)) {
-        pushDebugTerminalLog('[ERR] x and y must be integers.');
-        break;
-      }
-
-      const x = Number.parseInt(xToken, 10);
-      const y = Number.parseInt(yToken, 10);
-      const targetPos = type === 'absolute' ? { x, y } : TOscreen2Canvas(x, y);
-      createGrilledFishAt(targetPos);
-      pushDebugTerminalLog(
-        `[OK] Grilled fish created at world=(${targetPos.x.toFixed(0)}, ${targetPos.y.toFixed(0)}) from ${type}=(${x}, ${y})`
-      );
       break;
     }
     case 'trajectory':{
@@ -2089,6 +1767,7 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
         if (key === 's') firstPersonMoveS = true;
         if (key === 'd') firstPersonMoveD = true;
       }
+      sendPlayerMoveInput();
       return;
     }
   }
@@ -2111,6 +1790,9 @@ const onGlobalKeyUp = (e: KeyboardEvent) => {
   if (key === 'a') PlayerDynamicEntity.playerMoveState.playerMoveA = false;
   if (key === 's') PlayerDynamicEntity.playerMoveState.playerMoveS = false;
   if (key === 'd') PlayerDynamicEntity.playerMoveState.playerMoveD = false;
+  if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
+    sendPlayerMoveInput();
+  }
 };
 
 /**
@@ -2223,9 +1905,8 @@ const onMousedown = (e: MouseEvent) => {
 
   if (e.button === 0 && playerFireMode) {
     e.preventDefault();
-    if (spawnPlayerBullet(screenX, screenY)) {
-      drawUI();
-    }
+    sendClientInstruct(Instruct.I_PlayerFireInput(TOscreen2Canvas(screenX, screenY)));
+    drawUI();
     return;
   }
 
@@ -2381,4 +2062,3 @@ onUnmounted(() => {
 #canvas-ui{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:auto;cursor:none;}
 #canvas-cursor{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
 </style>
-

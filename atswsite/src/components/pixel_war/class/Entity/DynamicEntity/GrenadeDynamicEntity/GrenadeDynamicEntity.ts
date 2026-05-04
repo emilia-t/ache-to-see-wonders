@@ -16,6 +16,8 @@ class GrenadeDynamicEntity extends DynamicEntity {
   ) {
     super(position, width, height, texturePath, name, 'grenade', tag);
     this.purpose = purpose;
+    this.health = 1;
+    this.healthMax = 1;
   }
 }
 

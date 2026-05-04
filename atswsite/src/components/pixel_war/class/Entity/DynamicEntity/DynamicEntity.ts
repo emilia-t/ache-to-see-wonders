@@ -6,6 +6,7 @@ import type { DynamicEntityKind } from '@/components/pixel_war/type/Type';
 class DynamicEntity extends Entity {
   kind: DynamicEntityKind;      // 动态实体类别
   nextTarget: Point;            // 下一刻要去的地点-世界坐标
+  healthMax: number;            // 最大生命值
   health: number;               // 生命值
   speed: number;                // 当前有效移动速度-单位/秒
   wanderRange: number;          // 随机游走半径（固定属性）
@@ -51,6 +52,7 @@ class DynamicEntity extends Entity {
     this.maxMoveSpeed = Math.max(speedA, speedB);
     this.movementPassion = 1;
     this.health = 100;
+    this.healthMax = 100;
     this.speed = this.minMoveSpeed;
     this.wanderRange = 30 * ((this.width / 2) + (this.height / 2));
     this.perceptionRange = 8 * ((this.width / 2) + (this.height / 2));

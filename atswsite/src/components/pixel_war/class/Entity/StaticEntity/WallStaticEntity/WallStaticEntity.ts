@@ -4,7 +4,7 @@ import type { Point } from '@/components/pixel_war/interface/Interface';
 class WallStaticEntity extends StaticEntity {
   static readonly WIDTH = 50;
   static readonly HEIGHT = 50;
-  static readonly TEXTURE_PATH = './textures/wall.png';
+  static readonly TEXTURE_PATH = './textures/wall_static_entity.png';
 
   constructor(
     position: Point,

@@ -1,9 +1,9 @@
 ﻿import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
-import type { BulletRangeType } from '@/components/pixel_war/type/Type';
+import type { BulletRangeType, BulletTag } from '@/components/pixel_war/type/Type';
 import type { Point } from '@/components/pixel_war/interface/Interface';
 
-class BulletDynamicEntity extends DynamicEntity {
+abstract class BulletDynamicEntity extends DynamicEntity {
   static readonly WIDTH = 12;
   static readonly HEIGHT = 12;
   static readonly MOVE_SPEED = 720;
@@ -23,9 +23,10 @@ class BulletDynamicEntity extends DynamicEntity {
     ownerId: number | null,
     rangeType: BulletRangeType,
     name: string = 'Bullet',
-    damage: number = BulletDynamicEntity.DEFAULT_DAMAGE
+    damage: number = BulletDynamicEntity.DEFAULT_DAMAGE,
+    tag: BulletTag
   ) {
-    super(position, BulletDynamicEntity.WIDTH, BulletDynamicEntity.HEIGHT, '', name, 'bullet', 'bullet');
+    super(position, BulletDynamicEntity.WIDTH, BulletDynamicEntity.HEIGHT, '', name, 'bullet', tag);
     this.rangeType = rangeType;
     this.fillColor = '#ffd84d';
     this.minMoveSpeed = BulletDynamicEntity.MOVE_SPEED;
@@ -34,6 +35,7 @@ class BulletDynamicEntity extends DynamicEntity {
     this.wanderRange = 0;
     this.perceptionRange = 0;
     this.health = 1;
+    this.healthMax = 1;
     this.movementPassion = 1;
     this.velocity = {
       x: direction.x * BulletDynamicEntity.MOVE_SPEED,

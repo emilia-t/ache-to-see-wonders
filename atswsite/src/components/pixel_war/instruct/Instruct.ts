@@ -1,460 +1,156 @@
-// The relative position of this file: src/components/pixel_war/instruct/Instruct.ts
-// This is the basic class of Instruct class
-import type {ServerConfig} from "@/components/pixel_war/interface/Interface";
-import type {InstructObject} from "@/components/pixel_war/interface/Interface";
-import type {LogConfig} from "@/components/pixel_war/interface/Interface";
-import type {UserData} from "@/components/pixel_war/interface/Interface";
-import type {PixelWarUserData} from "@/components/pixel_war/interface/Interface";
-import Tool from "@/components/pixel_war/instruct/Tool";
+import type { MapData, InstructObject, Point } from '@/components/pixel_war/interface/Interface';
 
-export default abstract class Instruct {
-    private url: string;
-    private socket: WebSocket | null = null;
-    private isLink: boolean = false;
-    private isLogin: boolean = false;
-    private lastPong: number = 0;
-    private lastPing: number = 0;
-    private pingInterval: number | null = null;
-    private publicKey: string = '';//服务端的公钥 用于部分加密操作
-    private serverConfig: ServerConfig | null = null;
-    private userData: UserData | PixelWarUserData | null = null;
-    /*
-     * 构造器
-     */
-    constructor(url: string) {
-        this.url = url;
-        this.socket = new WebSocket(this.url);
-        this.socket.onmessage = (ev) => this.onMessageHandler(ev);
-        this.socket.onopen = (ev) => this.onOpenHandler(ev);
-        this.socket.onclose = (ev) => this.onCloseHandler(ev);
-        this.socket.onerror = (ev) => this.onErrorHandler(ev);
-    }
-    // ==============================
-    // 事件处理
-    // ==============================
-    public onLog: (message: string, type: 'tip' | 'warn' | 'error', data?: any) => LogConfig = () => {return {code: 0,time: '',text: '',from: 'Instruct',type: '',data: {}}};
-    public onOpen: (ev: Event) => void = () => {};// 外部可以重写这些方法以自定义处理事件
-    public onClose: (ev: Event) => void = () => {};
-    public onError: (ev: Event) => void = () => {};
-    public onMessage: (instructObj: InstructObject) => void = () => {};
-    public onLogin: () => void = () => {};
-    public onLogout: () => void = () => {};
+export class Instruct {
+    ////////////////////
+    //辅助函数区(H_前缀)-->
+    ////////////////////
     /**
-     * 指令的具体处理
-     * @param ev 
-     * @returns void
+     * 获取当前时间戳（毫秒）
+     * @returns 当前时间戳
      */
-    private onMessageHandler(ev: MessageEvent): void {
-        let instructObj: InstructObject | null = this.instructParse(ev.data);
-        if (instructObj === null) {
-            this.onLog('无法解析指令', 'error', ev.data);
-            return;
-        }
-        switch (instructObj.type) {
-            case 'broadcast':
-                this.handleBroadcastInstruct(instructObj);
-                break;
-            case 'pong':
-                this.handlePong(instructObj);
-                break;
-            case 'login':
-                this.handleLogin(instructObj);
-                break;
-            case 'publickey':
-                this.handlePublickey(instructObj);
-                break;
-            case 'anonymous_login':
-                this.handleAnonymousLogin(instructObj);
-                break;
-            case 'server_config':
-                this.handleServerConfig(instructObj);
-                break;
-            case 'user_data':
-                this.handleUserData(instructObj);
-                break;
-            case 'token_login':
-                this.handleTokenLogin(instructObj);
-                break;
-            default:
-                this.handleExpandInstruct(instructObj);
-        }
-        this.onMessage(instructObj);
-    }
-    private onOpenHandler(ev: Event): void {
-        this.isLink = true;
-        this.onLog('服务器连接成功', 'tip');
-        this.onOpen(ev);
-    }
-    private onCloseHandler(ev: CloseEvent): void {
-        this.isLink = false;
-        this.isLogin = false;
-        this.pingIntervalStop();
-        this.onLog('服务器连接中断', 'warn');
-        this.onClose(ev);
-    }
-    private onErrorHandler(ev: Event): void {
-        this.isLink = false;
-        this.isLogin = false;
-        this.pingIntervalStart();
-        this.onLog('服务器连接失败', 'warn');
-        this.onError(ev);
-    }
-    
-    // ==============================
-    // 处理指令的方法
-    // ==============================
-    abstract handleBroadcastInstruct (instruct: InstructObject) : void;// 子类必须实现这个方法以处理广播指令
-    abstract handleExpandInstruct (instruct: InstructObject) : void;// 子类必须实现这个方法以处理扩展指令
-    private handlePong (instruct: InstructObject) : void {
-        const time = Tool.formatTime2Timestamp(instruct.time);
-        if(!Number.isNaN(time)){
-            this.lastPong = time;
-        }
-    }
-    private handleLogin (instruct: InstructObject) : void {
-        instruct.data === 'ok' ? this.setterIsLogin(true) : this.setterIsLogin(false);
-    }
-    private handlePublickey (instruct: InstructObject) : void {
-        if (typeof instruct.data === 'string' && instruct.data.trim() !== '') {
-            this.publicKey = instruct.data;
-        }
-    }
-    private handleAnonymousLogin (instruct: InstructObject) : void {
-        instruct.data === 'ok' ? this.setterIsLogin(true) : this.setterIsLogin(false);
-    }
-    private handleServerConfig (instruct: InstructObject) : void {
-        if (typeof instruct.data === 'object' && instruct.data !== null) {
-            this.serverConfig = instruct.data as ServerConfig;
-        }
-    }
-    private handleUserData (instruct: InstructObject) : void {
-        if (typeof instruct.data === 'object' && instruct.data !== null) {
-            this.userData = instruct.data as UserData;
-        }
-    }
-    private handleTokenLogin (instruct: InstructObject) : void {
-        instruct.data === 'ok' ? this.setterIsLogin(true) : this.setterIsLogin(false);
-    }
+    public static H_getTimestamp = () => {
+        return Date.now();
+    };
     /**
-     * 指令初始解析
-     * @param data 
-     * @returns InstructObject
+     * 生成格式为 'YYYY-MM-DD HH:mm:ss:SSS' 的时间字符串
+     * @param date 可选，Date对象，默认为当前时间
+     * @returns 格式化的时间字符串
      */
-    private instructParse(data: string): InstructObject | null {
-        if (typeof data !== 'string' || data.trim() === '') {
-            this.onLog('指令数据为空或不是字符串', 'error', data);
-            return null;
-        }
+    public static H_getFormatTime = (date: Date = new Date()): string => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        const h = String(date.getHours()).padStart(2, '0');
+        const u = String(date.getMinutes()).padStart(2, '0');
+        const s = String(date.getSeconds()).padStart(2, '0');
+        const c = String(date.getMilliseconds()).padStart(3, '0');
+        return `${y}-${m}-${d} ${h}:${u}:${s}:${c}`;
+    };
+    /**
+     * 解析格式为 'YYYY-MM-DD HH:mm:ss:SSS' 的时间字符串为时间戳（毫秒）
+     * @param timeString 时间字符串
+     * @returns 时间戳（毫秒数），解析失败返回 NaN
+     */
+    public static H_formatTime2Timestamp = (timeString: string): number => {
         try {
-            const parsed = JSON.parse(data);
-            if (this.isValidInstructObject(parsed)) {
-                return {
-                    type:parsed.type,
-                    class:parsed.class,
-                    conveyor:parsed.conveyor,
-                    time:parsed.time,
-                    data:parsed.data
-                };
-            } else {
-                this.onLog('指令格式验证失败', 'error', {
-                    received: parsed,
-                    expected: 'InstructObject format'
-                });
-                return null;
+            const regex = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}):(\d{3})$/;
+            const match = timeString.match(regex);
+            if (!match) {
+                throw new Error('Invalid time string format');
             }
+            const [, y, m, d, h, u, s, c] = match;
+            const date = new Date(
+                parseInt(y),
+                parseInt(m) - 1,
+                parseInt(d),
+                parseInt(h),
+                parseInt(u),
+                parseInt(s),
+                parseInt(c)
+            );
+            return date.getTime();
         } catch (error) {
-            this.onLog('JSON解析失败', 'error', {
-                data: data,
-                error: error instanceof Error ? error.message : String(error)
-            });
-            return null;
+            console.error('Failed to parse time string:', error);
+            return NaN;
         }
     }
-    // ==============================
-    // 发送指令的方法
-    // ==============================
-    public send(instruct: InstructObject): boolean {
-        if (!this.isLink || !this.socket) {
-            this.onLog('连接未建立，无法发送指令', 'warn');
-            return false;
-        }
-        try {
-            const data = JSON.stringify(instruct);
-            this.socket.send(data);
-            return true;
-        } catch (error) {
-            this.onLog('发送指令失败', 'error', error);
-            return false;
-        }
-    }
-    public ping(): void {
-        this.send(Instruct._ping_());
-    }
-    public getPublickey(): void {
-        this.send(Instruct._getPublickey_());
-    }
-    public getServerConfig(): void {
-        this.send(Instruct._getServerConfig_());
-    }
-    public async getLogin(email: string, password: string): Promise<boolean> {
-        try{
-            const trimE = email.trim();
-            const trimP = password.trim();
-            if (trimE === '' || trimP === '') {
-                return false;
-            }
-            else{
-                const encryptE = await Tool.rsaEncrypt(trimE,this.publicKey);
-                const encryptP = await Tool.rsaEncrypt(trimP,this.publicKey);
-                this.send(Instruct._getLogin_(encryptE, encryptP));
-                return true;
-            }
-        }catch (error){
-            console.error('RSA decryption failed:', error);
-            return false;
-        }
-    }
-    public getAnonymousLogin(email: string): boolean {
-        const trimE = email.trim();
-        if(trimE === ''){
-            return false;
-        }
-        else{
-            this.send(Instruct._getAnonymousLogin_(trimE));
-            return true;
-        }
-    }
-    public getUserData(): void {
-        this.send(Instruct._getUserData_());
-    }
-    public getTokenLogin(userId: number, userToken: string): boolean {
-        if (userId === 0 || userToken === '') {
-            return false;
-        }
-        else{
-            this.send(Instruct._getTokenLogin_(userId, userToken));
-            return true;
-        }
-    }
-    // ==============================
-    // 创建指令对象的静态方法
-    // ==============================
-    public static _ping_(): InstructObject {
-        return {
-            type: 'ping',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: ''
-        };
-    }
-    public static _pong_(): InstructObject {
-        return {
-            type: 'pong',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: ''
-        };
-    }
-    public static _getPublickey_(): InstructObject {
-        return {
-            type: 'get_publickey',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: ''
-        };
-    }
-    public static _publickey_(publicKey: string): InstructObject {
-        return {
-            type: 'publickey',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: publicKey
-        };
-    }
-    public static _getLogin_(email: string, password: string): InstructObject {
-        return {
-            type: 'get_login',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: {
-                email: email,
-                password: password
-            }
-        };
-    }
-    public static _login_(status: 'ok' | 'no'): InstructObject {
-        return {
-            type: 'login',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: status
-        };
-    }
-    public static _getAnonymousLogin_(email: string): InstructObject {
-        return {
-            type: 'get_anonymous_login',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: {
-                email: email
-            }
-        };
-    }
-    public static _anonymousLogin_(status: 'ok' | 'no'): InstructObject {
-        return {
-            type: 'anonymous_login',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: status
-        };
-    }
-    public static _getServerConfig_(): InstructObject {
-        return {
-            type: 'get_server_config',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: ''
-        };
-    }
-    public static _serverConfig_(config: ServerConfig): InstructObject {
-        return {
-            type: 'server_config',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: config
-        };
-    }
-    public static _getUserData_(): InstructObject {
-        return {
-            type: 'get_user_data',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: ''
-        };
-    }
-    public static _userData_(userData: UserData): InstructObject {
-        return {
-            type: 'user_data',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: userData
-        };
-    }
-    public static _getTokenLogin_(userId: number, userToken: string): InstructObject {
-        const floorD = Math.floor(userId);
-        const trimT = userToken.trim();
-        return {
-            type: 'get_token_login',
-            class: '',
-            conveyor: '',
-            time: Tool.getFormatTime(),
-            data: {
-                user_id: floorD,
-                user_token: trimT
-            }
-        };
-    }
-
-    // ==============================
-    // getters and setters
-    // ==============================
-    public getterIsLink(): boolean {
-        return this.isLink;
-    }
-
-    public getterIsLogin(): boolean {
-        return this.isLogin;
-    }
-
-    public getterLastPing(): number {
-        return this.lastPing;
-    }
-
-    public getterLastPong(): number {
-        return this.lastPong;
-    }
-
-    public getterPublicKey(): string {
-        return this.publicKey;
-    }
-
-    public getterServerConfig(): ServerConfig | null {
-        return this.serverConfig;
-    }
-
-    public getterUserData(): UserData | null {
-        return this.userData;
-    }
-
-    private setterIsLogin(login: boolean): void {
-        this.isLogin = login;
-        if (login) {
-            this.pingIntervalStart();
-            this.getUserData();
-            this.onLogin();
-        } else {
-            this.pingIntervalStop();
-            this.userData=null;
-            this.onLogout();
-        }
-    }
-
-    // ==============================
-    // other
-    // ==============================
     /**
-     * 验证指令对象结构
+     * 将时间戳转换为格式化的时间字符串
+     * @param timestamp 时间戳（毫秒）
+     * @returns 格式化的时间字符串
      */
-    private isValidInstructObject(obj: any): obj is InstructObject {
-        return (
-            obj !== null &&
-            typeof obj === 'object' &&
-            this.isStringField(obj, 'type') &&
-            this.isStringField(obj, 'class') &&
-            this.isStringField(obj, 'conveyor') &&
-            this.isStringField(obj, 'time') &&
-            this.isField(obj, 'data') &&
-            this.isValidTimeFormat(obj.time)
-        );
+    public static H_timestamp2FormatTime = (timestamp: number): string => {
+        return this.H_getFormatTime(new Date(timestamp));
+    };
+    ////////////////////
+    //<--辅助函数区(H_前缀)
+    ////////////////////
+
+
+    ////////////////////
+    //指令创建区(I_前缀)-->
+    ////////////////////
+    /**
+     * 创建测试指令
+     * @param message 
+     * @returns 
+     */
+    public static I_Test = (message: string):InstructObject => {
+        return {
+            type: 'test',
+            class: '',
+            conveyor: 'server',
+            time: this.H_getFormatTime(),
+            data: message
+        };
     }
-    private isStringField(obj: any, field: string): boolean {
-        return field in obj && typeof obj[field] === 'string';
+    /**
+     * 创建地图数据初始化指令
+     * @param mapData 
+     * @returns 
+     */
+    public static I_MapDataInitial = (mapData: MapData):InstructObject => {
+        return {
+            type: 'map_data_initial',
+            class: '',
+            conveyor: 'server',
+            time: this.H_getFormatTime(),
+            data: mapData
+        };
     }
-    private isField(obj: any, field: string): boolean {
-        return field in obj;
+
+    /**
+     * 创建地图数据更新指令
+     * @param mapData
+     * @returns
+     */
+    public static I_MapDataUpdate = (mapData: MapData): InstructObject => {
+        return {
+            type: 'map_data_update',
+            class: '',
+            conveyor: 'server',
+            time: this.H_getFormatTime(),
+            data: mapData
+        };
     }
-    private isValidTimeFormat(timeStr: string): boolean {
-        return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}:\d{3}$/.test(timeStr);
+
+    /**
+     * 创建玩家移动输入指令
+     * @param moveState
+     * @returns
+     */
+    public static I_PlayerMoveInput = (moveState: {
+        playerMoveW: boolean;
+        playerMoveA: boolean;
+        playerMoveS: boolean;
+        playerMoveD: boolean;
+    }): InstructObject => {
+        return {
+            type: 'player_move_input',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: moveState
+        };
     }
-    private pingIntervalStart(): void {
-        this.pingIntervalStop();
-        
-        this.pingInterval = window.setInterval(() => {
-            if (this.isLogin) {
-                this.lastPing = Tool.getTimestamp();
-                this.ping();
-            }
-        }, 50000);
+
+    /**
+     * 创建玩家射击输入指令
+     * @param target
+     * @returns
+     */
+    public static I_PlayerFireInput = (target: Point): InstructObject => {
+        return {
+            type: 'player_fire_input',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: target
+        };
     }
-    private pingIntervalStop(): void {
-        if (this.pingInterval) {
-            clearInterval(this.pingInterval);
-            this.pingInterval = null;
-        }
-    }
-    public closeLink(): void{
-        this.socket?.close();
-    }
+
+
+    ////////////////////
+    //<--指令创建区(I_前缀)
+    ////////////////////
 }

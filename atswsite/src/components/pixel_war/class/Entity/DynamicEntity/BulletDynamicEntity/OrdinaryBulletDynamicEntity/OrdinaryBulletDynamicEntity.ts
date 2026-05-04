@@ -3,8 +3,8 @@ import type { Point } from '@/components/pixel_war/interface/Interface';
 
 class OrdinaryBulletDynamicEntity extends BulletDynamicEntity {
   constructor(position: Point, direction: Point, ownerId: number | null, name: string = 'Ordinary Bullet') {
-    super(position, direction, ownerId, 'short', name);
-    this.damage = 50;
+    super(position, direction, ownerId, 'short', name, 50, 'ordinary_bullet');
+    //
   }
 }
 

@@ -29,6 +29,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.wanderRange = 0;
     this.perceptionRange = 0;
     this.health = 100;
+    this.healthMax = 100;
     this.movementPassion = 1;
     this.stop();
   }

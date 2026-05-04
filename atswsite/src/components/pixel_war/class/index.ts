@@ -1,12 +1,13 @@
 ﻿export { CursorManager } from './CursorManager/CursorManager';
 export { EffectManager } from './EffectManager/EffectManager';
 export { Entity } from './Entity/Entity';
+export { EmptyEntity } from './Entity/EmptyEntity/EmptyEntity';
 export { StaticEntity } from './Entity/StaticEntity/StaticEntity';
 export { BoxStaticEntity } from './Entity/StaticEntity/BoxStaticEntity/BoxStaticEntity';
 export { WallStaticEntity } from './Entity/StaticEntity/WallStaticEntity/WallStaticEntity';
 export { CurbStaticEntity } from './Entity/StaticEntity/CurbStaticEntity/CurbStaticEntity';
 export { ItemEntity } from './Entity/ItemEntity/ItemEntity';
-export { GrilledFishItemEntity } from './Entity/ItemEntity/FoodItemEntity/GrilledFishItemEntity/GrilledFishItemEntity';
+export { HealingGemItemEntity } from './Entity/ItemEntity/FoodItemEntity/HealingGemItemEntity/HealingGemItemEntity';
 export { DynamicEntity } from './Entity/DynamicEntity/DynamicEntity';
 export { NpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
@@ -23,8 +24,7 @@ export { BuckshotBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynami
 export { OrdinaryBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
 export { LaserBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/LaserBulletDynamicEntity/LaserBulletDynamicEntity';
 export { SniperBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/SniperBulletDynamicEntity/SniperBulletDynamicEntity';
-export { CatDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/CatDynamicEntity/CatDynamicEntity';
-export { RagdollCatDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/CatDynamicEntity/RagdollCatDynamicEntity/RagdollCatDynamicEntity';
+
 
 export const PrototypeChain = {
   "CursorManager": "CursorManager",
@@ -37,16 +37,12 @@ export const PrototypeChain = {
     },
     "ItemEntity": {
       "FoodItemEntity": {
-        "GrilledFishItemEntity": "GrilledFishItemEntity"
+        "HealingGemItemEntity": "HealingGemItemEntity"
       }
     },
     "DynamicEntity": {
       "NpcDynamicEntity": {
-        "FriendlyNpcDynamicEntity": {
-          "CatDynamicEntity": {
-            "RagdollCatDynamicEntity": "RagdollCatDynamicEntity"
-          }
-        },
+        "FriendlyNpcDynamicEntity": "FriendlyNpcDynamicEntity",
         "NeutralNpcDynamicEntity": "NeutralNpcDynamicEntity",
         "HostileNpcDynamicEntity": {
           "WhitePixelEntity": "WhitePixelEntity"
@@ -64,6 +60,7 @@ export const PrototypeChain = {
         "LaserBulletDynamicEntity": "LaserBulletDynamicEntity",
         "SniperBulletDynamicEntity": "SniperBulletDynamicEntity"
       }
-    }
+    },
+    "EmptyEntity": "EmptyEntity"
   }
 };

@@ -12,6 +12,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     this.fillColor = '#ffffff';
     this.strokeColor = '#bebebe';
     this.health = 100;
+    this.healthMax = 100;
   }
 
   tryPickupItem(item: ItemEntity): boolean {
