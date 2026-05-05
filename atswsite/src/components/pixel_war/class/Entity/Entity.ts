@@ -1,6 +1,6 @@
-﻿import type { CollisionBox, Point, Texture } from '@/components/pixel_war/interface/Interface';
+﻿import type { CollisionBox, Point, Texture , EntityDebugFlags} from '@/components/pixel_war/interface/Interface';
 
-class Entity {
+abstract class Entity {
   private static nextEntityId = 100;
   id: number;
   type: 'static' | 'dynamic' | 'item' | 'empty';
@@ -67,6 +67,30 @@ class Entity {
       };
     });
   }
+
+  // 视口裁剪检测
+  isInViewport(
+    worldToScreen: (x: number, y: number) => { x: number; y: number },
+    canvasSize: { width: number; height: number },
+    margin = 0
+  ): boolean {
+    const { x, y } = worldToScreen(this.position.x, this.position.y);
+    const halfW = this.width / 2 + margin;
+    const halfH = this.height / 2 + margin;
+    return (
+      !(x + halfW < 0 || x - halfW > canvasSize.width ||
+        y + halfH < 0 || y - halfH > canvasSize.height)
+    );
+  }
+
+  // 绘制实体的抽象方法
+  abstract draw(
+    ctx: CanvasRenderingContext2D,
+    worldToScreen: (x: number, y: number) => { x: number; y: number },
+    canvasSize: { width: number; height: number },
+    debugFlags?: EntityDebugFlags
+  ): void;
+
 }
 
 export { Entity };

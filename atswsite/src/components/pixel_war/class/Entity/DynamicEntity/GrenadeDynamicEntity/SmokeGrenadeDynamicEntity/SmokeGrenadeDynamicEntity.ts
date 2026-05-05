@@ -1,5 +1,5 @@
 ﻿import { GrenadeDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/GrenadeDynamicEntity/GrenadeDynamicEntity';
-import type { Point } from '@/components/pixel_war/interface/Interface';
+import type { Point, EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 
 class SmokeGrenadeDynamicEntity extends GrenadeDynamicEntity {
   constructor(
@@ -11,6 +11,10 @@ class SmokeGrenadeDynamicEntity extends GrenadeDynamicEntity {
     tag: string
   ) {
     super(position, width, height, texturePath, name, 'smoke', tag);
+  }
+
+  draw(ctx: CanvasRenderingContext2D, worldToScreen: (x: number, y: number) => { x: number; y: number; }, canvasSize: { width: number; height: number; }, debugFlags?: EntityDebugFlags): void {
+    //待定
   }
 }
 

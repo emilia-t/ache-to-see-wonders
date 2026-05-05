@@ -1,6 +1,7 @@
-﻿import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
+﻿import type { Point } from '@/components/pixel_war/interface/Interface';
+import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
+import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
-import type { Point } from '@/components/pixel_war/interface/Interface';
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 
 class PlayerDynamicEntity extends DynamicEntity {
@@ -22,7 +23,7 @@ class PlayerDynamicEntity extends DynamicEntity {
   ) {
     super(position, PlayerDynamicEntity.WIDTH, PlayerDynamicEntity.HEIGHT, '', name, 'player', 'player');
     this.isme = isme;
-    this.fillColor = '#2d7ff913';
+    this.fillColor = '#2d7ff9a1';
     this.minMoveSpeed = PlayerDynamicEntity.MOVE_SPEED;
     this.maxMoveSpeed = PlayerDynamicEntity.MOVE_SPEED;
     this.speed = PlayerDynamicEntity.MOVE_SPEED;
@@ -137,6 +138,158 @@ class PlayerDynamicEntity extends DynamicEntity {
    */
   pickupItem(item: ItemEntity): void {
     
+  }
+
+  /**
+   * 绘制实体
+   * @param ctx 
+   * @param worldToScreen 
+   * @param canvasSize 
+   * @param debugFlags 
+   */
+  draw(
+    ctx: CanvasRenderingContext2D,
+    worldToScreen: (x: number, y: number) => { x: number; y: number },
+    canvasSize: { width: number; height: number },
+    debugFlags?: EntityDebugFlags
+  ): void {
+    const screenPos = worldToScreen(this.position.x, this.position.y);
+    const halfW = this.width / 2;
+    const halfH = this.height / 2;
+    const left = screenPos.x - halfW;
+    const top = screenPos.y - halfH;
+
+    // 绘制本体
+    if (this.texture && this.texture.loaded) {
+      ctx.drawImage(this.texture.img, left, top, this.width, this.height);
+    } else {
+      ctx.fillStyle = this.fillColor || '#2d7ff9a1';
+      ctx.fillRect(left, top, this.width, this.height);
+      ctx.strokeStyle = this.strokeColor || '#000';
+      ctx.strokeRect(left, top, this.width, this.height);
+    }
+
+    // 受伤闪烁
+    if (this.damageFlashTimer > 0) {
+      const intensity = Math.min(1, this.damageFlashTimer / 0.25);
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-atop';
+      ctx.fillStyle = `rgba(255, 0, 0, ${0.45 * intensity})`;
+      ctx.fillRect(left, top, this.width, this.height);
+      ctx.restore();
+    }
+
+    // 血条
+    const healthRatio = Math.max(0, Math.min(1, this.health / this.healthMax));
+    const barWidth = Math.max(36, this.width);
+    const barHeight = 4;
+    const barX = screenPos.x - barWidth / 2;
+    const topY = screenPos.y - halfH - 16;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';// 血条底
+    ctx.fillRect(barX, topY, barWidth, barHeight);
+    ctx.fillStyle = '#2ecc71';// 血条值
+    ctx.fillRect(barX, topY, barWidth * healthRatio, barHeight);
+
+    // 玩家名称
+    ctx.font = '12px "Microsoft YaHei"';
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 2;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(this.name, screenPos.x, screenPos.y + halfH + 6);
+
+    /////// 调试信息start
+    if (debugFlags) {
+      if (debugFlags.showTag) {//底部的tag
+        ctx.font = '10px Arial';
+        ctx.fillStyle = '#ffff00';
+        ctx.fillText(this.name, screenPos.x, screenPos.y + halfH + 20);
+      }
+      const debugLines: string[] = [];//顶部的属性文本
+      if(debugFlags.showHealth){
+        debugLines.push(`health: ${this.health.toFixed(0)}`);
+      }
+      if(debugFlags.showMovementSpeed){
+        debugLines.push(`speed: ${this.speed.toFixed(2)}`);
+      }
+      if(debugFlags.showMovementPassion){
+        debugLines.push(`passion: ${(this.movementPassion * 100).toFixed(1)}%`);
+      }
+      if (debugLines.length > 0){// 按顺序渲染多行文本
+        const lineHeight = 14;
+        const baseY = screenPos.y - halfH - 28; // 最靠近头部的一行
+        ctx.font = '11px Consolas, "Courier New", monospace';
+        ctx.fillStyle = '#87cefa';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        for (let i = 0; i < debugLines.length; i++) {
+          ctx.fillText(debugLines[i], screenPos.x, baseY - i * lineHeight);
+        }
+      }
+      // 恢复默认文本排版设置,避免影响其他绘制
+      ctx.textAlign = 'start';
+      ctx.textBaseline = 'alphabetic';
+      ctx.shadowColor = 'transparent';
+      // 碰撞盒
+      if (debugFlags.showCollisionBoxes) {
+        ctx.save();
+        ctx.strokeStyle = '#ff0000';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        const box = this.collisionBox;
+        const topLeft = worldToScreen(box.x, box.y + box.height); // 注意Y轴转换
+        const width = box.width;
+        const height = box.height;
+        ctx.strokeRect(topLeft.x, topLeft.y, width, height);
+        ctx.restore();
+      }
+      // 绘制朝向调试箭头
+      if (debugFlags.showFacingDirection) {
+        ctx.save();
+        ctx.strokeStyle = '#1e90ff';
+        ctx.fillStyle = '#1e90ff';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        const center = worldToScreen(this.position.x, this.position.y);
+        const direction = this.facingDirection;
+        const dirLen = Math.hypot(direction.x, direction.y);
+        if (dirLen > 0.0001){
+          const unitX = direction.x / dirLen;
+          const unitY = direction.y / dirLen;
+          const arrowLength = Math.max(this.width, this.height) * 0.9;
+          const tipCanvas = {
+            x: this.position.x + unitX * arrowLength,
+            y: this.position.y + unitY * arrowLength,
+          };
+          const tip = worldToScreen(tipCanvas.x, tipCanvas.y);
+
+          // 箭身
+          ctx.beginPath();
+          ctx.moveTo(center.x, center.y);
+          ctx.lineTo(tip.x, tip.y);
+          ctx.stroke();
+
+          // 箭头
+          const headLength = 8;
+          const angle = Math.atan2(tip.y - center.y, tip.x - center.x);
+          ctx.beginPath();
+          ctx.moveTo(tip.x, tip.y);
+          ctx.lineTo(
+            tip.x - headLength * Math.cos(angle - Math.PI / 6),
+            tip.y - headLength * Math.sin(angle - Math.PI / 6)
+          );
+          ctx.lineTo(
+            tip.x - headLength * Math.cos(angle + Math.PI / 6),
+            tip.y - headLength * Math.sin(angle + Math.PI / 6)
+          );
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+    /////// 调试信息end
   }
 }
 

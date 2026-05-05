@@ -4,8 +4,8 @@ import type { BulletRangeType, BulletTag } from '@/components/pixel_war/type/Typ
 import type { Point } from '@/components/pixel_war/interface/Interface';
 
 abstract class BulletDynamicEntity extends DynamicEntity {
-  static readonly WIDTH = 12;
-  static readonly HEIGHT = 12;
+  static readonly WIDTH = 8;
+  static readonly HEIGHT = 8;
   static readonly MOVE_SPEED = 720;
   static readonly DEFAULT_DAMAGE = 30;
   static readonly MAX_LIFETIME = 1.2;

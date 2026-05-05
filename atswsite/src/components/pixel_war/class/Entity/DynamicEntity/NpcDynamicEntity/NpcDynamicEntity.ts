@@ -1,14 +1,14 @@
 ﻿import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 import type { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/BulletDynamicEntity';
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
-import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
+import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { Point } from '@/components/pixel_war/interface/Interface';
 import type { NpcAttitude } from '@/components/pixel_war/type/Type';
 
 export type NpcActionLoopContext = {
   deltaTime: number;
   staticEntities: StaticEntity[];
-  spawnProjectile: (projectile: BulletDynamicEntity) => void;
+  spawnBullet: (bullet: BulletDynamicEntity) => void;
 };
 
 abstract class NpcDynamicEntity extends DynamicEntity {

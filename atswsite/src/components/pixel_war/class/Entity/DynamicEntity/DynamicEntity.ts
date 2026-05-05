@@ -1,7 +1,14 @@
 ﻿import { Entity } from '@/components/pixel_war/class/Entity/Entity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
+import type { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/BulletDynamicEntity';
 import type { CollisionBox, Point } from '@/components/pixel_war/interface/Interface';
 import type { DynamicEntityKind } from '@/components/pixel_war/type/Type';
+
+export type DynamicActionLoopContext = {
+  deltaTime: number;
+  staticEntities: StaticEntity[];
+  spawnBullet: (bullet: BulletDynamicEntity) => void;
+};
 
 abstract class DynamicEntity extends Entity {
   kind: DynamicEntityKind;      // 动态实体类别
@@ -103,6 +110,19 @@ abstract class DynamicEntity extends Entity {
   isDeathEffectFinished() {
     return this.isDead && this.deathEffectTimer <= 0;
   }
+
+  actionLoop(context: DynamicActionLoopContext): void {
+    if (this.isDead) return;
+    this.actionBefore(context);
+    this.action(context);
+    this.actionAfter(context);
+  }
+
+  action(_context: DynamicActionLoopContext): void {}
+
+  actionBefore(_context: DynamicActionLoopContext): void {}
+
+  actionAfter(_context: DynamicActionLoopContext): void {}
 
   private triggerDeath() {
     this.isDead = true;
@@ -845,4 +865,3 @@ abstract class DynamicEntity extends Entity {
 }
 
 export { DynamicEntity };
-

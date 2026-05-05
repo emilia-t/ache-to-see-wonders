@@ -1,5 +1,5 @@
 ﻿import { Entity } from '@/components/pixel_war/class/Entity/Entity';
-import type { Point } from '@/components/pixel_war/interface/Interface';
+import type { EntityDebugFlags, Point } from '@/components/pixel_war/interface/Interface';
 
 abstract class ItemEntity extends Entity {
   lifetimeTotal: number; // 初始寿命（秒）
@@ -67,6 +67,38 @@ abstract class ItemEntity extends Entity {
     if (ratio > 0.5) return 0.75;
     if (ratio > 0.25) return 0.5;
     return 0.25;
+  }
+
+  /**
+   * 绘制实体
+   * @param ctx 
+   * @param worldToScreen 
+   * @param canvasSize 
+   * @param debugFlags 
+   */
+  draw(
+    ctx: CanvasRenderingContext2D,
+    worldToScreen: (x: number, y: number) => { x: number; y: number },
+    canvasSize: { width: number; height: number },
+    debugFlags?: EntityDebugFlags
+  ): void {
+    if (this.isDisappearing) return;
+    const screenPos = worldToScreen(this.position.x, this.position.y);
+    const left = screenPos.x - this.width / 2;
+    const top = screenPos.y - this.height / 2;
+
+    const lifeOpacity = this.getLifetimeOpacity();
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, lifeOpacity));
+    if (this.texture?.loaded) {
+      ctx.drawImage(this.texture.img, left, top, this.width, this.height);
+    } else {
+      ctx.fillStyle = '#f5c16c';
+      ctx.fillRect(left, top, this.width, this.height);
+      ctx.strokeStyle = '#000';
+      ctx.strokeRect(left, top, this.width, this.height);
+    }
+    ctx.restore();
   }
 }
 

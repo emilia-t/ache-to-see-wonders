@@ -4,7 +4,6 @@ import {
   CurbStaticEntity,
   BulletDynamicEntity,
   DynamicEntity,
-  ItemEntity,
   NpcDynamicEntity,
   OrdinaryBulletDynamicEntity,
   PlayerDynamicEntity,
@@ -14,10 +13,35 @@ import {
 ////////////////////
 // 常量区-->
 ////////////////////
+// 当前 Worker 实例,用于接收客户端指令并回传地图快照
 const SERVICE: Worker = self as any;
+// 动态实体碰撞分离的迭代次数,单位次
 const RDEC_ITERATIONS = 3;
+// 动态实体碰撞分离时额外推出的距离,单位:px
 const RDEC_SEPARATION_EPSILON = 0.1;
+// 玩家普通射击冷却时间,单位秒
 const PLAYER_FIRE_COOLDOWN = 0.12;
+// 玩家周围 0-200px 半径内为禁刷怪区,单位px
+const NPC_SPAWN_NO_SPAWN_RADIUS = 200;
+// 玩家周围 200-400px 半径内为高频刷怪区外边界,单位px
+const NPC_SPAWN_HIGH_RADIUS = 400;
+// 玩家周围 400-800px 半径内为中频刷怪区外边界,单位px
+const NPC_SPAWN_MEDIUM_RADIUS = 800;
+// 玩家周围 800-1600px 半径内为低频刷怪区外边界,单位px
+const NPC_SPAWN_LOW_RADIUS = 1600;
+// 高频刷怪区生成间隔,单位秒
+const NPC_SPAWN_HIGH_INTERVAL = 4;
+// 中频刷怪区生成间隔,单位秒
+const NPC_SPAWN_MEDIUM_INTERVAL = 8;
+// 低频刷怪区生成间隔,单位秒
+const NPC_SPAWN_LOW_INTERVAL = 16;
+// 地图中同时存在的 NPC 数量上限,单位个
+const NPC_SPAWN_MAX_COUNT = 80;
+// 每次刷怪在目标环形区域内寻找可用生成点的最大尝试次数,单位次
+const NPC_SPAWN_MAX_ATTEMPTS = 30;
+// 新 NPC 与已有动态实体之间额外保留的安全距离,单位px
+const NPC_SPAWN_DYNAMIC_PADDING = 12;
+// 主循环计时器配置,interval 单位毫秒；tickTime 单位毫秒时间戳
 const TICK_TIMER: TickTimer = {
   interval: 20,
   id: 0,
@@ -27,6 +51,7 @@ const TICK_TIMER: TickTimer = {
     tickTime: performance.now()
   }
 };
+// 当前地图状态快照,包含动态实体、静态实体和物品实体列表
 const MAP_DATA: MapData = {
   dynamicEntitie: {
     bulletDynamicEntitys: [],
@@ -46,13 +71,16 @@ const MAP_DATA: MapData = {
 ////////////////////
 let lastTickTime = performance.now();
 let cooldownNormalAttack = 0;
+let npcSpawnHighTimer = NPC_SPAWN_HIGH_INTERVAL;
+let npcSpawnMediumTimer = NPC_SPAWN_MEDIUM_INTERVAL;
+let npcSpawnLowTimer = NPC_SPAWN_LOW_INTERVAL;
 ////////////////////
 //<--变量区
 ////////////////////
 
-const getDynamicEntityList = (): DynamicEntity[] => [
+const getNpcPlayerDynamicEntityList = (): DynamicEntity[] => [
   ...MAP_DATA.dynamicEntitie.playerDynamicEntitys,
-  ...MAP_DATA.dynamicEntitie.npcDynamicEntitys,
+  ...MAP_DATA.dynamicEntitie.npcDynamicEntitys
 ];
 
 const refreshPlayerMoveState = (moveState: Partial<typeof PlayerDynamicEntity.playerMoveState>) => {
@@ -112,7 +140,6 @@ const initMapData = () => {
   MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y: curbHalfside + 25 }));
   MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y: -curbHalfside - 25 }));
 
-  MAP_DATA.dynamicEntitie.npcDynamicEntitys.push(new WhitePixelEntity({ x: 50, y: 50 }));
   MAP_DATA.dynamicEntitie.playerDynamicEntitys.push(new PlayerDynamicEntity({ x: 0, y: 0 }, 'Player', true));
 };
 ////////////////////
@@ -159,7 +186,7 @@ const updateItemEntityLifetimes = (deltaTime: number): boolean => {
 };
 
 const updateDynamicEntityItemPickups = (): boolean => {
-  const dynamicEntityList = getDynamicEntityList();
+  const dynamicEntityList = getNpcPlayerDynamicEntityList();
   if (MAP_DATA.itemEntities.length === 0 || dynamicEntityList.length === 0) return false;
 
   let pickedAny = false;
@@ -180,8 +207,8 @@ const updateDynamicEntityItemPickups = (): boolean => {
   return pickedAny;
 };
 
-const spawnNpcProjectile = (projectile: BulletDynamicEntity) => {
-  MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(projectile);
+const spawnDynamicEntityBullet = (bullet: BulletDynamicEntity) => {
+  MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(bullet);
 };
 
 const removeFinishedDeadDynamicEntities = (): boolean => {
@@ -195,11 +222,11 @@ const removeFinishedDeadDynamicEntities = (): boolean => {
   );
 };
 
-const updateProjectileEntities = (deltaTime: number): boolean => {
+const updateBulletEntities = (deltaTime: number): boolean => {
   if (MAP_DATA.dynamicEntitie.bulletDynamicEntitys.length === 0) return false;
 
   let changed = false;
-  const dynamicEntityList = getDynamicEntityList();
+  const dynamicEntityList = getNpcPlayerDynamicEntityList();
   for (const bullet of MAP_DATA.dynamicEntitie.bulletDynamicEntitys) {
     bullet.update(deltaTime, MAP_DATA.staticEntities);
     if (bullet.shouldRemove) {
@@ -268,7 +295,7 @@ const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
 };
 
 const resolveDynamicEntityCollisions = () => {
-  const dynamicEntityList = getDynamicEntityList().filter(entity => !entity.isDead);
+  const dynamicEntityList = getNpcPlayerDynamicEntityList().filter(entity => !entity.isDead);
   if (dynamicEntityList.length < 2) return;
 
   for (let iter = 0; iter < RDEC_ITERATIONS; iter++) {
@@ -303,7 +330,12 @@ const resolveDynamicEntityCollisions = () => {
 };
 
 const updateDynamicEntities = (deltaTime: number) => {
-  const dynamicEntityList = getDynamicEntityList();
+  const dynamicEntityList = getNpcPlayerDynamicEntityList();
+  const actionLoopContext = {
+    deltaTime,
+    staticEntities: MAP_DATA.staticEntities,
+    spawnBullet: spawnDynamicEntityBullet,
+  };
 
   for (const entity of dynamicEntityList) {
     entity.update(deltaTime, MAP_DATA.staticEntities);
@@ -314,8 +346,7 @@ const updateDynamicEntities = (deltaTime: number) => {
   removeFinishedDeadDynamicEntities();
   resolveDynamicEntityCollisions();
 
-  for (const entity of getDynamicEntityList()) {
-    if (entity instanceof PlayerDynamicEntity) continue;
+  for (const entity of getNpcPlayerDynamicEntityList()) {
     entity.updateCrowdStuckState(deltaTime);
     entity.updateStayDuration(deltaTime);
     entity.updateStaticCompressionEffects(deltaTime, MAP_DATA.staticEntities);
@@ -329,22 +360,135 @@ const updateDynamicEntities = (deltaTime: number) => {
       setRandomTargetForDynamic(entity);
     }
 
-    if (entity instanceof NpcDynamicEntity) {
-      entity.actionLoop({
-        deltaTime,
-        staticEntities: MAP_DATA.staticEntities,
-        spawnProjectile: spawnNpcProjectile,
-      });
-    }
+    entity.actionLoop(actionLoopContext);
   }
 };
+
+/**
+ * 在指定环形范围内随机生成一个点
+ * 半径使用世界坐标 px,随机面积在环内均匀分布
+ */
+const getRandomPointInRing = (center: Point, minRadius: number, maxRadius: number): Point => {
+  const angle = Math.random() * Math.PI * 2;
+  const minSquare = minRadius * minRadius;
+  const maxSquare = maxRadius * maxRadius;
+  const radius = Math.sqrt(minSquare + Math.random() * (maxSquare - minSquare));
+  return {
+    x: center.x + Math.cos(angle) * radius,
+    y: center.y + Math.sin(angle) * radius,
+  };
+};
+
+const canSpawnNpcAt = (position: Point): boolean => {
+  const halfW = WhitePixelEntity.WIDTH / 2;
+  const halfH = WhitePixelEntity.HEIGHT / 2;
+  const spawnBox = {
+    x: position.x - halfW,
+    y: position.y - halfH,
+    width: WhitePixelEntity.WIDTH,
+    height: WhitePixelEntity.HEIGHT,
+  };
+
+  for (const staticEntity of MAP_DATA.staticEntities) {
+    const box = staticEntity.collisionBox;
+    const separated =
+      spawnBox.x + spawnBox.width <= box.x ||
+      spawnBox.x >= box.x + box.width ||
+      spawnBox.y + spawnBox.height <= box.y ||
+      spawnBox.y >= box.y + box.height;
+    if (!separated) return false;
+  }
+
+  for (const entity of getNpcPlayerDynamicEntityList()) {
+    if (entity.isDead) continue;
+    const minDistance =
+      Math.max(WhitePixelEntity.WIDTH, WhitePixelEntity.HEIGHT) / 2 +
+      Math.max(entity.width, entity.height) / 2 +
+      NPC_SPAWN_DYNAMIC_PADDING;
+    if (Math.hypot(position.x - entity.position.x, position.y - entity.position.y) < minDistance) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const spawnNpcInRingAroundPlayer = (
+  playerEntity: PlayerDynamicEntity,
+  minRadius: number,
+  maxRadius: number
+): boolean => {
+  for (let i = 0; i < NPC_SPAWN_MAX_ATTEMPTS; i++) {
+    const position = getRandomPointInRing(playerEntity.position, minRadius, maxRadius);
+    if (!canSpawnNpcAt(position)) continue;
+
+    const npc = new WhitePixelEntity(position);
+    npc.setTarget(position, MAP_DATA.staticEntities, { preferStraight: true });
+    MAP_DATA.dynamicEntitie.npcDynamicEntitys.push(npc);
+    return true;
+  }
+  return false;
+};
+
+const updateNpcSpawnTimer = (
+  timer: number,
+  deltaTime: number,
+  interval: number,
+  playerEntity: PlayerDynamicEntity,
+  minRadius: number,
+  maxRadius: number
+) => {
+  let nextTimer = timer - deltaTime;
+  while (nextTimer <= 0 && MAP_DATA.dynamicEntitie.npcDynamicEntitys.length < NPC_SPAWN_MAX_COUNT) {
+    spawnNpcInRingAroundPlayer(playerEntity, minRadius, maxRadius);
+    nextTimer += interval;
+  }
+  return nextTimer;
+};
+
+/**
+ * 玩家周围随机刷新 NPC
+ * 0-200px 为禁刷怪区,200-400px 为高频区,400-800px 为中频区,800-1600px 为低频区
+ */
+const generateNpcAroundPlayer = (deltaTime: number) => {
+  const playerEntity = MAP_DATA.dynamicEntitie.playerDynamicEntitys[0];
+  if (!playerEntity || playerEntity.isDead) return;
+  if (MAP_DATA.dynamicEntitie.npcDynamicEntitys.length >= NPC_SPAWN_MAX_COUNT) return;
+
+  npcSpawnHighTimer = updateNpcSpawnTimer(
+    npcSpawnHighTimer,
+    deltaTime,
+    NPC_SPAWN_HIGH_INTERVAL,
+    playerEntity,
+    NPC_SPAWN_NO_SPAWN_RADIUS,
+    NPC_SPAWN_HIGH_RADIUS
+  );
+  npcSpawnMediumTimer = updateNpcSpawnTimer(
+    npcSpawnMediumTimer,
+    deltaTime,
+    NPC_SPAWN_MEDIUM_INTERVAL,
+    playerEntity,
+    NPC_SPAWN_HIGH_RADIUS,
+    NPC_SPAWN_MEDIUM_RADIUS
+  );
+  npcSpawnLowTimer = updateNpcSpawnTimer(
+    npcSpawnLowTimer,
+    deltaTime,
+    NPC_SPAWN_LOW_INTERVAL,
+    playerEntity,
+    NPC_SPAWN_MEDIUM_RADIUS,
+    NPC_SPAWN_LOW_RADIUS
+  );
+};
+
 
 const updateGame = (deltaTime: number) => {
   cooldownNormalAttack = Math.max(0, cooldownNormalAttack - deltaTime);
   updateItemEntityLifetimes(deltaTime);
   updateDynamicEntities(deltaTime);
   updateDynamicEntityItemPickups();
-  updateProjectileEntities(deltaTime);
+  updateBulletEntities(deltaTime);
+  generateNpcAroundPlayer(deltaTime);
   removeFinishedDeadDynamicEntities();
 };
 ////////////////////

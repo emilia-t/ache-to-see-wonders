@@ -3,6 +3,7 @@
 // Warning! Please use an editor that supports UTF-8 to read the code!
 import { ref, onMounted, onUnmounted } from 'vue';
 import { Instruct } from '@/components/pixel_war/instruct/Instruct';
+import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 
 import type {
   BulletTag,
@@ -17,7 +18,8 @@ import type {
   Tick,
   DataPackage,
   MapData,
-  InstructObject
+  InstructObject,
+  StarFieldStar
 } from '@/components/pixel_war/interface/Interface';
 
 import {
@@ -32,6 +34,7 @@ import {
   ItemEntity,
   HealingGemItemEntity,
   DynamicEntity,
+  NpcDynamicEntity,
   PlayerDynamicEntity,
   WhitePixelEntity,
   BulletDynamicEntity,
@@ -42,6 +45,10 @@ import {
 } from '@/components/pixel_war/class';
 
 import ServiceWorker from '@/components/pixel_war/service/Service?worker';
+
+////////////////////
+//服务器通信相关区-->
+////////////////////
 
 const serviceWorker = new ServiceWorker();
 
@@ -78,6 +85,54 @@ serviceWorker.addEventListener('message', (event: MessageEvent) => {
   handleWorkerMessage(event);
 });
 
+const applyMapDataSnapshot = (mapData: MapData) => {
+  const aliveIds = new Set<number>();
+  const hydrateList = <T extends Entity>(list: T[]): T[] => {
+    return list.map((entity) => {
+      aliveIds.add(entity.id);
+      return H_getRenderableEntityFromSnapshot(entity);
+    });
+  };
+
+  staticEntityList = hydrateList(mapData.staticEntities) as StaticEntity[];
+  itemEntityList = hydrateList(mapData.itemEntities) as ItemEntity[];
+  npcEntityList = hydrateList(mapData.dynamicEntitie.npcDynamicEntitys) as NpcDynamicEntity[];
+  const playerEntityList = hydrateList(mapData.dynamicEntitie.playerDynamicEntitys) as PlayerDynamicEntity[];
+  playerEntity = playerEntityList[0] || null;
+
+  bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
+
+  // 处理死亡实体的特效
+  for (const entity of [...npcEntityList, ...playerEntityList]) {
+    if (entity.isDead) {
+      effectManager?.emitDynamicEntityDeath(entity);
+    }
+  }
+  
+  refreshRenderEntityList();
+
+  for (const id of ENTITY_CACHE.keys()) {
+    if (!aliveIds.has(id)) {
+      ENTITY_CACHE.delete(id);
+    }
+  }
+};
+
+const sendClientInstruct = (instruct: InstructObject) => {
+  serviceWorker.postMessage(H_getWorkerTickPackage([instruct]));
+};
+
+const sendPlayerMoveInput = () => {
+  sendClientInstruct(Instruct.I_PlayerMoveInput({
+    playerMoveW: PlayerDynamicEntity.playerMoveState.playerMoveW,
+    playerMoveA: PlayerDynamicEntity.playerMoveState.playerMoveA,
+    playerMoveS: PlayerDynamicEntity.playerMoveState.playerMoveS,
+    playerMoveD: PlayerDynamicEntity.playerMoveState.playerMoveD,
+  }));
+};
+////////////////////
+//<--服务器通信相关区
+////////////////////
 
 ////////////////////
 //常量区-->
@@ -93,6 +148,11 @@ const EFFECT_SPRITE_FRAME_COUNT = 30;
 const EFFECT_SPRITE_FPS = 30;
 const EFFECT_PATH_DYNAMIC_ENTITY_DEATH = './effects/dynamic_entity_death_default.png';
 const ENTITY_CACHE = new Map<number, Entity>();// 服务端实体快照对应的本地渲染实体缓存
+const STAR_FIELD_STAR_COUNT = 40; // 星空背景星星数量,单位个
+const STAR_FIELD_MIN_RADIUS = 0.5; // 星星最小半径,单位px
+const STAR_FIELD_MAX_RADIUS = 1.5; // 星星最大半径,单位px
+const STAR_FIELD_MAX_OPACITY_INCREMENT = 0.03; // 星星单帧基础透明度变化量,单位透明度比例
+const STAR_FIELD_TWINKLE_SPEED = 0.125; // 星星闪烁速度倍率,越小闪烁越慢
 ////////////////////
 //<--常量区
 ////////////////////
@@ -101,6 +161,8 @@ const ENTITY_CACHE = new Map<number, Entity>();// 服务端实体快照对应的
 //变量区-->
 ////////////////////
 let cursorManager: CursorManager | null = null;
+let effectManager: EffectManager | null = null;
+let starFieldStars: StarFieldStar[] = [];// 星空背景的星星列表
 let ctxGraphics: CanvasRenderingContext2D | null = null;
 let ctxUi: CanvasRenderingContext2D | null = null;
 let ctxEntity: CanvasRenderingContext2D | null = null;
@@ -131,20 +193,26 @@ let animationFrameId: number | null = null;                 // 动画帧ID
 let lastTimestamp: number = 0;                              // 上一帧时间戳
 let renderEntityList: Array<Entity> = [];                   // 要渲染的实体列表
 let staticEntityList: StaticEntity[] = [];                  // 静态实体列表
-let dynamicEntityList: DynamicEntity[] = [];                // 动态实体列表
-let projectileEntityList: BulletDynamicEntity[] = [];       // 投射物动态实体列表
+let npcEntityList: NpcDynamicEntity[] = [];                 // NPC实体列表
+let bulletEntityList: BulletDynamicEntity[] = [];           // 子弹动态实体列表
 let itemEntityList: ItemEntity[] = [];                      // 物品实体列表
+let playerEntity: PlayerDynamicEntity | null = null;
 
-let debugCollisionBoxes = false;
-let debugShowTrajectory = false;
-let debugShowFacingDirection = false;
-let debugShowMovementPassion = false;
-let debugShowMovementSpeed = false;
-let debugShowHealth = false;
-let debugShowHunger = false;
-let debugShowTag = false;
-let debugShowMovementRange = false;
-let debugShowInterestRange = false;
+let entityDebugFlags: EntityDebugFlags = {
+  //属性相关
+  showHealth: false,
+  showHunger: false,
+  showMovementSpeed: false,
+  showMovementPassion: false,
+  showTag: false,
+  //几何相关
+  showHistoricalTrajectory: false,
+  showCollisionBoxes: false,
+  showFacingDirection: false,
+  showMovementRange: false,
+  showInterestRange: false
+};
+
 let debugTerminalVisible = false;
 let debugTerminalInput = '';
 let debugTerminalLogs: string[] = [];
@@ -160,9 +228,8 @@ let firstPersonMoveW = false;
 let firstPersonMoveA = false;
 let firstPersonMoveS = false;
 let firstPersonMoveD = false;
-let playerEntity: PlayerDynamicEntity | null = null;
 let playerFireMode = false;
-let effectManager: EffectManager | null = null;
+
 
 
 ////////////////////
@@ -321,49 +388,50 @@ const H_getRenderableEntityFromSnapshot = <T extends Entity>(snapshot: T): T => 
   return entity;
 };
 
-const applyMapDataSnapshot = (mapData: MapData) => {
-  const aliveIds = new Set<number>();
-  const hydrateList = <T extends Entity>(list: T[]): T[] => {
-    return list.map((entity) => {
-      aliveIds.add(entity.id);
-      return H_getRenderableEntityFromSnapshot(entity);
-    });
+const H_getWorldViewport = () => {
+  if (!GRAPHICS_CANVAS.value) return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
+  return {
+    minX: -offsetXX,
+    maxX: width - offsetXX,
+    maxY: offsetYY,               // 世界坐标 Y 向上
+    minY: offsetYY - height,
   };
+};
 
-  staticEntityList = hydrateList(mapData.staticEntities) as StaticEntity[];
-  itemEntityList = hydrateList(mapData.itemEntities) as ItemEntity[];
-  dynamicEntityList = hydrateList([
-    ...mapData.dynamicEntitie.playerDynamicEntitys,
-    ...mapData.dynamicEntitie.npcDynamicEntitys,
-  ]) as DynamicEntity[];
-  for (const entity of dynamicEntityList) {
-    if (entity.isDead) {
-      effectManager?.emitDynamicEntityDeath(entity);
+const H_createStarFieldStar = (minX: number, maxX: number, minY: number, maxY: number): StarFieldStar => ({
+  x: minX + Math.random() * (maxX - minX),
+  y: minY + Math.random() * (maxY - minY),
+  radius: STAR_FIELD_MIN_RADIUS + Math.random() * (STAR_FIELD_MAX_RADIUS - STAR_FIELD_MIN_RADIUS),
+  opacity: Math.random(),
+  opacityDirection: 1,
+  opacityIncrement: Math.random() * STAR_FIELD_MAX_OPACITY_INCREMENT,
+});
+
+const H_ensureStarsInViewport = () => {
+  if (!GRAPHICS_CANVAS.value) return;
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
+  const view = H_getWorldViewport();
+  // 在视口四周扩展 30% 的区域作为星星存活区，避免边缘闪烁
+  const marginX = width * 0.3;
+  const marginY = height * 0.3;
+  const minX = view.minX - marginX;
+  const maxX = view.maxX + marginX;
+  const minY = view.minY - marginY;
+  const maxY = view.maxY + marginY;
+
+  for (const star of starFieldStars) {
+    if (star.x < minX || star.x > maxX || star.y < minY || star.y > maxY) {
+      // 超出范围则重新生成世界坐标，同时重置闪烁状态
+      star.x = minX + Math.random() * (maxX - minX);
+      star.y = minY + Math.random() * (maxY - minY);
+      star.opacity = Math.random();
+      star.opacityDirection = 1;
+      star.opacityIncrement = Math.random() * STAR_FIELD_MAX_OPACITY_INCREMENT;
     }
   }
-  projectileEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
-  playerEntity = dynamicEntityList.find(entity => entity instanceof PlayerDynamicEntity) as PlayerDynamicEntity || null;
-  refreshRenderEntityList();
-
-  for (const id of ENTITY_CACHE.keys()) {
-    if (!aliveIds.has(id)) {
-      ENTITY_CACHE.delete(id);
-    }
-  }
 };
 
-const sendClientInstruct = (instruct: InstructObject) => {
-  serviceWorker.postMessage(H_getWorkerTickPackage([instruct]));
-};
-
-const sendPlayerMoveInput = () => {
-  sendClientInstruct(Instruct.I_PlayerMoveInput({
-    playerMoveW: PlayerDynamicEntity.playerMoveState.playerMoveW,
-    playerMoveA: PlayerDynamicEntity.playerMoveState.playerMoveA,
-    playerMoveS: PlayerDynamicEntity.playerMoveState.playerMoveS,
-    playerMoveD: PlayerDynamicEntity.playerMoveState.playerMoveD,
-  }));
-};
 ////////////////////
 //<--辅助函数区
 ////////////////////
@@ -418,8 +486,8 @@ const startSetting = () => {
 
   // initialize entities
   staticEntityList = [];
-  dynamicEntityList = [];
-  projectileEntityList = [];
+  npcEntityList = [];
+  bulletEntityList = [];
   itemEntityList = [];
   renderEntityList = [];
   playerFireMode = false;
@@ -435,8 +503,6 @@ const startSetting = () => {
   });
   
   // UI层渲染循环
-
-
   cursorManager = new CursorManager("canvas-cursor");
   window.addEventListener('mousemove', onWindowMouseMove);
   window.addEventListener('resize', onResizeCanvas);
@@ -642,7 +708,7 @@ const createGrid = () => {
   const gridSize = 50 * scale; // 网格大小,随缩放比例变化
 
   ctxGraphics.save();
-  ctxGraphics.strokeStyle = "#e0e0e0";
+  ctxGraphics.strokeStyle = 'rgba(180, 215, 255, 0.22)';
   ctxGraphics.lineWidth = 0.5;
 
   // 绘制垂直网格线
@@ -662,6 +728,74 @@ const createGrid = () => {
   }
 
   ctxGraphics.restore();
+};
+
+/**
+ * 绘制单颗圆形闪烁星星(图形层)
+ */
+const drawSingleStar = (star: StarFieldStar) => {
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
+  const screenPos = TOcanvas2Screen(star.x, star.y);
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
+
+  // 完全在屏幕外的星星跳过绘制
+  if (screenPos.x < -star.radius * 2 || screenPos.x > width + star.radius * 2 ||
+      screenPos.y < -star.radius * 2 || screenPos.y > height + star.radius * 2) {
+    return;
+  }
+
+  // 闪烁逻辑(透明度降到 0 时，在世界空间重新随机位置)
+  if (star.opacity >= 1) {
+    star.opacityDirection = -1;
+  } else if (star.opacity <= 0) {
+    star.opacityDirection = 1;
+    const view = H_getWorldViewport();
+    const { width: w, height: h } = H_getCanvasCssSize(GRAPHICS_CANVAS.value!);
+    star.x = view.minX + Math.random() * (view.maxX - view.minX);
+    star.y = view.minY + Math.random() * (view.maxY - view.minY);
+    star.opacityIncrement = Math.random() * STAR_FIELD_MAX_OPACITY_INCREMENT;
+  }
+  star.opacity = Math.max(0, Math.min(1, star.opacity + star.opacityIncrement * STAR_FIELD_TWINKLE_SPEED * star.opacityDirection));
+
+  ctxGraphics.save();
+  ctxGraphics.beginPath();
+  ctxGraphics.arc(screenPos.x, screenPos.y, star.radius, 0, Math.PI * 2);
+  ctxGraphics.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
+  ctxGraphics.shadowBlur = star.radius * 4;
+  ctxGraphics.shadowColor = `rgba(255, 255, 180, ${star.opacity})`;
+  ctxGraphics.fill();
+  ctxGraphics.restore();
+};
+
+/**
+ * 绘制星空背景(图形层)
+ */
+const drawStarField = () => {
+  if (!ctxGraphics || !GRAPHICS_CANVAS.value) return;
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
+
+  // 首次初始化星星池(世界坐标)
+  if (starFieldStars.length === 0) {
+    const view = H_getWorldViewport();
+    starFieldStars = Array.from({ length: STAR_FIELD_STAR_COUNT }, () =>
+      H_createStarFieldStar(view.minX, view.maxX, view.minY, view.maxY)
+    );
+  } else {
+    H_ensureStarsInViewport(); // 每帧维护星星位置
+  }
+
+  // 绘制渐变背景(这里保持屏幕固定，若需背景也移动可做偏移)
+  const gradient = ctxGraphics.createLinearGradient(0, 0, 0, height);
+  gradient.addColorStop(0, '#02030d');
+  gradient.addColorStop(0.55, '#05091a');
+  gradient.addColorStop(1, '#090d18');
+  ctxGraphics.fillStyle = gradient;
+  ctxGraphics.fillRect(0, 0, width, height);
+
+  // 绘制星星(世界坐标 -> 屏幕坐标)
+  for (const star of starFieldStars) {
+    drawSingleStar(star);
+  }
 };
 
 ////////////////////
@@ -701,8 +835,7 @@ const TOcanvas2Screen = (canvasX: number, canvasY: number) => {
 const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   if (!CtxUi || !CANVAS) return;
   const { width } = H_getCanvasCssSize(CANVAS);
-  const fireModeText = playerFireMode ? 'Fire Mode: ON' : 'Fire Mode: OFF';
-  const text = `J = Toggle Fire    ${fireModeText}    ~ = Debug Terminal`;
+  const text = `F = Toggle fire | 3 = Toggle perspective`;
   CtxUi.save();
   CtxUi.font = '14px "Microsoft YaHei", Arial, sans-serif';
   CtxUi.fillStyle = 'rgba(78,78,78,0.9)';
@@ -729,7 +862,6 @@ const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
 const drawDebugBoard = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   if (!debugBoardVisible) return;
 
-  const { width, height } = H_getCanvasCssSize(CANVAS);
   const panelWidth = 320;
   const panelHeight = 160;
   const x = 12;
@@ -760,23 +892,34 @@ const drawDebugBoard = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEleme
   const lineHeight = 18;
   let textY = y + 42;
 
+  // 静态实体数量
+  CtxUi.fillText(`Static entities: ${staticEntityList.length}`, x + 12, textY);
+  textY += lineHeight;
+
+  // NPC实体数量
+  CtxUi.fillText(`NPC entities: ${npcEntityList.length}`, x + 12, textY);
+  textY += lineHeight;
+
+  // 子弹实体数量
+  CtxUi.fillText(`Bullet entities: ${bulletEntityList.length}`, x + 12, textY);
+  textY += lineHeight;
+
+  // 物品实体数量
+  CtxUi.fillText(`Item entities: ${itemEntityList.length}`, x + 12, textY);
+
   // 鼠标屏幕坐标
-  CtxUi.fillText(`Mouse Screen: (${Math.round(mouseX)}, ${Math.round(mouseY)})`, x + 12, textY);
+  CtxUi.fillText(`Mouse screen position: (${Math.round(mouseX)}, ${Math.round(mouseY)})`, x + 12, textY);
   textY += lineHeight;
 
   // 鼠标世界坐标
   const mouseScreenToWorld = TOscreen2Canvas(mouseX, mouseY);
-  CtxUi.fillText(`Mouse World: (${Math.round(mouseScreenToWorld.x)}, ${Math.round(mouseScreenToWorld.y)})`, x + 12, textY);
+  CtxUi.fillText(`Mouse world position: (${Math.round(mouseScreenToWorld.x)}, ${Math.round(mouseScreenToWorld.y)})`, x + 12, textY);
   textY += lineHeight;
 
   // 玩家世界坐标
   if (playerEntity && !playerEntity.isDead) {
-    CtxUi.fillText(`Player World: (${Math.round(playerEntity.position.x)}, ${Math.round(playerEntity.position.y)})`, x + 12, textY);
+    CtxUi.fillText(`Player world position: (${Math.round(playerEntity.position.x)}, ${Math.round(playerEntity.position.y)})`, x + 12, textY);
     textY += lineHeight;
-
-    // 玩家健康值
-    CtxUi.fillStyle = '#FF6B6B';
-    CtxUi.fillText(`Health: ${Math.round(playerEntity.health)}/100`, x + 12, textY);
   } else {
     CtxUi.fillStyle = '#FF6B6B';
     CtxUi.fillText('Player: Dead or Not Found', x + 12, textY);
@@ -789,13 +932,17 @@ const drawDebugBoard = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEleme
  * 绘制调试终端(UI层)
  */
 const drawDebugTerminal = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
-  if (!debugTerminalVisible) return;
 
   const { height, width } = H_getCanvasCssSize(CANVAS);
   const terminalWidth = Math.min(560, Math.max(320, width - 30));
   const terminalHeight = 220;
   const x = 12;
   const y = height - terminalHeight - 12;
+
+  if (!debugTerminalVisible){
+    CtxUi.clearRect(x, y, terminalWidth, terminalHeight);
+    return;
+  }
 
   CtxUi.save();
   CtxUi.fillStyle = 'rgba(10, 10, 10, 0.85)';
@@ -919,18 +1066,17 @@ const drawGraphics = () => {
   // 清空画布
   ctxGraphics.clearRect(0, 0, width, height);
 
-  // 设置背景色
-  ctxGraphics.fillStyle = '#f0f0f0';
-  ctxGraphics.fillRect(0, 0, width, height);
+  // 绘制星空背景
+  drawStarField();
 
   // 绘制网格
   createGrid();
 
   // 绘制坐标轴
-  createAxis({ r: 255, g: 0, b: 0 }, { r: 0, g: 255, b: 0 });
+  // createAxis({ r: 255, g: 0, b: 0 }, { r: 0, g: 255, b: 0 });
 
   // 绘制刻度与刻度数值
-  createAxisMark();
+  // createAxisMark();
 
 };
 
@@ -939,42 +1085,42 @@ const drawGraphics = () => {
  */
 const drawEntities = () => {
   if (!ctxEntity || !ENTITY_CANVAS.value) return;
-
   const { width, height } = H_getCanvasCssSize(ENTITY_CANVAS.value);
   ctxEntity.clearRect(0, 0, width, height);
 
+  const worldToScreen = (cx: number, cy: number) => TOcanvas2Screen(cx, cy);
+  const canvasSize = { width, height };
+  const margin = 500;// 额外扩展的绘制边距,避免部分实体被裁剪
+
   // 绘制静态实体
-  staticEntityList.forEach(entity => drawSingleEntity(entity));
-  // 绘制物品实体
-  itemEntityList.forEach(entity => drawSingleEntity(entity));
-  // 绘制动态实体
-  dynamicEntityList.forEach(entity => drawSingleEntity(entity));
-  // 绘制子弹动态实体
-  projectileEntityList.forEach(entity => drawSingleEntity(entity));
-
-  // 绘制碰撞盒调试框
-  if (debugCollisionBoxes) {
-    drawDebugCollisionBoxes();
+  for (const entity of staticEntityList) {
+    if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
+      entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
+    }
   }
-
-  // 绘制调试轨迹
-  if (debugShowTrajectory) {
-    drawDebugHistoricalTrajectory();
+  // 绘制物品
+  for (const entity of itemEntityList) {
+    if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
+      entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
+    }
   }
-
-  // 绘制朝向调试箭头
-  if (debugShowFacingDirection) {
-    drawDebugFacingDirection();
+  // 绘制NPC实体
+  for (const entity of npcEntityList) {
+    if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
+      entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
+    }
   }
-
-  // 绘制随机游走范围调试圆
-  if (debugShowMovementRange) {
-    drawDebugMovementRange();
+  // 绘制子弹实体
+  for (const entity of bulletEntityList) {
+    if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
+      entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
+    }
   }
-
-  // 绘制兴趣范围调试圆
-  if (debugShowInterestRange) {
-    drawDebugInterestRange();
+  // 绘制玩家实体
+  if (playerEntity) {
+    if (playerEntity.isInViewport(worldToScreen, canvasSize, margin)) {
+      playerEntity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
+    }
   }
 };
 
@@ -985,372 +1131,23 @@ const drawUI = () => {
   if (!ctxUi || !UI_CANVAS.value) return;
   const { width, height } = H_getCanvasCssSize(UI_CANVAS.value);
   ctxUi.clearRect(0, 0, width, height);
-  drawUIRuler(ctxUi, UI_CANVAS.value);
+  //drawUIRuler(ctxUi, UI_CANVAS.value);
   drawInstructions(ctxUi, UI_CANVAS.value);
   drawDebugBoard(ctxUi, UI_CANVAS.value);
   drawDebugTerminal(ctxUi, UI_CANVAS.value);
 };
 
 /**
- * 绘制单个实体
- */
-const drawSingleEntity = (entity: Entity) => {
-  if (!ctxEntity) return;
-
-  const screenPos = TOcanvas2Screen(entity.position.x, entity.position.y);
-  const halfW = entity.width / 2;
-  const halfH = entity.height / 2;
-  const left = screenPos.x - halfW;
-  const top = screenPos.y - halfH;
-
-
-  // 在消失过程中,物品实体从画布实体中移除,效果作用于画布效果
-  if (entity.type === 'item') {
-    const item = entity as ItemEntity;
-    if (item.isDisappearing) return;
-
-    const lifeOpacity = item.getLifetimeOpacity();
-
-    ctxEntity.save();
-    ctxEntity.globalAlpha = Math.max(0, Math.min(1, lifeOpacity));
-    if (entity.texture && entity.texture.loaded) {
-      ctxEntity.drawImage(entity.texture.img, left, top, entity.width, entity.height);
-    } else {
-      ctxEntity.fillStyle = '#f5c16c';
-      ctxEntity.fillRect(left, top, entity.width, entity.height);
-      ctxEntity.strokeStyle = '#000';
-      ctxEntity.strokeRect(left, top, entity.width, entity.height);
-    }
-    ctxEntity.restore();
-
-    if (entity instanceof PlayerDynamicEntity) {
-      ctxEntity.font = '12px "Microsoft YaHei"';
-      ctxEntity.fillStyle = '#ffffff';
-      ctxEntity.shadowColor = 'rgba(0,0,0,0.5)';
-      ctxEntity.shadowBlur = 2;
-      ctxEntity.textAlign = 'center';
-      ctxEntity.textBaseline = 'top';
-      ctxEntity.fillText(entity.name, screenPos.x, screenPos.y + halfH + 6);
-    }
-
-    if (debugShowTag && entity.tag) {
-      ctxEntity.font = '10px Arial';
-      ctxEntity.fillStyle = '#ffff00';
-      ctxEntity.fillText(entity.tag, screenPos.x, screenPos.y + halfH + 20);
-    }
-    ctxEntity.textAlign = 'start';
-    ctxEntity.textBaseline = 'alphabetic';
-    ctxEntity.shadowColor = 'transparent';
-    return;
-  }
-
-  // 动态实体死亡特效
-  if (entity.type === 'dynamic') {
-    const dynamicEntity = entity as DynamicEntity;
-    if (dynamicEntity.isDead) return;
-
-    if (dynamicEntity instanceof BulletDynamicEntity) {
-      ctxEntity.save();
-      ctxEntity.beginPath();
-      ctxEntity.arc(screenPos.x, screenPos.y, entity.width * 0.5, 0, Math.PI * 2);
-      ctxEntity.fillStyle = '#ffd84d';
-      ctxEntity.fill();
-      ctxEntity.beginPath();
-      ctxEntity.arc(screenPos.x, screenPos.y, entity.width * 0.24, 0, Math.PI * 2);
-      ctxEntity.fillStyle = '#fff8cc';
-      ctxEntity.fill();
-      ctxEntity.restore();
-      return;
-    }
-  }
-
-  // 绘制纹理或默认颜色
-  if (entity.texture && entity.texture.loaded) {
-    ctxEntity.drawImage(
-      entity.texture.img,
-      left,
-      top,
-      entity.width,
-      entity.height
-    );
-  } else {
-    if(entity.texturePath === ''){
-      // 颜色贴图-根据贴图路径指定颜色
-      ctxEntity.fillStyle = entity.fillColor || '#999';
-      ctxEntity.fillRect(left, top, entity.width, entity.height);
-      ctxEntity.strokeStyle = entity.strokeColor || '#000';
-      ctxEntity.strokeRect(left, top, entity.width, entity.height);
-    }else{
-      // 默认颜色填充-根据类型不同
-      ctxEntity.fillStyle = entity.fillColor || (entity.type === 'static' ? '#aaaaaa' : '#66cc66');
-      ctxEntity.fillRect(left, top, entity.width, entity.height);
-      ctxEntity.strokeStyle = entity.strokeColor || '#000';
-      ctxEntity.strokeRect(left, top, entity.width, entity.height);
-    }
-  }
-
-  // 动态实体受伤时:在原贴图上叠加半透明红色(仅作用于非透明像素)
-  if (entity.type === 'dynamic') {
-    const dynamicEntity = entity as DynamicEntity;
-    if (dynamicEntity.damageFlashTimer > 0) {
-      const intensity = Math.min(1, dynamicEntity.damageFlashTimer / 0.25);
-      ctxEntity.save();
-      ctxEntity.globalCompositeOperation = 'source-atop';
-      ctxEntity.fillStyle = `rgba(255, 0, 0, ${0.45 * intensity})`;
-      ctxEntity.fillRect(left, top, entity.width, entity.height);
-      ctxEntity.restore();
-    }
-  }
-
-  // 动态实体顶部状态条:生命值(绿)+ 饥饿值(黄)
-  if (entity.type === 'dynamic') {
-    const dynamicEntity = entity as DynamicEntity;
-    const healthRatio = Math.max(0, Math.min(1, dynamicEntity.health / dynamicEntity.healthMax));
-    const barWidth = Math.max(36, entity.width);
-    const barHeight = 4;
-    const barX = screenPos.x - barWidth / 2;
-    const topY = screenPos.y - halfH - 16;
-
-    // 血条底
-    ctxEntity.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctxEntity.fillRect(barX, topY, barWidth, barHeight);
-    // 血条值
-    ctxEntity.fillStyle = '#2ecc71';
-    ctxEntity.fillRect(barX, topY, barWidth * healthRatio, barHeight);
-  }
-
-  if (entity instanceof PlayerDynamicEntity) {
-    // 绘制属性标签-名称
-    ctxEntity.font = '12px "Microsoft YaHei"';
-    ctxEntity.fillStyle = '#ffffff';
-    ctxEntity.shadowColor = 'rgba(0,0,0,0.5)';
-    ctxEntity.shadowBlur = 2;
-    ctxEntity.textAlign = 'center';
-    ctxEntity.textBaseline = 'top';
-    ctxEntity.fillText(entity.name, screenPos.x, screenPos.y + halfH + 6);
-  }
-  
-  if (debugShowTag && entity.tag) {
-    ctxEntity.font = '10px Arial';
-    ctxEntity.fillStyle = '#ffff00';
-    ctxEntity.fillText(entity.tag, screenPos.x, screenPos.y + halfH + 20);
-  }
-
-  // 动态实体调试文本:从下到上逐行叠加显示
-  if (entity.type === 'dynamic' && (debugShowMovementPassion || debugShowMovementSpeed || debugShowHealth || debugShowHunger)) {
-    const dynamicEntity = entity as DynamicEntity;
-    const debugLines: string[] = [];
-    if (debugShowHealth) {
-      debugLines.push(`health: ${dynamicEntity.health.toFixed(0)}`);
-    }
-    if (debugShowMovementSpeed) {
-      debugLines.push(`speed: ${dynamicEntity.speed.toFixed(2)}`);
-    }
-    if (debugShowMovementPassion) {
-      debugLines.push(`passion: ${(dynamicEntity.movementPassion * 100).toFixed(1)}%`);
-    }
-
-    if (debugLines.length > 0) {
-      const lineHeight = 14;
-      const baseY = screenPos.y - halfH - 28; // 最靠近头部的一行
-      ctxEntity.font = '11px Consolas, "Courier New", monospace';
-      ctxEntity.fillStyle = '#87cefa';
-      ctxEntity.textAlign = 'center';
-      ctxEntity.textBaseline = 'bottom';
-
-      for (let i = 0; i < debugLines.length; i++) {
-        ctxEntity.fillText(debugLines[i], screenPos.x, baseY - i * lineHeight);
-      }
-    }
-  }
-
-  // 恢复默认文本排版设置,避免影响其他绘制
-  ctxEntity.textAlign = 'start';
-  ctxEntity.textBaseline = 'alphabetic';
-  ctxEntity.shadowColor = 'transparent';
-};
-
-/**
- * 绘制动态实体的历史移动轨迹(调试用)
- * 显示曲线路径、历史目标点、当前目标点
- */
-const drawDebugHistoricalTrajectory = () => {
-  if (!ctxEntity) return;
-  ctxEntity.save();
-
-  for (const entity of dynamicEntityList) {
-    // 1. 绘制平滑曲线路径(计划路径)
-    if (entity.curvePoints && entity.curvePoints.length > 1) {
-      ctxEntity.beginPath();
-      ctxEntity.lineWidth = 2;
-      ctxEntity.strokeStyle = '#00ffff';  // 青色
-      ctxEntity.setLineDash([5, 5]);      // 虚线
-
-      const firstScreen = TOcanvas2Screen(entity.curvePoints[0].x, entity.curvePoints[0].y);
-      ctxEntity.moveTo(firstScreen.x, firstScreen.y);
-      for (let i = 1; i < entity.curvePoints.length; i++) {
-        const screenPos = TOcanvas2Screen(entity.curvePoints[i].x, entity.curvePoints[i].y);
-        ctxEntity.lineTo(screenPos.x, screenPos.y);
-      }
-      ctxEntity.stroke();
-    }
-
-    // 2. 绘制历史目标点(targetHistory)
-    if (entity.targetHistory && entity.targetHistory.length > 0) {
-      ctxEntity.fillStyle = 'rgba(255, 165, 0, 0.8)'; // 橙色
-      ctxEntity.strokeStyle = '#000';
-      ctxEntity.lineWidth = 1;
-      ctxEntity.setLineDash([]);
-      for (const pt of entity.targetHistory) {
-        const screenPos = TOcanvas2Screen(pt.x, pt.y);
-        ctxEntity.beginPath();
-        ctxEntity.arc(screenPos.x, screenPos.y, 4, 0, Math.PI * 2);
-        ctxEntity.fill();
-        ctxEntity.stroke();
-      }
-    }
-
-    // 3. 绘制下一个目标点(nextTarget)
-    const nextTarget = entity.nextTarget;
-    if (nextTarget && !(nextTarget.x === entity.position.x && nextTarget.y === entity.position.y)) {
-      const screenPos = TOcanvas2Screen(nextTarget.x, nextTarget.y);
-      ctxEntity.beginPath();
-      ctxEntity.arc(screenPos.x, screenPos.y, 6, 0, Math.PI * 2);
-      ctxEntity.fillStyle = 'rgba(255, 0, 0, 0.6)'; // 半透明红
-      ctxEntity.fill();
-      ctxEntity.strokeStyle = '#fff';
-      ctxEntity.stroke();
-    }
-  }
-
-  ctxEntity.restore();
-};
-
-/**
- * 绘制碰撞盒调试框
- */
-const drawDebugCollisionBoxes = () => {
-  if (!ctxEntity) return;
-  ctxEntity.save();
-  ctxEntity.strokeStyle = '#ff0000';
-  ctxEntity.lineWidth = 1;
-  ctxEntity.setLineDash([4, 4]);
-  [...staticEntityList, ...dynamicEntityList].forEach(entity => {
-    if(ctxEntity===null)return;
-    const box = entity.collisionBox;
-    const topLeft = TOcanvas2Screen(box.x, box.y + box.height); // 注意Y轴转换
-    const width = box.width;
-    const height = box.height;
-    ctxEntity.strokeRect(topLeft.x, topLeft.y, width, height);
-  });
-  ctxEntity.restore();
-};
-
-/**
- * 绘制动态实体朝向箭头(调试用)
- */
-const drawDebugFacingDirection = () => {
-  if (!ctxEntity) return;
-  ctxEntity.save();
-  ctxEntity.strokeStyle = '#1e90ff';
-  ctxEntity.fillStyle = '#1e90ff';
-  ctxEntity.lineWidth = 2;
-  ctxEntity.setLineDash([]);
-
-  for (const entity of dynamicEntityList) {
-    const center = TOcanvas2Screen(entity.position.x, entity.position.y);
-    const direction = entity.facingDirection;
-    const dirLen = Math.hypot(direction.x, direction.y);
-    if (dirLen < 0.0001) continue;
-
-    const unitX = direction.x / dirLen;
-    const unitY = direction.y / dirLen;
-    const arrowLength = Math.max(entity.width, entity.height) * 0.9;
-    const tipCanvas = {
-      x: entity.position.x + unitX * arrowLength,
-      y: entity.position.y + unitY * arrowLength,
-    };
-    const tip = TOcanvas2Screen(tipCanvas.x, tipCanvas.y);
-
-    // 箭身
-    ctxEntity.beginPath();
-    ctxEntity.moveTo(center.x, center.y);
-    ctxEntity.lineTo(tip.x, tip.y);
-    ctxEntity.stroke();
-
-    // 箭头
-    const headLength = 8;
-    const angle = Math.atan2(tip.y - center.y, tip.x - center.x);
-    ctxEntity.beginPath();
-    ctxEntity.moveTo(tip.x, tip.y);
-    ctxEntity.lineTo(
-      tip.x - headLength * Math.cos(angle - Math.PI / 6),
-      tip.y - headLength * Math.sin(angle - Math.PI / 6)
-    );
-    ctxEntity.lineTo(
-      tip.x - headLength * Math.cos(angle + Math.PI / 6),
-      tip.y - headLength * Math.sin(angle + Math.PI / 6)
-    );
-    ctxEntity.closePath();
-    ctxEntity.fill();
-  }
-
-  ctxEntity.restore();
-};
-
-/**
- * 绘制动态实体随机游走范围(调试用)
- */
-const drawDebugMovementRange = () => {
-  if (!ctxEntity) return;
-  ctxEntity.save();
-  ctxEntity.strokeStyle = 'rgba(0, 255, 127, 0.75)';
-  ctxEntity.lineWidth = 1.5;
-  ctxEntity.setLineDash([6, 4]);
-
-  for (const entity of dynamicEntityList) {
-    const center = TOcanvas2Screen(entity.position.x, entity.position.y);
-    const radius = Math.max(1, entity.wanderRange);
-    ctxEntity.beginPath();
-    ctxEntity.arc(center.x, center.y, radius, 0, Math.PI * 2);
-    ctxEntity.stroke();
-  }
-
-  ctxEntity.restore();
-};
-
-/**
- * 绘制实体的兴趣范围
- */
-const drawDebugInterestRange = () => {
-  if (!ctxEntity) return;
-  ctxEntity.save();
-  ctxEntity.strokeStyle = 'rgba(255, 165, 0, 0.9)';
-  ctxEntity.lineWidth = 1.5;
-  ctxEntity.setLineDash([4, 4]);
-
-  for (const entity of dynamicEntityList) {
-    if (entity.perceptionRange === 0) continue;
-    const center = TOcanvas2Screen(entity.position.x, entity.position.y);
-    ctxEntity.beginPath();
-    ctxEntity.arc(center.x, center.y, Math.max(1, entity.perceptionRange), 0, Math.PI * 2);
-    ctxEntity.stroke();
-  }
-
-  ctxEntity.restore();
-};
-
-/**
  * 加载所有实体的纹理
  */
 const loadEntityTextures = async () => {
-  const allEntities = [...staticEntityList, ...itemEntityList, ...dynamicEntityList, ...projectileEntityList];
+  const allEntities = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList];
   await Promise.all(allEntities.map(e => e.loadTexture()));
   drawEntities(); // 加载完成后重绘
 };
 
 const refreshRenderEntityList = () => {
-  renderEntityList = [...staticEntityList, ...itemEntityList, ...dynamicEntityList, ...projectileEntityList];
+  renderEntityList = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList];
 };
 
 
@@ -1361,7 +1158,6 @@ const applyFirstPersonCameraMovement = (_deltaTime: number) => {
   const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
   offsetXX = width / 2 - playerEntity.position.x;
   offsetYY = height / 2 + playerEntity.position.y;
-  drawGraphics();
 };
 
 /**
@@ -1379,14 +1175,21 @@ const animateEntities = (timestamp: number) => {
   const deltaTime = Math.min(0.033, (timestamp - lastTimestamp) / 1000); // 当前时间减去上一帧的时间等于此帧的时间-并且限制最大33ms
   if (deltaTime > 0) {
     applyFirstPersonCameraMovement(deltaTime);  // 移动第一人称视角(背景)
+    drawGraphics();                             // 重绘星空和网格层
     drawEntities();                             // 重绘实体层
-    effectManager?.updateAndDraw(deltaTime);    // redraw effect layer
+    effectManager?.updateAndDraw(deltaTime);    // 渲染特效层
+    
     if(debugBoardVisible){
       if (!ctxUi || !UI_CANVAS.value) return;
       drawDebugBoard(ctxUi, UI_CANVAS.value);
-    }    // 渲染调试面板
-  }
+    }// 渲染调试面板
 
+    // 不再频繁渲染UI层,只在状态变化时渲染,以提升性能
+    // if(ctxUi && UI_CANVAS.value){
+    //   drawUI();
+    // }
+
+  }
   lastTimestamp = timestamp;
   animationFrameId = requestAnimationFrame(animateEntities);
 };
@@ -1544,6 +1347,7 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       pushDebugTerminalLog('/status');
       pushDebugTerminalLog('/show_debug_board');
       pushDebugTerminalLog('/set_perspective <first|third>');
+
       pushDebugTerminalLog('/trajectory [on|off|toggle]');
       pushDebugTerminalLog('/collision [on|off|toggle]');
       pushDebugTerminalLog('/facing [on|off|toggle]');
@@ -1554,22 +1358,24 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       pushDebugTerminalLog('/movement_range [on|off|toggle]');
       pushDebugTerminalLog('/movement_speed [on|off|toggle]');
       pushDebugTerminalLog('/movement_passion [on|off|toggle]');
+
       pushDebugTerminalLog('/all [on|off]');
       pushDebugTerminalLog('/clear');
       break;
     }
     case 'status':{
       pushDebugTerminalLog(`Perspective: ${perspectiveMode === 'first_person' ? 'FIRST_PERSON' : 'THIRD_PERSON'}`);
-      pushDebugTerminalLog(`Trajectory: ${debugShowTrajectory ? 'ON' : 'OFF'}`);
-      pushDebugTerminalLog(`CollisionBoxes: ${debugCollisionBoxes ? 'ON' : 'OFF'}`);
-      pushDebugTerminalLog(`FacingArrow: ${debugShowFacingDirection ? 'ON' : 'OFF'}`);
-      pushDebugTerminalLog(`TagText: ${debugShowTag ? 'ON' : 'OFF'}`);
-      pushDebugTerminalLog(`HungerText: ${debugShowHunger ? 'ON' : 'OFF'}`);
-      pushDebugTerminalLog(`HealthText: ${debugShowHealth ? 'ON' : 'OFF'}`);
-      pushDebugTerminalLog(`InterestRange: ${debugShowInterestRange ? 'ON' : 'OFF'}`);
-      pushDebugTerminalLog(`MovementRange: ${debugShowMovementRange ? 'ON' : 'OFF'}`);
-      pushDebugTerminalLog(`MovementSpeedText: ${debugShowMovementSpeed ? 'ON' : 'OFF'}`);
-      pushDebugTerminalLog(`MovementPassionText: ${debugShowMovementPassion ? 'ON' : 'OFF'}`);
+
+      pushDebugTerminalLog(`Trajectory: ${entityDebugFlags.showHistoricalTrajectory ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`CollisionBoxes: ${entityDebugFlags.showCollisionBoxes ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`FacingArrow: ${entityDebugFlags.showFacingDirection ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`TagText: ${entityDebugFlags.showTag ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`HungerText: ${entityDebugFlags.showHunger ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`HealthText: ${entityDebugFlags.showHealth ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`InterestRange: ${entityDebugFlags.showInterestRange ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`MovementRange: ${entityDebugFlags.showMovementRange ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`MovementSpeedText: ${entityDebugFlags.showMovementSpeed ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`MovementPassionText: ${entityDebugFlags.showMovementPassion ? 'ON' : 'OFF'}`);
       break;
     }
     case 'set_perspective': {
@@ -1583,43 +1389,43 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       break;
     }
     case 'trajectory':{
-      applyDebugFlagCommand('Trajectory', debugShowTrajectory, args, (v) => { debugShowTrajectory = v; });
+      applyDebugFlagCommand('Trajectory', entityDebugFlags.showHistoricalTrajectory, args, (v) => { entityDebugFlags.showHistoricalTrajectory = v; });
       break;
     }
     case 'collision':{
-      applyDebugFlagCommand('CollisionBoxes', debugCollisionBoxes, args, (v) => { debugCollisionBoxes = v; });
+      applyDebugFlagCommand('CollisionBoxes', entityDebugFlags.showCollisionBoxes, args, (v) => { entityDebugFlags.showCollisionBoxes = v; });
       break;
     }
     case 'facing':{
-      applyDebugFlagCommand('FacingArrow', debugShowFacingDirection, args, (v) => { debugShowFacingDirection = v; });
+      applyDebugFlagCommand('FacingArrow', entityDebugFlags.showFacingDirection, args, (v) => { entityDebugFlags.showFacingDirection = v; });
       break;
     }
     case 'show_tag':{
-      applyDebugFlagCommand('TagText', debugShowTag, args, (v) => { debugShowTag = v; });
+      applyDebugFlagCommand('TagText', entityDebugFlags.showTag, args, (v) => { entityDebugFlags.showTag = v; });
       break;
     }
     case 'show_hunger':{
-      applyDebugFlagCommand('HungerText', debugShowHunger, args, (v) => { debugShowHunger = v; });
+      applyDebugFlagCommand('HungerText', entityDebugFlags.showHunger, args, (v) => { entityDebugFlags.showHunger = v; });
       break;
     }
     case 'show_health':{
-      applyDebugFlagCommand('HealthText', debugShowHealth, args, (v) => { debugShowHealth = v; });
+      applyDebugFlagCommand('HealthText', entityDebugFlags.showHealth, args, (v) => { entityDebugFlags.showHealth = v; });
       break;
     }
     case 'perception_range':{
-      applyDebugFlagCommand('InterestRange', debugShowInterestRange, args, (v) => { debugShowInterestRange = v; });
+      applyDebugFlagCommand('InterestRange', entityDebugFlags.showInterestRange, args, (v) => { entityDebugFlags.showInterestRange = v; });
       break;
     }
     case 'movement_range':{
-      applyDebugFlagCommand('MovementRange', debugShowMovementRange, args, (v) => { debugShowMovementRange = v; });
+      applyDebugFlagCommand('MovementRange', entityDebugFlags.showMovementRange, args, (v) => { entityDebugFlags.showMovementRange = v; });
       break;
     }
     case 'movement_speed':{
-      applyDebugFlagCommand('MovementSpeedText', debugShowMovementSpeed, args, (v) => { debugShowMovementSpeed = v; });
+      applyDebugFlagCommand('MovementSpeedText', entityDebugFlags.showMovementSpeed, args, (v) => { entityDebugFlags.showMovementSpeed = v; });
       break;
     }
     case 'movement_passion':{
-      applyDebugFlagCommand('MovementPassionText', debugShowMovementPassion, args, (v) => { debugShowMovementPassion = v; });
+      applyDebugFlagCommand('MovementPassionText', entityDebugFlags.showMovementPassion, args, (v) => { entityDebugFlags.showMovementPassion = v; });
       break;
     }
     case 'all': {
@@ -1635,22 +1441,29 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
         pushDebugTerminalLog('[ERR] Invalid option for all. Use: on | off');
         break;
       }
-      debugShowTrajectory = nextValue;
-      debugCollisionBoxes = nextValue;
-      debugShowFacingDirection = nextValue;
-      debugShowTag = nextValue;
-      debugShowHunger = nextValue;
-      debugShowHealth = nextValue;
-      debugShowInterestRange = nextValue;
-      debugShowMovementRange = nextValue;
-      debugShowMovementSpeed = nextValue;
-      debugShowMovementPassion = nextValue;
+      entityDebugFlags.showHistoricalTrajectory = nextValue;
+      entityDebugFlags.showCollisionBoxes = nextValue;
+      entityDebugFlags.showFacingDirection = nextValue;
+      entityDebugFlags.showTag = nextValue;
+      entityDebugFlags.showHunger = nextValue;
+      entityDebugFlags.showHealth = nextValue;
+      entityDebugFlags.showInterestRange = nextValue;
+      entityDebugFlags.showMovementRange = nextValue;
+      entityDebugFlags.showMovementSpeed = nextValue;
+      entityDebugFlags.showMovementPassion = nextValue;
       pushDebugTerminalLog(`[OK] All debug features: ${nextValue ? 'ON' : 'OFF'}`);
       drawEntities();
       break;
     }
     case 'show_debug_board': {
-      applyDebugFlagCommand('MovementSpeedText', debugBoardVisible, args, (v) => { debugBoardVisible = v; });
+      const nextValue = parseDebugSwitchCommand(args, debugBoardVisible);
+      if (nextValue === null) {
+        pushDebugTerminalLog('[ERR] Invalid option for show_debug_board. Use: on | off | toggle');
+        break;
+      }
+      debugBoardVisible = nextValue;
+      pushDebugTerminalLog(`[OK] DebugBoard: ${nextValue ? 'ON' : 'OFF'}`);
+      drawUI();
       break;
     }
     case 'clear':{
@@ -1679,6 +1492,9 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
       debugTerminalHistoryIndex = -1;
       debugTerminalInputDraft = '';
       pushDebugTerminalLog('[SYS] Debug terminal opened. Type /help');
+    }
+    else {
+      pushDebugTerminalLog('[SYS] Debug terminal closed.');
     }
     drawUI();
     return;
@@ -1756,10 +1572,19 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
   // 单个按键
   if (!e.ctrlKey && !e.metaKey && !e.altKey) {
     const key = e.key.toLowerCase();
-    if (key === 'j' && !e.repeat) {
+    if (key === 'f' && !e.repeat) {// 切换开火模式
       e.preventDefault();
       playerFireMode = !playerFireMode;
       drawUI();
+      return;
+    }
+    if (key === '3' && !e.repeat) {// 切换视角模式
+      if(perspectiveMode === 'first_person'){
+        setPerspectiveMode('third_person');
+      }
+      else{
+        setPerspectiveMode('first_person');
+      }
       return;
     }
     if (key === 'w' || key === 'a' || key === 's' || key === 'd') {

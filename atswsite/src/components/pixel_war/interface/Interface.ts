@@ -145,6 +145,30 @@ export interface ServerConfig {
     max_online: number;
 }
 
+export interface StarFieldStar {
+  x: number;
+  y: number;
+  radius: number;
+  opacity: number;
+  opacityDirection: 1 | -1;
+  opacityIncrement: number;
+}
+
+export interface EntityDebugFlags {
+  //属性相关
+  showHealth: boolean;
+  showHunger: boolean;
+  showMovementSpeed: boolean;
+  showMovementPassion: boolean;
+  showTag: boolean;
+  //几何相关
+  showHistoricalTrajectory: boolean;
+  showCollisionBoxes: boolean;
+  showFacingDirection: boolean;
+  showMovementRange: boolean;
+  showInterestRange: boolean;
+}
+
 export interface Tick {
   tickCount: number;
   tickTime: number;
@@ -174,4 +198,3 @@ export interface MapData {
   staticEntities: Array<StaticEntity>;
   itemEntities: Array<ItemEntity>; 
 }
-
