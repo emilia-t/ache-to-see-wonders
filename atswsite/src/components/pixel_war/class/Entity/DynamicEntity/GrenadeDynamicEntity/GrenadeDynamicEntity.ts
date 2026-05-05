@@ -2,7 +2,7 @@
 import type { GrenadePurpose } from '@/components/pixel_war/type/Type';
 import type { Point } from '@/components/pixel_war/interface/Interface';
 
-class GrenadeDynamicEntity extends DynamicEntity {
+abstract class GrenadeDynamicEntity extends DynamicEntity {
   purpose: GrenadePurpose;// 投掷物类型
 
   constructor(

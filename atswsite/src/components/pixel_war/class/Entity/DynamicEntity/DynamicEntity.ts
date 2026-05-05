@@ -3,7 +3,7 @@ import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/S
 import type { CollisionBox, Point } from '@/components/pixel_war/interface/Interface';
 import type { DynamicEntityKind } from '@/components/pixel_war/type/Type';
 
-class DynamicEntity extends Entity {
+abstract class DynamicEntity extends Entity {
   kind: DynamicEntityKind;      // 动态实体类别
   nextTarget: Point;            // 下一刻要去的地点-世界坐标
   healthMax: number;            // 最大生命值

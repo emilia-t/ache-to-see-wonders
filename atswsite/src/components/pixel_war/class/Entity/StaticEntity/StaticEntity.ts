@@ -1,7 +1,7 @@
 ﻿import { Entity } from '@/components/pixel_war/class/Entity/Entity';
 import type { Point } from '@/components/pixel_war/interface/Interface';
 
-class StaticEntity extends Entity {
+abstract class StaticEntity extends Entity {
   constructor(
     position: Point,
     width: number,

@@ -2,6 +2,7 @@ import type { DataPackage, InstructObject, MapData, Point, TickTimer } from '@/c
 import { Instruct } from '@/components/pixel_war/instruct/Instruct';
 import {
   CurbStaticEntity,
+  BulletDynamicEntity,
   DynamicEntity,
   ItemEntity,
   NpcDynamicEntity,
@@ -179,6 +180,10 @@ const updateDynamicEntityItemPickups = (): boolean => {
   return pickedAny;
 };
 
+const spawnNpcProjectile = (projectile: BulletDynamicEntity) => {
+  MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(projectile);
+};
+
 const removeFinishedDeadDynamicEntities = (): boolean => {
   const oldNpcLength = MAP_DATA.dynamicEntitie.npcDynamicEntitys.length;
   const oldPlayerLength = MAP_DATA.dynamicEntitie.playerDynamicEntitys.length;
@@ -322,6 +327,14 @@ const updateDynamicEntities = (deltaTime: number) => {
 
     if (entity.canGetNewWanderTarget(deltaTime, MAP_DATA.staticEntities)) {
       setRandomTargetForDynamic(entity);
+    }
+
+    if (entity instanceof NpcDynamicEntity) {
+      entity.actionLoop({
+        deltaTime,
+        staticEntities: MAP_DATA.staticEntities,
+        spawnProjectile: spawnNpcProjectile,
+      });
     }
   }
 };

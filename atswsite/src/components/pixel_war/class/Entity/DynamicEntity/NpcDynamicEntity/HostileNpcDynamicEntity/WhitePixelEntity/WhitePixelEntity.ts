@@ -1,11 +1,17 @@
+import { OrdinaryBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
 import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
-import type { Point } from '@/components/pixel_war/interface/Interface';
+import type { NpcActionLoopContext } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
+import type { Point } from '@/components/pixel_war/interface/Interface';
 
 class WhitePixelEntity extends HostileNpcDynamicEntity {
   static readonly WIDTH = 25;
   static readonly HEIGHT = 25;
+  private static readonly ACTION_INTERVAL = 1;
+
+  private isActionLoopRunning: boolean;
+  private actionCooldownRemaining: number;
 
   constructor(position: Point) {
     super(position, WhitePixelEntity.WIDTH, WhitePixelEntity.HEIGHT, '', '', 0, 'white_pixel');
@@ -13,74 +19,118 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     this.strokeColor = '#bebebe';
     this.health = 100;
     this.healthMax = 100;
+    this.isActionLoopRunning = false;
+    this.actionCooldownRemaining = 0;
   }
 
-  tryPickupItem(item: ItemEntity): boolean {
+  tryPickupItem(_item: ItemEntity): boolean {
     return false;
   }
 
-  pickupItem(item: ItemEntity): void {
-    // 白色像素不拾取任何物品
+  pickupItem(_item: ItemEntity): void {
+    // 白色像素不拾取任何物品。
   }
 
+  actionLoop(context: NpcActionLoopContext): void {
+    if (this.isDead || !this.isMoving) {
+      if (this.isActionLoopRunning) {
+        this.actionAfter(context);
+      }
+      return;
+    }
+
+    if (!this.isActionLoopRunning) {
+      this.actionBefore(context);
+      return;
+    }
+
+    this.actionCooldownRemaining -= context.deltaTime;
+    while (this.actionCooldownRemaining <= 0 && this.isMoving && !this.isDead) {
+      this.action(context);
+      this.actionCooldownRemaining += WhitePixelEntity.ACTION_INTERVAL;
+    }
+  }
+
+  action(context: NpcActionLoopContext): void {
+    const direction = this.getNormalizedFacingDirection();
+    const spawnDistance = this.width * 0.6;
+    context.spawnProjectile(
+      new OrdinaryBulletDynamicEntity(
+        {
+          x: this.position.x + direction.x * spawnDistance,
+          y: this.position.y + direction.y * spawnDistance,
+        },
+        direction,
+        this.id
+      )
+    );
+  }
+
+  actionBefore(context: NpcActionLoopContext): void {
+    this.isActionLoopRunning = true;
+    this.action(context);
+    this.actionCooldownRemaining = WhitePixelEntity.ACTION_INTERVAL;
+  }
+
+  actionAfter(_context: NpcActionLoopContext): void {
+    this.isActionLoopRunning = false;
+    this.actionCooldownRemaining = 0;
+  }
 
   /**
-   * 重写寻路逻辑：随机选择一个正交方向（上下左右），并在该方向上随机移动一定距离（100~300像素）
+   * 白色像素只沿上下左右四个正交方向随机移动。
    * @param target 忽略，实际目标由内部生成
    * @param staticEntities 静态实体列表，用于避障
    * @param options 忽略
    */
-  override setTarget(target: Point,staticEntities: StaticEntity[] = [],options: { preferStraight?: boolean } = {}): boolean {
-    // 四个正交方向
+  override setTarget(
+    target: Point,
+    staticEntities: StaticEntity[] = [],
+    options: { preferStraight?: boolean } = {}
+  ): boolean {
     const directions = [
-      { x: 0, y: -1 }, // 上
-      { x: 0, y: 1 },  // 下
-      { x: -1, y: 0 }, // 左
-      { x: 1, y: 0 }   // 右
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 1, y: 0 },
     ];
 
-    // 随机选择方向
     const randomDir = directions[Math.floor(Math.random() * directions.length)];
-    // 随机距离 100～300 像素
     const distance = 100 + Math.random() * 200;
-    // 计算目标点（世界坐标）
     const newTarget: Point = {
       x: this.position.x + randomDir.x * distance,
-      y: this.position.y + randomDir.y * distance
+      y: this.position.y + randomDir.y * distance,
     };
 
-    // 调用父类的 setTarget 完成路径规划与移动，优先走直线（preferStraight 可帮助减少不必要的弯曲）
     return super.setTarget(newTarget, staticEntities, { preferStraight: true });
   }
 
   /**
-   * 重写更新逻辑：
-   * 1. 调用父类处理移动和默认停留
-   * 2. 将父类默认的停留时长（0~5秒）修改为 1~3 秒
-   * 3. 当移动结束且停留结束时，自动生成下一个随机目标
+   * 移动完成后缩短停留时间，停留结束后自动开始下一段正交移动。
    */
   override update(dt: number, staticEntities: StaticEntity[]): void {
-    const wasMoving = this.isMoving;   // 记录移动前的状态
-    const wasStaying = !this.isMoving && this.stayDurationRemaining > 0;
+    const wasMoving = this.isMoving;
 
-    // 先让父类处理移动、碰撞、默认停留逻辑
     super.update(dt, staticEntities);
 
-    // 死亡后不再进行额外处理
     if (this.isDead) return;
 
-    // 当移动刚刚结束（由移动变为静止）且停留剩余时间大于0时，
-    // 说明父类已经调用了 enterStayStateAfterArrival，将停留时长覆盖为 1~3 秒
     if (wasMoving && !this.isMoving && this.stayDurationRemaining > 0) {
-      // 父类原本的停留时长为 0~5 秒，这里改为 1~3 秒
       this.stayDurationRemaining = 1 + Math.random() * 2;
     }
 
-    // 当处于空闲状态（未移动 && 停留时间耗尽）时，自动生成下一个随机移动目标
-    if (!this.isMoving && this.stayDurationRemaining <= 0 && !this.isDead) {
-      // 调用重写后的 setTarget，传入当前的静态实体列表，自动开始新一轮移动
+    if (!this.isMoving && this.stayDurationRemaining <= 0) {
       this.setTarget(this.position, staticEntities, { preferStraight: true });
     }
+  }
+
+  private getNormalizedFacingDirection(): Point {
+    const len = Math.hypot(this.facingDirection.x, this.facingDirection.y);
+    if (len < 0.0001) return { x: 0, y: 1 };
+    return {
+      x: this.facingDirection.x / len,
+      y: this.facingDirection.y / len,
+    };
   }
 }
 

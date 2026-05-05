@@ -1,7 +1,7 @@
 ﻿import { Entity } from '@/components/pixel_war/class/Entity/Entity';
 import type { Point } from '@/components/pixel_war/interface/Interface';
 
-class ItemEntity extends Entity {
+abstract class ItemEntity extends Entity {
   lifetimeTotal: number; // 初始寿命（秒）
   lifetimeRemaining: number; // 寿命剩余时间（秒）
   isDisappearing: boolean; // 是否进入消失特效阶段

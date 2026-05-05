@@ -1,7 +1,7 @@
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { Point } from '@/components/pixel_war/interface/Interface';
 
-class FoodItemEntity extends ItemEntity {
+abstract class FoodItemEntity extends ItemEntity {
   hungerMeterIncrease: number;// 食物增加的饥饿值
   
   constructor(
