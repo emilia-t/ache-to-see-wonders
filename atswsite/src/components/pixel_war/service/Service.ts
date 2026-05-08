@@ -422,13 +422,20 @@ const spawnNpcInRingAroundPlayer = (
     const position = getRandomPointInRing(playerEntity.position, minRadius, maxRadius);
     if (!canSpawnNpcAt(position)) continue;
 
+    //暂时只有一个NPC类型
     const npc = new WhitePixelEntity(position);
+
     npc.setTarget(position, MAP_DATA.staticEntities, { preferStraight: true });
     MAP_DATA.dynamicEntitie.npcDynamicEntitys.push(npc);
     return true;
   }
   return false;
 };
+
+//next_ 随机刷新物品
+const spawnItemAroundPlayer = (deltaTime: number) => {
+  
+}
 
 const updateNpcSpawnTimer = (
   timer: number,
@@ -479,6 +486,15 @@ const generateNpcAroundPlayer = (deltaTime: number) => {
     NPC_SPAWN_MEDIUM_RADIUS,
     NPC_SPAWN_LOW_RADIUS
   );
+};
+
+
+/**
+ * 玩家周围随机刷新 物品
+ * 0-200px 为禁刷怪区,200-400px 为高频区,400-800px 为中频区,800-1600px 为低频区
+ */
+const generateItemAroundPlayer = (deltaTime: number) => {
+  
 };
 
 
