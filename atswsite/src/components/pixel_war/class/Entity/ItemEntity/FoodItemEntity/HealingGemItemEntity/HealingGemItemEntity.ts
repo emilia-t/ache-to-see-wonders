@@ -18,7 +18,8 @@ class HealingGemItemEntity extends FoodItemEntity {
       HealingGemItemEntity.TEXTURE_PATH,
       name,
       tag,
-      40
+      40,
+      10
     );
   }
 }

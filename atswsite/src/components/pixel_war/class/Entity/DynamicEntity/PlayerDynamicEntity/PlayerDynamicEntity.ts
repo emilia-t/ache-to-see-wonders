@@ -3,6 +3,7 @@ import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interfac
 import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
+import { FoodItemEntity } from '../../ItemEntity/FoodItemEntity/FoodItemEntity';
 
 class PlayerDynamicEntity extends DynamicEntity {
   static readonly WIDTH = 25;
@@ -15,6 +16,11 @@ class PlayerDynamicEntity extends DynamicEntity {
     playerMoveD: false
   };
   isme: boolean;
+
+  readonly personRule = {
+    fireCooldownNow: 0,//计算数值单位秒
+    fireCooldownMax: 0.12//cd最大值单位秒
+  };
 
   constructor(
     position: Point,
@@ -57,6 +63,9 @@ class PlayerDynamicEntity extends DynamicEntity {
 
   override update(dt: number, staticEntities: StaticEntity[]) {
     if (this.isDead) return;
+
+    //cd count
+    this.personRule.fireCooldownNow =  Math.max(0, this.personRule.fireCooldownNow - dt);
 
     let dx = 0;
     let dy = 0;
@@ -129,6 +138,9 @@ class PlayerDynamicEntity extends DynamicEntity {
    * @returns 
    */
   tryPickupItem(item: ItemEntity): boolean {
+    if(item instanceof FoodItemEntity && this.health < this.healthMax){
+      return true;
+    }
     return false;
   }
 
@@ -137,7 +149,9 @@ class PlayerDynamicEntity extends DynamicEntity {
    * @param item 
    */
   pickupItem(item: ItemEntity): void {
-    
+    if(item instanceof FoodItemEntity){
+      this.health = Math.min(this.healthMax,this.health+item.currentHealthIncrease)
+    }
   }
 
   /**
@@ -291,6 +305,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     }
     /////// 调试信息end
   }
+
 }
 
 export { PlayerDynamicEntity };

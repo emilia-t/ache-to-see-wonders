@@ -14,12 +14,12 @@ import type {
 import type {
   RGB,
   Point,
-  EventArea,
-  Tick,
+  EventArea, 
   DataPackage,
   MapData,
   InstructObject,
-  StarFieldStar
+  StarFieldStar,
+  Tick,
 } from '@/components/pixel_war/interface/Interface';
 
 import {

@@ -198,3 +198,28 @@ export interface MapData {
   staticEntities: Array<StaticEntity>;
   itemEntities: Array<ItemEntity>; 
 }
+
+export interface GameConfig {
+  npcSpawnNoSpawnRadius:number;
+  npcSpawnHighRadius:number;
+  npcSpawnMediumRadius:number;
+  npcSpawnLowRadius:number;
+  npcSpawnHighInterval:number;
+  npcSpawnMediumInterval:number;
+  npcSpawnLowInterval:number;
+  npcSpawnMaxCountSiglePlayer:number;
+  npcSpawnMaxAttempts:number;
+  npcSpawnPadding:number;
+  
+  itemSpawnNoSpawnRadius:number;
+  itemSpawnHighRadius:number;
+  itemSpawnMediumRadius:number;
+  itemSpawnLowRadius:number;
+  itemSpawnHighInterval:number;
+  itemSpawnMediumInterval:number;
+  itemSpawnLowInterval:number;
+  itemSpawnMaxCountSiglePlayer:number;
+  itemSpawnMaxAttempts:number;
+  itemSpawnPadding:number;
+}
+

@@ -1,4 +1,11 @@
-import type { DataPackage, InstructObject, MapData, Point, TickTimer } from '@/components/pixel_war/interface/Interface';
+import type { 
+  DataPackage,
+  InstructObject,
+  MapData,
+  Point,
+  TickTimer,
+  GameConfig
+} from '@/components/pixel_war/interface/Interface';
 import { Instruct } from '@/components/pixel_war/instruct/Instruct';
 import {
   CurbStaticEntity,
@@ -8,6 +15,7 @@ import {
   OrdinaryBulletDynamicEntity,
   PlayerDynamicEntity,
   WhitePixelEntity,
+  HealingGemItemEntity
 } from '@/components/pixel_war/class';
 
 ////////////////////
@@ -15,32 +23,31 @@ import {
 ////////////////////
 // 当前 Worker 实例,用于接收客户端指令并回传地图快照
 const SERVICE: Worker = self as any;
-// 动态实体碰撞分离的迭代次数,单位次
-const RDEC_ITERATIONS = 3;
-// 动态实体碰撞分离时额外推出的距离,单位:px
-const RDEC_SEPARATION_EPSILON = 0.1;
-// 玩家普通射击冷却时间,单位秒
-const PLAYER_FIRE_COOLDOWN = 0.12;
-// 玩家周围 0-200px 半径内为禁刷怪区,单位px
-const NPC_SPAWN_NO_SPAWN_RADIUS = 200;
-// 玩家周围 200-400px 半径内为高频刷怪区外边界,单位px
-const NPC_SPAWN_HIGH_RADIUS = 400;
-// 玩家周围 400-800px 半径内为中频刷怪区外边界,单位px
-const NPC_SPAWN_MEDIUM_RADIUS = 800;
-// 玩家周围 800-1600px 半径内为低频刷怪区外边界,单位px
-const NPC_SPAWN_LOW_RADIUS = 1600;
-// 高频刷怪区生成间隔,单位秒
-const NPC_SPAWN_HIGH_INTERVAL = 4;
-// 中频刷怪区生成间隔,单位秒
-const NPC_SPAWN_MEDIUM_INTERVAL = 8;
-// 低频刷怪区生成间隔,单位秒
-const NPC_SPAWN_LOW_INTERVAL = 16;
-// 地图中同时存在的 NPC 数量上限,单位个
-const NPC_SPAWN_MAX_COUNT = 80;
-// 每次刷怪在目标环形区域内寻找可用生成点的最大尝试次数,单位次
-const NPC_SPAWN_MAX_ATTEMPTS = 30;
-// 新 NPC 与已有动态实体之间额外保留的安全距离,单位px
-const NPC_SPAWN_DYNAMIC_PADDING = 12;
+
+const GCFG:GameConfig = {
+  npcSpawnNoSpawnRadius:200,// 玩家周围 0-200px 半径内为禁刷怪区,单位px
+  npcSpawnHighRadius:400,// 玩家周围 200-400px 半径内为高频刷怪区外边界,单位px
+  npcSpawnMediumRadius:800,// 玩家周围 400-800px 半径内为中频刷怪区外边界,单位px
+  npcSpawnLowRadius:1600,// 玩家周围 800-1600px 半径内为低频刷怪区外边界,单位px
+  npcSpawnHighInterval:4,// 高频刷怪区生成间隔,单位秒
+  npcSpawnMediumInterval:8,// 中频刷怪区生成间隔,单位秒
+  npcSpawnLowInterval:16,// 低频刷怪区生成间隔,单位秒
+  npcSpawnMaxCountSiglePlayer:30,// 地图中同时存在的 NPC 数量上限,单位个
+  npcSpawnMaxAttempts:30,// 每次刷怪在目标环形区域内寻找可用生成点的最大尝试次数,单位次
+  npcSpawnPadding:12,// 新 NPC 与已有动态实体之间额外保留的安全距离,单位px
+  
+  itemSpawnNoSpawnRadius:200,// 玩家周围 0-200px 
+  itemSpawnHighRadius:400,// 玩家周围 200-400px 
+  itemSpawnMediumRadius:800,// 玩家周围 400-800px 
+  itemSpawnLowRadius:1600,// 玩家周围 800-1600px 
+  itemSpawnHighInterval:4,// 高频生成间隔,单位秒
+  itemSpawnMediumInterval:8,// 中频生成间隔,单位秒
+  itemSpawnLowInterval:16,// 低频生成间隔,单位秒
+  itemSpawnMaxCountSiglePlayer:10,// 地图中同时存在的 ITEM 数量上限,单位个
+  itemSpawnMaxAttempts:30, // 每Tk最大尝试生成次数
+  itemSpawnPadding:50,// 生成物品的间距
+}
+
 // 主循环计时器配置,interval 单位毫秒；tickTime 单位毫秒时间戳
 const TICK_TIMER: TickTimer = {
   interval: 20,
@@ -70,10 +77,12 @@ const MAP_DATA: MapData = {
 // 变量区-->
 ////////////////////
 let lastTickTime = performance.now();
-let cooldownNormalAttack = 0;
-let npcSpawnHighTimer = NPC_SPAWN_HIGH_INTERVAL;
-let npcSpawnMediumTimer = NPC_SPAWN_MEDIUM_INTERVAL;
-let npcSpawnLowTimer = NPC_SPAWN_LOW_INTERVAL;
+let npcSpawnHighTimer = GCFG.npcSpawnHighInterval;
+let npcSpawnMediumTimer = GCFG.npcSpawnMediumInterval;
+let npcSpawnLowTimer = GCFG.npcSpawnLowInterval;
+let itemSpawnHighTimer = GCFG.npcSpawnHighInterval;
+let itemSpawnMediumTimer = GCFG.npcSpawnMediumInterval;
+let itemSpawnLowTimer = GCFG.npcSpawnLowInterval;
 ////////////////////
 //<--变量区
 ////////////////////
@@ -109,7 +118,7 @@ const runTickTimer = () => {
   lastTickTime = performance.now();
   TICK_TIMER.id = setInterval(() => {
     const now = performance.now();
-    const deltaTime = Math.min(0.05, Math.max(0, (now - lastTickTime) / 1000));
+    const deltaTime = Math.min(0.05, Math.max(0, (now - lastTickTime) / 1000));//转换为秒
     lastTickTime = now;
     TICK_TIMER.tick.tickCount++;
     TICK_TIMER.tick.tickTime = now;
@@ -153,7 +162,7 @@ const initMapData = () => {
 const spawnPlayerBullet = (targetCanvas: Point) => {
   const playerEntity = MAP_DATA.dynamicEntitie.playerDynamicEntitys[0];
   if (!playerEntity || playerEntity.isDead) return;
-  if (cooldownNormalAttack > 0) return;
+  if (playerEntity.personRule.fireCooldownNow > 0) return;
 
   const dx = targetCanvas.x - playerEntity.position.x;
   const dy = targetCanvas.y - playerEntity.position.y;
@@ -172,7 +181,7 @@ const spawnPlayerBullet = (targetCanvas: Point) => {
       playerEntity.id
     )
   );
-  cooldownNormalAttack = PLAYER_FIRE_COOLDOWN;
+  playerEntity.personRule.fireCooldownNow=playerEntity.personRule.fireCooldownMax;
 };
 
 const updateItemEntityLifetimes = (deltaTime: number): boolean => {
@@ -298,7 +307,7 @@ const resolveDynamicEntityCollisions = () => {
   const dynamicEntityList = getNpcPlayerDynamicEntityList().filter(entity => !entity.isDead);
   if (dynamicEntityList.length < 2) return;
 
-  for (let iter = 0; iter < RDEC_ITERATIONS; iter++) {
+  for (let iter = 0; iter < 3; iter++) {// 动态实体碰撞分离的迭代次数,单位次
     for (let i = 0; i < dynamicEntityList.length - 1; i++) {
       const entityA = dynamicEntityList[i];
       for (let j = i + 1; j < dynamicEntityList.length; j++) {
@@ -311,12 +320,12 @@ const resolveDynamicEntityCollisions = () => {
         if (overlapX <= 0 || overlapY <= 0) continue;
 
         if (overlapX < overlapY) {
-          const pushX = overlapX / 2 + RDEC_SEPARATION_EPSILON;
+          const pushX = overlapX / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
           const direction = entityA.position.x <= entityB.position.x ? -1 : 1;
           entityA.position.x += direction * pushX;
           entityB.position.x -= direction * pushX;
         } else {
-          const pushY = overlapY / 2 + RDEC_SEPARATION_EPSILON;
+          const pushY = overlapY / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
           const direction = entityA.position.y <= entityB.position.y ? -1 : 1;
           entityA.position.y += direction * pushY;
           entityB.position.y -= direction * pushY;
@@ -360,6 +369,16 @@ const updateDynamicEntities = (deltaTime: number) => {
       setRandomTargetForDynamic(entity);
     }
 
+    if (entity instanceof PlayerDynamicEntity) {
+      MAP_DATA.itemEntities = MAP_DATA.itemEntities.filter(item => {
+        if (entity.tryPickupItem(item)) {
+          entity.pickupItem(item);
+          return false; // 移除该项
+        }
+        return true; // 保留该项
+      });
+    }
+
     entity.actionLoop(actionLoopContext);
   }
 };
@@ -379,7 +398,8 @@ const getRandomPointInRing = (center: Point, minRadius: number, maxRadius: numbe
   };
 };
 
-const canSpawnNpcAt = (position: Point): boolean => {
+const canSpawnNpcOrItemAt = (position: Point,spawnItem:boolean,spawnNpc:boolean): boolean => {
+  if(!spawnItem && !spawnNpc)return false;
   const halfW = WhitePixelEntity.WIDTH / 2;
   const halfH = WhitePixelEntity.HEIGHT / 2;
   const spawnBox = {
@@ -401,10 +421,12 @@ const canSpawnNpcAt = (position: Point): boolean => {
 
   for (const entity of getNpcPlayerDynamicEntityList()) {
     if (entity.isDead) continue;
+    const maxPadding = Math.max(GCFG.npcSpawnPadding,GCFG.itemSpawnPadding);
+    const padding = (spawnItem && spawnNpc) ? maxPadding : (spawnItem ? GCFG.itemSpawnPadding : GCFG.npcSpawnPadding);
     const minDistance =
       Math.max(WhitePixelEntity.WIDTH, WhitePixelEntity.HEIGHT) / 2 +
       Math.max(entity.width, entity.height) / 2 +
-      NPC_SPAWN_DYNAMIC_PADDING;
+      padding;
     if (Math.hypot(position.x - entity.position.x, position.y - entity.position.y) < minDistance) {
       return false;
     }
@@ -413,14 +435,46 @@ const canSpawnNpcAt = (position: Point): boolean => {
   return true;
 };
 
+/**
+ * 尝试在玩家周围生成ITEM
+ * @param playerEntity 
+ * @param minRadius 
+ * @param maxRadius 
+ * @returns 
+ */
+const spawnItemInRingAroundPlayer = (
+  playerEntity: PlayerDynamicEntity,
+  minRadius: number,
+  maxRadius: number
+): boolean => {
+  for (let i = 0; i < GCFG.itemSpawnMaxAttempts; i++) {
+    const position = getRandomPointInRing(playerEntity.position, minRadius, maxRadius);
+    if (!canSpawnNpcOrItemAt(position,true,false)) continue;
+
+    //暂时只有一个item类型
+    const item = new HealingGemItemEntity(position);
+
+    MAP_DATA.itemEntities.push(item);
+    return true;
+  }
+  return false;
+};
+
+/**
+ * 尝试在玩家周围生成NPC
+ * @param playerEntity 
+ * @param minRadius 
+ * @param maxRadius 
+ * @returns 
+ */
 const spawnNpcInRingAroundPlayer = (
   playerEntity: PlayerDynamicEntity,
   minRadius: number,
   maxRadius: number
 ): boolean => {
-  for (let i = 0; i < NPC_SPAWN_MAX_ATTEMPTS; i++) {
+  for (let i = 0; i < GCFG.npcSpawnMaxAttempts; i++) {
     const position = getRandomPointInRing(playerEntity.position, minRadius, maxRadius);
-    if (!canSpawnNpcAt(position)) continue;
+    if (!canSpawnNpcOrItemAt(position,false,true)) continue;
 
     //暂时只有一个NPC类型
     const npc = new WhitePixelEntity(position);
@@ -432,7 +486,8 @@ const spawnNpcInRingAroundPlayer = (
   return false;
 };
 
-//next_ 随机刷新物品
+
+
 const spawnItemAroundPlayer = (deltaTime: number) => {
   
 }
@@ -445,9 +500,27 @@ const updateNpcSpawnTimer = (
   minRadius: number,
   maxRadius: number
 ) => {
-  let nextTimer = timer - deltaTime;
-  while (nextTimer <= 0 && MAP_DATA.dynamicEntitie.npcDynamicEntitys.length < NPC_SPAWN_MAX_COUNT) {
+  let nextTimer = timer - deltaTime;//global
+  //deltaTime >= nextTimer
+  while (nextTimer <= 0 && MAP_DATA.dynamicEntitie.npcDynamicEntitys.length < GCFG.npcSpawnMaxCountSiglePlayer) {
     spawnNpcInRingAroundPlayer(playerEntity, minRadius, maxRadius);
+    nextTimer += interval;
+  }
+  return nextTimer;
+};
+
+const updateItemSpawnTimer = (
+  timer: number,
+  deltaTime: number,
+  interval: number,
+  playerEntity: PlayerDynamicEntity,
+  minRadius: number,
+  maxRadius: number
+) => {
+  let nextTimer = timer - deltaTime;//global
+  //deltaTime >= nextTimer
+  while (nextTimer <= 0 && MAP_DATA.dynamicEntitie.npcDynamicEntitys.length < GCFG.npcSpawnMaxCountSiglePlayer) {
+    spawnItemInRingAroundPlayer(playerEntity, minRadius, maxRadius);
     nextTimer += interval;
   }
   return nextTimer;
@@ -455,56 +528,86 @@ const updateNpcSpawnTimer = (
 
 /**
  * 玩家周围随机刷新 NPC
- * 0-200px 为禁刷怪区,200-400px 为高频区,400-800px 为中频区,800-1600px 为低频区
+ * 0-200px 为禁刷区,200-400px 为高频区,400-800px 为中频区,800-1600px 为低频区
  */
-const generateNpcAroundPlayer = (deltaTime: number) => {
+const generateNpcAroundPlayerSigle = (deltaTime: number) => {
   const playerEntity = MAP_DATA.dynamicEntitie.playerDynamicEntitys[0];
   if (!playerEntity || playerEntity.isDead) return;
-  if (MAP_DATA.dynamicEntitie.npcDynamicEntitys.length >= NPC_SPAWN_MAX_COUNT) return;
+  if (MAP_DATA.dynamicEntitie.npcDynamicEntitys.length >= GCFG.npcSpawnMaxCountSiglePlayer) return;
 
   npcSpawnHighTimer = updateNpcSpawnTimer(
     npcSpawnHighTimer,
     deltaTime,
-    NPC_SPAWN_HIGH_INTERVAL,
+    GCFG.npcSpawnHighInterval,
     playerEntity,
-    NPC_SPAWN_NO_SPAWN_RADIUS,
-    NPC_SPAWN_HIGH_RADIUS
+    GCFG.npcSpawnNoSpawnRadius,
+    GCFG.npcSpawnHighRadius
   );
   npcSpawnMediumTimer = updateNpcSpawnTimer(
     npcSpawnMediumTimer,
     deltaTime,
-    NPC_SPAWN_MEDIUM_INTERVAL,
+    GCFG.npcSpawnMediumInterval,
     playerEntity,
-    NPC_SPAWN_HIGH_RADIUS,
-    NPC_SPAWN_MEDIUM_RADIUS
+    GCFG.npcSpawnHighRadius,
+    GCFG.npcSpawnMediumRadius
   );
   npcSpawnLowTimer = updateNpcSpawnTimer(
     npcSpawnLowTimer,
     deltaTime,
-    NPC_SPAWN_LOW_INTERVAL,
+    GCFG.npcSpawnLowInterval,
     playerEntity,
-    NPC_SPAWN_MEDIUM_RADIUS,
-    NPC_SPAWN_LOW_RADIUS
+    GCFG.npcSpawnMediumRadius,
+    GCFG.npcSpawnLowRadius
   );
 };
 
 
+
 /**
  * 玩家周围随机刷新 物品
- * 0-200px 为禁刷怪区,200-400px 为高频区,400-800px 为中频区,800-1600px 为低频区
+ * 0-200px 为禁刷区,200-400px 为高频区,400-800px 为中频区,800-1600px 为低频区
  */
-const generateItemAroundPlayer = (deltaTime: number) => {
+const generateItemAroundPlayerSigle = (deltaTime: number) => {
+  const playerEntity = MAP_DATA.dynamicEntitie.playerDynamicEntitys[0];
+  if (!playerEntity || playerEntity.isDead) return;
+  if (MAP_DATA.itemEntities.length >= GCFG.itemSpawnMaxCountSiglePlayer) return;
+
+  itemSpawnHighTimer = updateItemSpawnTimer(
+    itemSpawnHighTimer,
+    deltaTime,
+    GCFG.itemSpawnHighInterval,
+    playerEntity,
+    GCFG.itemSpawnNoSpawnRadius,
+    GCFG.itemSpawnHighRadius
+  );
+  itemSpawnMediumTimer = updateItemSpawnTimer(
+    itemSpawnMediumTimer,
+    deltaTime,
+    GCFG.itemSpawnMediumInterval,
+    playerEntity,
+    GCFG.itemSpawnHighRadius,
+    GCFG.itemSpawnMediumRadius
+  );
+  itemSpawnLowTimer = updateItemSpawnTimer(
+    itemSpawnLowTimer,
+    deltaTime,
+    GCFG.itemSpawnLowInterval,
+    playerEntity,
+    GCFG.itemSpawnMediumRadius,
+    GCFG.itemSpawnLowRadius
+  );
   
 };
 
 
+
 const updateGame = (deltaTime: number) => {
-  cooldownNormalAttack = Math.max(0, cooldownNormalAttack - deltaTime);
   updateItemEntityLifetimes(deltaTime);
   updateDynamicEntities(deltaTime);
   updateDynamicEntityItemPickups();
   updateBulletEntities(deltaTime);
-  generateNpcAroundPlayer(deltaTime);
+  generateNpcAroundPlayerSigle(deltaTime);
+  generateItemAroundPlayerSigle(deltaTime);
   removeFinishedDeadDynamicEntities();
 };
 ////////////////////
