@@ -369,16 +369,6 @@ const updateDynamicEntities = (deltaTime: number) => {
       setRandomTargetForDynamic(entity);
     }
 
-    if (entity instanceof PlayerDynamicEntity) {
-      MAP_DATA.itemEntities = MAP_DATA.itemEntities.filter(item => {
-        if (entity.tryPickupItem(item)) {
-          entity.pickupItem(item);
-          return false; // 移除该项
-        }
-        return true; // 保留该项
-      });
-    }
-
     entity.actionLoop(actionLoopContext);
   }
 };

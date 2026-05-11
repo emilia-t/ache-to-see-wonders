@@ -133,16 +133,25 @@ class PlayerDynamicEntity extends DynamicEntity {
   }
 
   /**
-   * 拾取物品检测
-   * @param item 
-   * @returns 
-   */
-  tryPickupItem(item: ItemEntity): boolean {
-    if(item instanceof FoodItemEntity && this.health < this.healthMax){
+ * 拾取物品检测
+ * @param item 
+ * @returns 
+ */
+tryPickupItem(item: ItemEntity): boolean {
+  if(item instanceof FoodItemEntity && this.health < this.healthMax){
+    // 添加碰撞/距离检测
+    const distance = Math.hypot(
+      this.position.x - item.position.x,
+      this.position.y - item.position.y
+    );
+    const pickupRadius = (this.width + item.width) / 2; // 玩家和物品半径之和
+    
+    if (distance <= pickupRadius) {
       return true;
     }
-    return false;
   }
+  return false;
+}
 
   /**
    * 拾取物品
