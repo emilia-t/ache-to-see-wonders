@@ -1,7 +1,7 @@
 ﻿import { Entity } from '@/components/pixel_war/class/Entity/Entity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/BulletDynamicEntity';
-import type { CollisionBox, Point } from '@/components/pixel_war/interface/Interface';
+import type { CollisionBox, Point, DynamicEntitieList, GameConfig} from '@/components/pixel_war/interface/Interface';
 import type { DynamicEntityKind } from '@/components/pixel_war/type/Type';
 
 export type DynamicActionLoopContext = {
@@ -124,7 +124,7 @@ abstract class DynamicEntity extends Entity {
 
   actionAfter(_context: DynamicActionLoopContext): void {}
 
-  private triggerDeath() {
+  public triggerDeath() {
     this.isDead = true;
     this.isMoving = false;
     this.stayDurationRemaining = 0;
@@ -742,7 +742,12 @@ abstract class DynamicEntity extends Entity {
   }
 
   // 更新位置-基于时间差 dt 秒
-  update(dt: number, staticEntities: StaticEntity[]) {
+  update(
+    dt: number,
+    staticEntities: StaticEntity[],
+    dynamicEntity: DynamicEntitieList,
+    gameConfig: GameConfig
+  ) {
     if (this.isDead) return;
     if (!this.isMoving) return;
     if (this.curvePoints.length === 0) return;

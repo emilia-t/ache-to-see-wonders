@@ -37,6 +37,7 @@ import {
   NpcDynamicEntity,
   PlayerDynamicEntity,
   WhitePixelEntity,
+  RedPixelEntity,
   BulletDynamicEntity,
   BuckshotBulletDynamicEntity,
   SniperBulletDynamicEntity,
@@ -331,6 +332,8 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
     switch (tag){
       case 'white_pixel':
         return new WhitePixelEntity(snapshot.position);
+      case 'red_pixel':
+        return new RedPixelEntity(snapshot.position);
     }
   }
   else if(kind === 'player'){

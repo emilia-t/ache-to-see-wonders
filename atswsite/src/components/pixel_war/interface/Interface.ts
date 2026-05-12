@@ -188,13 +188,15 @@ export interface DataPackage {
   };
 }
 
+export interface DynamicEntitieList {
+  bulletDynamicEntitys: Array<BulletDynamicEntity>;
+  grenadeDynamicEntitys: Array<GrenadeDynamicEntity>;
+  npcDynamicEntitys: Array<NpcDynamicEntity>;
+  playerDynamicEntitys: Array<PlayerDynamicEntity>;
+}
+
 export interface MapData {
-  dynamicEntitie: {
-    bulletDynamicEntitys: Array<BulletDynamicEntity>;
-    grenadeDynamicEntitys: Array<GrenadeDynamicEntity>;
-    npcDynamicEntitys: Array<NpcDynamicEntity>;
-    playerDynamicEntitys: Array<PlayerDynamicEntity>;
-  };
+  dynamicEntitie: DynamicEntitieList;
   staticEntities: Array<StaticEntity>;
   itemEntities: Array<ItemEntity>; 
 }
@@ -207,7 +209,7 @@ export interface GameConfig {
   npcSpawnHighInterval:number;
   npcSpawnMediumInterval:number;
   npcSpawnLowInterval:number;
-  npcSpawnMaxCountSiglePlayer:number;
+  npcSpawnMaxCountSinglePlayer:number;
   npcSpawnMaxAttempts:number;
   npcSpawnPadding:number;
   
@@ -218,8 +220,10 @@ export interface GameConfig {
   itemSpawnHighInterval:number;
   itemSpawnMediumInterval:number;
   itemSpawnLowInterval:number;
-  itemSpawnMaxCountSiglePlayer:number;
+  itemSpawnMaxCountSinglePlayer:number;
   itemSpawnMaxAttempts:number;
   itemSpawnPadding:number;
+
+  singleplayerMode:boolean;
 }
 

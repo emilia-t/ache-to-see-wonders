@@ -1,4 +1,4 @@
-﻿import type { Point } from '@/components/pixel_war/interface/Interface';
+﻿import type { DynamicEntitieList, GameConfig, Point } from '@/components/pixel_war/interface/Interface';
 import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
@@ -61,7 +61,12 @@ class PlayerDynamicEntity extends DynamicEntity {
     return false;
   }
 
-  override update(dt: number, staticEntities: StaticEntity[]) {
+  override update(
+    dt: number,
+    staticEntities: StaticEntity[],
+    dynamicEntitie: DynamicEntitieList,
+    gameConfig: GameConfig
+  ) {
     if (this.isDead) return;
 
     //cd count

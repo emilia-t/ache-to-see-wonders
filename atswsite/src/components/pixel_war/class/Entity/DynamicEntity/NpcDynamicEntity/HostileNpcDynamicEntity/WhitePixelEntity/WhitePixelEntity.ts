@@ -3,7 +3,7 @@ import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/Dyn
 import type { NpcActionLoopContext } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
-import type { Point } from '@/components/pixel_war/interface/Interface';
+import type { Point, DynamicEntitieList, GameConfig} from '@/components/pixel_war/interface/Interface';
 import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 
 class WhitePixelEntity extends HostileNpcDynamicEntity {
@@ -109,10 +109,15 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
   /**
    * 移动完成后缩短停留时间，停留结束后自动开始下一段正交移动。
    */
-  override update(dt: number, staticEntities: StaticEntity[]): void {
+  override update(
+    dt: number,
+    staticEntities: StaticEntity[],
+    dynamicEntity: DynamicEntitieList,
+    gameConfig: GameConfig
+  ): void {
     const wasMoving = this.isMoving;
 
-    super.update(dt, staticEntities);
+    super.update(dt, staticEntities, dynamicEntity, gameConfig);
 
     if (this.isDead) return;
 

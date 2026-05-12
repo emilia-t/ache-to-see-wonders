@@ -15,6 +15,7 @@ import {
   OrdinaryBulletDynamicEntity,
   PlayerDynamicEntity,
   WhitePixelEntity,
+  RedPixelEntity,
   HealingGemItemEntity
 } from '@/components/pixel_war/class';
 
@@ -32,7 +33,7 @@ const GCFG:GameConfig = {
   npcSpawnHighInterval:4,// 高频刷怪区生成间隔,单位秒
   npcSpawnMediumInterval:8,// 中频刷怪区生成间隔,单位秒
   npcSpawnLowInterval:16,// 低频刷怪区生成间隔,单位秒
-  npcSpawnMaxCountSiglePlayer:30,// 地图中同时存在的 NPC 数量上限,单位个
+  npcSpawnMaxCountSinglePlayer:30,// 地图中同时存在的 NPC 数量上限,单位个
   npcSpawnMaxAttempts:30,// 每次刷怪在目标环形区域内寻找可用生成点的最大尝试次数,单位次
   npcSpawnPadding:12,// 新 NPC 与已有动态实体之间额外保留的安全距离,单位px
   
@@ -43,9 +44,11 @@ const GCFG:GameConfig = {
   itemSpawnHighInterval:4,// 高频生成间隔,单位秒
   itemSpawnMediumInterval:8,// 中频生成间隔,单位秒
   itemSpawnLowInterval:16,// 低频生成间隔,单位秒
-  itemSpawnMaxCountSiglePlayer:10,// 地图中同时存在的 ITEM 数量上限,单位个
+  itemSpawnMaxCountSinglePlayer:10,// 地图中同时存在的 ITEM 数量上限,单位个
   itemSpawnMaxAttempts:30, // 每Tk最大尝试生成次数
   itemSpawnPadding:50,// 生成物品的间距
+
+  singleplayerMode: true
 }
 
 // 主循环计时器配置,interval 单位毫秒；tickTime 单位毫秒时间戳
@@ -347,7 +350,7 @@ const updateDynamicEntities = (deltaTime: number) => {
   };
 
   for (const entity of dynamicEntityList) {
-    entity.update(deltaTime, MAP_DATA.staticEntities);
+    entity.update(deltaTime, MAP_DATA.staticEntities, MAP_DATA.dynamicEntitie, GCFG);
     entity.updateDamageEffect(deltaTime);
     entity.updateDeathEffect(deltaTime);
   }
@@ -467,7 +470,8 @@ const spawnNpcInRingAroundPlayer = (
     if (!canSpawnNpcOrItemAt(position,false,true)) continue;
 
     //暂时只有一个NPC类型
-    const npc = new WhitePixelEntity(position);
+    //const npc = new WhitePixelEntity(position);
+    const npc = new RedPixelEntity(position);
 
     npc.setTarget(position, MAP_DATA.staticEntities, { preferStraight: true });
     MAP_DATA.dynamicEntitie.npcDynamicEntitys.push(npc);
@@ -492,7 +496,7 @@ const updateNpcSpawnTimer = (
 ) => {
   let nextTimer = timer - deltaTime;//global
   //deltaTime >= nextTimer
-  while (nextTimer <= 0 && MAP_DATA.dynamicEntitie.npcDynamicEntitys.length < GCFG.npcSpawnMaxCountSiglePlayer) {
+  while (nextTimer <= 0 && MAP_DATA.dynamicEntitie.npcDynamicEntitys.length < GCFG.npcSpawnMaxCountSinglePlayer) {
     spawnNpcInRingAroundPlayer(playerEntity, minRadius, maxRadius);
     nextTimer += interval;
   }
@@ -509,7 +513,7 @@ const updateItemSpawnTimer = (
 ) => {
   let nextTimer = timer - deltaTime;//global
   //deltaTime >= nextTimer
-  while (nextTimer <= 0 && MAP_DATA.dynamicEntitie.npcDynamicEntitys.length < GCFG.npcSpawnMaxCountSiglePlayer) {
+  while (nextTimer <= 0 && MAP_DATA.dynamicEntitie.npcDynamicEntitys.length < GCFG.npcSpawnMaxCountSinglePlayer) {
     spawnItemInRingAroundPlayer(playerEntity, minRadius, maxRadius);
     nextTimer += interval;
   }
@@ -520,10 +524,10 @@ const updateItemSpawnTimer = (
  * 玩家周围随机刷新 NPC
  * 0-200px 为禁刷区,200-400px 为高频区,400-800px 为中频区,800-1600px 为低频区
  */
-const generateNpcAroundPlayerSigle = (deltaTime: number) => {
+const generateNpcAroundPlayerSingle = (deltaTime: number) => {
   const playerEntity = MAP_DATA.dynamicEntitie.playerDynamicEntitys[0];
   if (!playerEntity || playerEntity.isDead) return;
-  if (MAP_DATA.dynamicEntitie.npcDynamicEntitys.length >= GCFG.npcSpawnMaxCountSiglePlayer) return;
+  if (MAP_DATA.dynamicEntitie.npcDynamicEntitys.length >= GCFG.npcSpawnMaxCountSinglePlayer) return;
 
   npcSpawnHighTimer = updateNpcSpawnTimer(
     npcSpawnHighTimer,
@@ -557,10 +561,10 @@ const generateNpcAroundPlayerSigle = (deltaTime: number) => {
  * 玩家周围随机刷新 物品
  * 0-200px 为禁刷区,200-400px 为高频区,400-800px 为中频区,800-1600px 为低频区
  */
-const generateItemAroundPlayerSigle = (deltaTime: number) => {
+const generateItemAroundPlayerSingle = (deltaTime: number) => {
   const playerEntity = MAP_DATA.dynamicEntitie.playerDynamicEntitys[0];
   if (!playerEntity || playerEntity.isDead) return;
-  if (MAP_DATA.itemEntities.length >= GCFG.itemSpawnMaxCountSiglePlayer) return;
+  if (MAP_DATA.itemEntities.length >= GCFG.itemSpawnMaxCountSinglePlayer) return;
 
   itemSpawnHighTimer = updateItemSpawnTimer(
     itemSpawnHighTimer,
@@ -596,8 +600,8 @@ const updateGame = (deltaTime: number) => {
   updateDynamicEntities(deltaTime);
   updateDynamicEntityItemPickups();
   updateBulletEntities(deltaTime);
-  generateNpcAroundPlayerSigle(deltaTime);
-  generateItemAroundPlayerSigle(deltaTime);
+  generateNpcAroundPlayerSingle(deltaTime);
+  generateItemAroundPlayerSingle(deltaTime);
   removeFinishedDeadDynamicEntities();
 };
 ////////////////////

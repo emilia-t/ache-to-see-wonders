@@ -19,6 +19,7 @@ export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntit
 // HostileNpcDynamicEntity and its subclasses
 export { HostileNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
 export { WhitePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelEntity';
+export { RedPixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/RedPixelEntity/RedPixelEntity';
 // NeutralNpcDynamicEntity
 export { NeutralNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/NeutralNpcDynamicEntity';
 // PlayerDynamicEntity
@@ -54,7 +55,8 @@ export const PrototypeChain = {
       "NpcDynamicEntity": {
         "FriendlyNpcDynamicEntity": "FriendlyNpcDynamicEntity",
         "HostileNpcDynamicEntity": {
-          "WhitePixelEntity": "WhitePixelEntity"
+          "WhitePixelEntity": "WhitePixelEntity",
+          "RedPixelEntity": "RedPixelEntity"
         },
         "NeutralNpcDynamicEntity": "NeutralNpcDynamicEntity"
       },
