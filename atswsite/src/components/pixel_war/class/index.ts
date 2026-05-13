@@ -13,6 +13,7 @@ export { GrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntit
 export { FragGrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/FragGrenadeDynamicEntity/FragGrenadeDynamicEntity';
 export { SmokeGrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/SmokeGrenadeDynamicEntity/SmokeGrenadeDynamicEntity';
 export { StunGrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/StunGrenadeDynamicEntity/StunGrenadeDynamicEntity';
+export { RedPixelBombEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/RedPixelBombEntity/RedPixelBombEntity';
 // NpcDynamicEntity and its subclasses
 export { NpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
@@ -50,7 +51,8 @@ export const PrototypeChain = {
       "GrenadeDynamicEntity": {
         "FragGrenadeDynamicEntity": "FragGrenadeDynamicEntity",
         "SmokeGrenadeDynamicEntity": "SmokeGrenadeDynamicEntity",
-        "StunGrenadeDynamicEntity": "StunGrenadeDynamicEntity"
+        "StunGrenadeDynamicEntity": "StunGrenadeDynamicEntity",
+        "RedPixelBombEntity": "RedPixelBombEntity"
       },
       "NpcDynamicEntity": {
         "FriendlyNpcDynamicEntity": "FriendlyNpcDynamicEntity",

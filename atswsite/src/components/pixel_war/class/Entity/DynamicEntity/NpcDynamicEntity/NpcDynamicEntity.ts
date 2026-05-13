@@ -1,5 +1,6 @@
 ﻿import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 import type { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/BulletDynamicEntity';
+import { GrenadeDynamicEntity } from '@/components/pixel_war/class';
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { Point } from '@/components/pixel_war/interface/Interface';
@@ -9,9 +10,12 @@ export type NpcActionLoopContext = {
   deltaTime: number;
   staticEntities: StaticEntity[];
   spawnBullet: (bullet: BulletDynamicEntity) => void;
+  spawnGrenade: (grenade: GrenadeDynamicEntity) => void;
 };
 
 abstract class NpcDynamicEntity extends DynamicEntity {
+  static GENERATE_WEIGHT = 1;// (0,1]
+
   attitude: NpcAttitude; // 友好/中立/敌对
   pickupRange: number; // 拾取范围
 

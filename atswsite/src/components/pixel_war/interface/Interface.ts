@@ -225,5 +225,6 @@ export interface GameConfig {
   itemSpawnPadding:number;
 
   singleplayerMode:boolean;
+
 }
 

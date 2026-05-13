@@ -16,8 +16,11 @@ import {
   PlayerDynamicEntity,
   WhitePixelEntity,
   RedPixelEntity,
-  HealingGemItemEntity
+  RedPixelBombEntity,
+  HealingGemItemEntity,
+  GrenadeDynamicEntity
 } from '@/components/pixel_war/class';
+import { RedIntegerFormat } from 'three';
 
 ////////////////////
 // 常量区-->
@@ -72,6 +75,23 @@ const MAP_DATA: MapData = {
   staticEntities: [],
   itemEntities: []
 };
+// 生成权重
+const SPAWNABLE_NPC_CLASSES = [
+  RedPixelEntity,
+  WhitePixelEntity
+  // more
+] as const;
+
+// 预先计算每个 NPC 的权重,并验证权重是否合法
+const NPC_WEIGHTS = SPAWNABLE_NPC_CLASSES.map((ctor) => {
+  const weight = (ctor as any).GENERATE_WEIGHT; // 读取静态属性
+  if (typeof weight !== 'number' || weight <= 0 || weight > 1) {
+    throw new Error(
+      `NPC class ${ctor.name} must have a static GENERATE_WEIGHT property in (0,1]`
+    );
+  }
+  return { ctor, weight };
+});
 ////////////////////
 //<--常量区
 ////////////////////
@@ -219,8 +239,12 @@ const updateDynamicEntityItemPickups = (): boolean => {
   return pickedAny;
 };
 
-const spawnDynamicEntityBullet = (bullet: BulletDynamicEntity) => {
+const spawnBulletDynamicEntity = (bullet: BulletDynamicEntity) => {
   MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(bullet);
+};
+
+const spawnGrenadeDynamicEntity = (grenade: GrenadeDynamicEntity) => {
+  MAP_DATA.dynamicEntitie.grenadeDynamicEntitys.push(grenade);
 };
 
 const removeFinishedDeadDynamicEntities = (): boolean => {
@@ -268,6 +292,21 @@ const updateBulletEntities = (deltaTime: number): boolean => {
   MAP_DATA.dynamicEntitie.bulletDynamicEntitys = MAP_DATA.dynamicEntitie.bulletDynamicEntitys.filter(bullet => !bullet.shouldRemove);
   return changed || oldLength !== MAP_DATA.dynamicEntitie.bulletDynamicEntitys.length;
 };
+
+
+const updateGrenadeEntities = (deltaTime: number): boolean => {
+  if (MAP_DATA.dynamicEntitie.grenadeDynamicEntitys.length === 0) return false;
+
+  let changed = false;
+  for (const grenade of MAP_DATA.dynamicEntitie.grenadeDynamicEntitys) {
+    grenade.update(deltaTime, MAP_DATA.staticEntities,MAP_DATA.dynamicEntitie,GCFG);
+  }
+
+  const oldLength = MAP_DATA.dynamicEntitie.grenadeDynamicEntitys.length;
+  MAP_DATA.dynamicEntitie.grenadeDynamicEntitys = MAP_DATA.dynamicEntitie.grenadeDynamicEntitys.filter(grenade => !grenade.isDead);
+  return changed || oldLength !== MAP_DATA.dynamicEntitie.grenadeDynamicEntitys.length;
+};
+
 
 const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
 
@@ -346,7 +385,8 @@ const updateDynamicEntities = (deltaTime: number) => {
   const actionLoopContext = {
     deltaTime,
     staticEntities: MAP_DATA.staticEntities,
-    spawnBullet: spawnDynamicEntityBullet,
+    spawnBullet: spawnBulletDynamicEntity,
+    spawnGrenade: spawnGrenadeDynamicEntity
   };
 
   for (const entity of dynamicEntityList) {
@@ -467,12 +507,11 @@ const spawnNpcInRingAroundPlayer = (
 ): boolean => {
   for (let i = 0; i < GCFG.npcSpawnMaxAttempts; i++) {
     const position = getRandomPointInRing(playerEntity.position, minRadius, maxRadius);
-    if (!canSpawnNpcOrItemAt(position,false,true)) continue;
+    if (!canSpawnNpcOrItemAt(position, false, true)) continue;
 
-    //暂时只有一个NPC类型
-    //const npc = new WhitePixelEntity(position);
-    const npc = new RedPixelEntity(position);
-
+    // 根据权重随机选择一个 NPC 类型
+    const NpcCtor = selectRandomNpcCtor();
+    const npc = new NpcCtor(position);
     npc.setTarget(position, MAP_DATA.staticEntities, { preferStraight: true });
     MAP_DATA.dynamicEntitie.npcDynamicEntitys.push(npc);
     return true;
@@ -480,11 +519,22 @@ const spawnNpcInRingAroundPlayer = (
   return false;
 };
 
+/**
+ * 根据静态权重随机选择一个 NPC 构造函数
+ * 权重越高，被选中的概率越大
+ */
+const selectRandomNpcCtor = (): new (position: Point) => NpcDynamicEntity => {
+  // 计算总权重（注意每个权重 <=1，总和可能小于 1，但无影响）
+  const totalWeight = NPC_WEIGHTS.reduce((sum, { weight }) => sum + weight, 0);
+  let random = Math.random() * totalWeight;
+  for (const { ctor, weight } of NPC_WEIGHTS) {
+    if (random < weight) return ctor;
+    random -= weight;
+  }
+  // fallback（理论上不会到达）
+  return NPC_WEIGHTS[0].ctor;
+};
 
-
-const spawnItemAroundPlayer = (deltaTime: number) => {
-  
-}
 
 const updateNpcSpawnTimer = (
   timer: number,
@@ -600,6 +650,7 @@ const updateGame = (deltaTime: number) => {
   updateDynamicEntities(deltaTime);
   updateDynamicEntityItemPickups();
   updateBulletEntities(deltaTime);
+  updateGrenadeEntities(deltaTime);
   generateNpcAroundPlayerSingle(deltaTime);
   generateItemAroundPlayerSingle(deltaTime);
   removeFinishedDeadDynamicEntities();

@@ -1,100 +1,24 @@
-import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
+import { HostileNpcDynamicEntity } from '@/components/pixel_war/class';
+import { RedPixelBombEntity } from '@/components/pixel_war/class';
 import type { NpcActionLoopContext } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { GameConfig, Point } from '@/components/pixel_war/interface/Interface';
 import type { EntityDebugFlags, DynamicEntitieList } from '@/components/pixel_war/interface/Interface';
-import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
-
-// 用于炸弹获取所有动态实体，由 Service 在初始化时注入
-let dynamicEntitiesProvider: (() => DynamicEntity[]) | null = null;
-
-export function setDynamicEntitiesProviderForRedPixel(provider: () => DynamicEntity[]) {
-  dynamicEntitiesProvider = provider;
-}
-
-/**
- * 黑像素自毁时生成的炸弹，短暂延迟后对范围内所有动态实体造成伤害
- */
-class RedPixelBombEntity extends DynamicEntity {
-  private countdown: number;
-  private explosionRadius: number;
-  private explosionDamage: number;
-  private ownerId: number;
-
-  constructor(
-    position: Point,
-    ownerId: number,
-    countdown = 0.5,
-    radius = 80,
-    damage = 40
-  ) {
-    // kind 暂时用 'grenade'，方便引擎按动态实体处理
-    super(position, 10, 10, '', 'RedPixelBomb', 'grenade' as any, 'red_pixel_bomb');
-    this.ownerId = ownerId;
-    this.countdown = countdown;
-    this.explosionRadius = radius;
-    this.explosionDamage = damage;
-    this.isMoving = false;
-    this.health = 1;
-    this.healthMax = 1;
-    // 炸弹不可见，只用于逻辑
-    this.fillColor = 'transparent';
-    this.strokeColor = 'transparent';
-  }
-
-  update(
-    dt: number,
-    staticEntities: StaticEntity[],
-    dynamicEntitie: DynamicEntitieList
-  ): void {
-    if (this.isDead) return;
-
-    this.countdown -= dt;
-    if (this.countdown <= 0) {
-      this.explode();
-    }
-  }
-
-  private explode(): void {
-    if (this.isDead) return;
-
-    // 标记为死亡，下一帧由 Service 清理
-    this.isDead = true;
-    this.deathEffectTimer = 0;
-
-    // 范围伤害
-    if (!dynamicEntitiesProvider) return;
-    const entities = dynamicEntitiesProvider();
-    for (const entity of entities) {
-      if (entity.isDead) continue;
-      if (entity.id === this.ownerId) continue; // 避免伤害已经消失的生成者
-      const dist = Math.hypot(
-        entity.position.x - this.position.x,
-        entity.position.y - this.position.y
-      );
-      if (dist <= this.explosionRadius) {
-        entity.applyDamage(this.explosionDamage);
-      }
-    }
-  }
-
-  draw(): void {
-    // 炸弹自身不渲染
-  }
-}
 
 /**
  * 自走爆炸敌人：
  * - 向玩家移动，靠近到爆炸范围时立刻引爆
  * - 引爆前进入预警状态，黑白闪烁
  * - 引爆时在自身位置生成一枚延迟炸弹
+ * - 若被其他方式击杀（如玩家子弹），死亡时也会生成炸弹
  */
 class RedPixelEntity extends HostileNpcDynamicEntity {
   static readonly WIDTH = 25;
   static readonly HEIGHT = 25;
+  static GENERATE_WEIGHT = 0.1;
 
-  private playerPosition:Point | null = null;
+  private playerPosition: Point | null = null;
 
   private static readonly EXPLODE_RANGE = 60;   // 进入此距离直接爆炸
   private static readonly WARN_RANGE = 140;     // 进入此距离开始闪烁警告
@@ -102,6 +26,9 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
   // 用于闪烁的计时器
   private flashAccumulator: number = 0;
   private isFlashing: boolean = false;
+
+  // 防止死亡时重复生成炸弹
+  private hasSpawnedDeathBomb: boolean = false;
 
   constructor(position: Point) {
     super(position, RedPixelEntity.WIDTH, RedPixelEntity.HEIGHT, '', 'RedPixel', 0, 'red_pixel');
@@ -140,56 +67,52 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     gameConfig: GameConfig
   ): void {
     if (this.isDead) return;
-
     // 常规移动更新
     super.update(dt, staticEntities, dynamicEntity, gameConfig);
 
     if (this.isDead) return;
 
-    let playerPos:Point | null = null;
-    if (gameConfig.singleplayerMode){//单人模式下追玩家0
-        const singlePlayer = dynamicEntity.playerDynamicEntitys[0];
-        if(singlePlayer && !singlePlayer.isDead){
-            playerPos={
-                x:singlePlayer.position.x,
-                y:singlePlayer.position.y
-            };
-            this.playerPosition=playerPos;
+    let playerPos: Point | null = null;
+    if (gameConfig.singleplayerMode) {
+      // 单人模式下追玩家0
+      const singlePlayer = dynamicEntity.playerDynamicEntitys[0];
+      if (singlePlayer && !singlePlayer.isDead) {
+        playerPos = {
+          x: singlePlayer.position.x,
+          y: singlePlayer.position.y,
+        };
+        this.playerPosition = playerPos;
+      }
+    } else {
+      // 多人模式下追最近的玩家
+      let closestDist = Infinity;
+      let closestPlayerPos: Point | null = null;
+      for (const player of dynamicEntity.playerDynamicEntitys) {
+        if (player.isDead) continue;
+        const dist = Math.hypot(
+          this.position.x - player.position.x,
+          this.position.y - player.position.y
+        );
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestPlayerPos = { x: player.position.x, y: player.position.y };
         }
-    }
-    else {
-        // 多人模式下追最近的玩家
-        let closestDist = Infinity;
-        let closestPlayerPos: Point | null = null;
-        for (const player of dynamicEntity.playerDynamicEntitys) {
-            if (player.isDead) continue;
-            const dist = Math.hypot(
-                this.position.x - player.position.x,
-                this.position.y - player.position.y
-            );
-            if (dist < closestDist) {
-                closestDist = dist;
-                closestPlayerPos = { x: player.position.x, y: player.position.y };
-            }
-        }
-        if (closestPlayerPos) {
-            playerPos = closestPlayerPos;
-            this.playerPosition = playerPos;
-        }
-    }
-
-
-    if(!playerPos){
-        return;
+      }
+      if (closestPlayerPos) {
+        playerPos = closestPlayerPos;
+        this.playerPosition = playerPos;
+      }
     }
 
-    const distToPlayer = Math.hypot(
-      this.position.x - playerPos.x,
-      this.position.y - playerPos.y
-    );
+    if (!playerPos) {
+      return;
+    }
+
+    const distToPlayer = Math.hypot(this.position.x - playerPos.x, this.position.y - playerPos.y);
 
     // 判断是否进入预警（闪烁）范围
-    this.isFlashing = distToPlayer <= RedPixelEntity.WARN_RANGE && distToPlayer > RedPixelEntity.EXPLODE_RANGE;
+    this.isFlashing =
+      distToPlayer <= RedPixelEntity.WARN_RANGE && distToPlayer > RedPixelEntity.EXPLODE_RANGE;
 
     if (this.isFlashing) {
       this.flashAccumulator += dt;
@@ -197,9 +120,14 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
       this.flashAccumulator = 0;
     }
 
-    // 进入爆炸范围 -> 自毁
+    // 进入爆炸范围 -> 自毁并生成炸弹
     if (distToPlayer <= RedPixelEntity.EXPLODE_RANGE) {
       this.selfDestruct();
+
+      // 生成炸弹实体（直接通过 dynamicEntity 添加）
+      const bomb = new RedPixelBombEntity({ ...this.position }, this.id);
+      dynamicEntity.grenadeDynamicEntitys.push(bomb);
+      this.hasSpawnedDeathBomb = true; // 标记炸弹已生成
     }
   }
 
@@ -209,13 +137,6 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     // 触发死亡流程（保持 dead 状态，但不等待死亡特效完全结束）
     this.triggerDeath();
     this.deathEffectTimer = 0; // 立刻可以被清理
-
-    // 生成炸弹实体，推入待处理列表，由 Service 在下一帧注入动态实体列表
-    const bomb = new RedPixelBombEntity(
-      { ...this.position },
-      this.id
-    );
-    RedPixelEntity.pendingBombs.push(bomb);
   }
 
   // 绘制时处理闪烁效果：预警状态下黑白交替
@@ -265,37 +186,23 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     ctx.fillStyle = '#e74c3c';
     ctx.fillRect(barX, topY, barWidth * healthRatio, barHeight);
 
-    // 调试信息（复用 WhitePixel 的绘制模式）
+    // 调试信息
     if (debugFlags) {
       if (debugFlags.showTag) {
         ctx.font = '10px Arial';
         ctx.fillStyle = '#ffff00';
         ctx.fillText(this.name, screenPos.x, screenPos.y + halfH + 20);
       }
-      // 省略其余调试绘制，可参考 WhitePixelEntity 进行扩展
     }
   }
 
-  // ---------- 静态辅助 ----------
-
-  // 待注入动态实体列表的炸弹队列，Service 应在 updateGame 开始时取出并加入 MAP_DATA
-  static pendingBombs: RedPixelBombEntity[] = [];
-
-  override action(context: NpcActionLoopContext): void {
-      
-  }
-
+  // 动作循环
   override actionLoop(context: NpcActionLoopContext): void {
-      
+    
   }
-
-  override actionBefore(context: NpcActionLoopContext): void {
-      
-  }
-
-  override actionAfter(context: NpcActionLoopContext): void {
-      
-  }
+  override action(context: NpcActionLoopContext): void {}
+  override actionBefore(context: NpcActionLoopContext): void {}
+  override actionAfter(context: NpcActionLoopContext): void {}
 }
 
 export { RedPixelEntity, RedPixelBombEntity };

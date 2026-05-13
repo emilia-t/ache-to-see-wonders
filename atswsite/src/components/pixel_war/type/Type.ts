@@ -4,7 +4,7 @@ export type PerspectiveMode = 'first_person' | 'third_person';
 
 export type DynamicEntityKind = 'npc' | 'player' | 'grenade' | 'bullet';//动态实体的种类
 export type NpcAttitude = 'friendly' | 'neutral' | 'hostile';//友好、中立、敌对
-export type GrenadePurpose = 'smoke' | 'frag' | 'stun';//烟雾弹、破片手雷、闪光弹
+export type GrenadePurpose = 'smoke' | 'frag' | 'stun' | 'bomb';//烟雾弹、破片手雷、闪光弹、炸弹
 export type BulletRangeType = 'short' | 'long';//近程弹、远程弹
 
 export type BulletTag = 'ordinary_bullet' | 'laser_bullet' | 'sniper_bullet' | 'buckshot_bullet';//普通弹、激光弹、狙击弹、霰弹

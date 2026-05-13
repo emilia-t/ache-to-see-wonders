@@ -33,7 +33,7 @@ import {
   CurbStaticEntity,
   ItemEntity,
   HealingGemItemEntity,
-  DynamicEntity,
+  RedPixelBombEntity,
   NpcDynamicEntity,
   PlayerDynamicEntity,
   WhitePixelEntity,
@@ -42,7 +42,8 @@ import {
   BuckshotBulletDynamicEntity,
   SniperBulletDynamicEntity,
   LaserBulletDynamicEntity,
-  OrdinaryBulletDynamicEntity
+  OrdinaryBulletDynamicEntity,
+  GrenadeDynamicEntity
 } from '@/components/pixel_war/class';
 
 import ServiceWorker from '@/components/pixel_war/service/Service?worker';
@@ -100,7 +101,7 @@ const applyMapDataSnapshot = (mapData: MapData) => {
   npcEntityList = hydrateList(mapData.dynamicEntitie.npcDynamicEntitys) as NpcDynamicEntity[];
   const playerEntityList = hydrateList(mapData.dynamicEntitie.playerDynamicEntitys) as PlayerDynamicEntity[];
   playerEntity = playerEntityList[0] || null;
-
+  grenadeEntityList = hydrateList(mapData.dynamicEntitie.grenadeDynamicEntitys) as GrenadeDynamicEntity[];
   bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
 
   // 处理死亡实体的特效
@@ -196,6 +197,7 @@ let renderEntityList: Array<Entity> = [];                   // 要渲染的实�
 let staticEntityList: StaticEntity[] = [];                  // 静态实体列表
 let npcEntityList: NpcDynamicEntity[] = [];                 // NPC实体列表
 let bulletEntityList: BulletDynamicEntity[] = [];           // 子弹动态实体列表
+let grenadeEntityList: GrenadeDynamicEntity[] = [];
 let itemEntityList: ItemEntity[] = [];                      // 物品实体列表
 let playerEntity: PlayerDynamicEntity | null = null;
 
@@ -373,8 +375,15 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
     }
   }
   else{//grenade
-    //empty
-    return new EmptyEntity();
+    const grenadeTag = snapshot.tag;
+    switch (grenadeTag){
+      case 'red_pixel_bomb':{
+        return new RedPixelBombEntity(
+          snapshot.position,
+          snapshot.ownerId
+        );
+      }
+    }
   }
   return new EmptyEntity();
 };
@@ -491,6 +500,7 @@ const startSetting = () => {
   staticEntityList = [];
   npcEntityList = [];
   bulletEntityList = [];
+  grenadeEntityList = [];
   itemEntityList = [];
   renderEntityList = [];
   playerFireMode = false;
@@ -907,6 +917,10 @@ const drawDebugBoard = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEleme
   CtxUi.fillText(`Bullet entities: ${bulletEntityList.length}`, x + 12, textY);
   textY += lineHeight;
 
+  // grenade实体数量
+  CtxUi.fillText(`Grenade entities: ${grenadeEntityList.length}`, x + 12, textY);
+  textY += lineHeight;
+
   // 物品实体数量
   CtxUi.fillText(`Item entities: ${itemEntityList.length}`, x + 12, textY);
 
@@ -1119,6 +1133,12 @@ const drawEntities = () => {
       entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
     }
   }
+  // 绘制炸弹之类
+  for(const entity of grenadeEntityList){
+    if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
+      entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
+    }
+  }
   // 绘制玩家实体
   if (playerEntity) {
     if (playerEntity.isInViewport(worldToScreen, canvasSize, margin)) {
@@ -1144,13 +1164,13 @@ const drawUI = () => {
  * 加载所有实体的纹理
  */
 const loadEntityTextures = async () => {
-  const allEntities = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList];
+  const allEntities = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList];
   await Promise.all(allEntities.map(e => e.loadTexture()));
   drawEntities(); // 加载完成后重绘
 };
 
 const refreshRenderEntityList = () => {
-  renderEntityList = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList];
+  renderEntityList = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList];
 };
 
 

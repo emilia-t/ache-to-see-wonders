@@ -9,6 +9,7 @@ import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interfac
 class WhitePixelEntity extends HostileNpcDynamicEntity {
   static readonly WIDTH = 25;
   static readonly HEIGHT = 25;
+  static GENERATE_WEIGHT = 0.8;
   private static readonly ACTION_INTERVAL = 1;
 
   private isActionLoopRunning: boolean;
