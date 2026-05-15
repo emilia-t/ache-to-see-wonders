@@ -123,6 +123,14 @@ class PlayerDynamicEntity extends DynamicEntity {
       };
       this.lastMoveDirection = { ...this.facingDirection };
     }
+
+    // next_(2026-05-15)
+    // 检测与其他NPC是否有碰撞
+    // 如果有碰撞则检测碰撞面(初始状态有六个面)
+    // 将npc附加到玩家的 servants 
+    // npc.ownerId = player.id
+    // player 的碰撞检测要额外加上servants(尤其是移动时)
+    // 
   }
 
   override updateCrowdStuckState(_dt: number) {}

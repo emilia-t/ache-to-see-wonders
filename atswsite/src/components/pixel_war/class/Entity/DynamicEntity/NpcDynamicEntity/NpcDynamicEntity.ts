@@ -14,6 +14,7 @@ export type NpcActionLoopContext = {
 };
 
 abstract class NpcDynamicEntity extends DynamicEntity {
+  ownerId: number | null;
   static GENERATE_WEIGHT = 1;// (0,1]
 
   attitude: NpcAttitude; // 友好/中立/敌对
@@ -32,6 +33,7 @@ abstract class NpcDynamicEntity extends DynamicEntity {
     super(position, width, height, texturePath, name, 'npc', tag);
     this.attitude = attitude;
     this.pickupRange = pickupRange;
+    this.ownerId = null;
   }
 
   abstract tryPickupItem(item: ItemEntity): boolean;
