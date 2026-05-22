@@ -61,8 +61,16 @@ export interface CachedImage {
   offsetX: number;
   offsetY: number;
 }
+
+//碰撞箱
+// export interface CollisionBox {
+//   x: number;
+//   y: number;
+//   width: number;
+//   height: number;
+// }
 export interface CollisionBox {
-  x: number;
+  x: number;// 碰撞箱的参照点通常是实体的中心点
   y: number;
   width: number;
   height: number;
@@ -228,3 +236,44 @@ export interface GameConfig {
 
 }
 
+// 定义单个从者的结构
+export interface Servant {
+    // 行索引（0-8）
+    row: number;
+    // 列索引（0-8）
+    col: number;
+    // 此格是否有从者,默认false
+    exist: boolean;
+    // npc的实体id,默认为-1
+    npcId: number;
+}
+
+// 定义一行从者：必须恰好包含 9 个 Sit，且长度为 9
+export interface ServantRow extends Array<Servant> {
+    length: 9;// 固定长度
+    0: Servant; 
+    1: Servant;
+    2: Servant;
+    3: Servant;
+    4: Servant;
+    5: Servant;
+    6: Servant;
+    7: Servant;
+    8: Servant;
+    [index: number]: Servant;// 索引签名 确保所有元素均为 Servant
+}
+
+// 定义整个 9×9 从者网格：必须恰好包含 9 个 Row，且长度为 9
+export interface ServantGrid extends Array<ServantRow> {
+    length: 9;
+    0: ServantRow;
+    1: ServantRow;
+    2: ServantRow;
+    3: ServantRow;
+    4: ServantRow;
+    5: ServantRow;
+    6: ServantRow;
+    7: ServantRow;
+    8: ServantRow;
+    [index: number]: ServantRow;
+}

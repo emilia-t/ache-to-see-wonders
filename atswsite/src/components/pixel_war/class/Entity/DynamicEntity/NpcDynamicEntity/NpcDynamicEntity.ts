@@ -14,23 +14,24 @@ export type NpcActionLoopContext = {
 };
 
 abstract class NpcDynamicEntity extends DynamicEntity {
-  ownerId: number | null;
-  static GENERATE_WEIGHT = 1;// (0,1]
 
+  static readonly WIDTH = 25;
+  static readonly HEIGHT = 25;
+  static GENERATE_WEIGHT = 1;//随机刷新的权重 (0,1]
+
+  ownerId: number | null;
   attitude: NpcAttitude; // 友好/中立/敌对
   pickupRange: number; // 拾取范围
 
   constructor(
     position: Point,
-    width: number,
-    height: number,
     texturePath: string,
     name: string,
     attitude: NpcAttitude,
     pickupRange: number,
     tag: string
   ) {
-    super(position, width, height, texturePath, name, 'npc', tag);
+    super(position, NpcDynamicEntity.WIDTH, NpcDynamicEntity.HEIGHT, texturePath, name, 'npc', tag);
     this.attitude = attitude;
     this.pickupRange = pickupRange;
     this.ownerId = null;
@@ -42,6 +43,7 @@ abstract class NpcDynamicEntity extends DynamicEntity {
   abstract action(context: NpcActionLoopContext): void;
   abstract actionBefore(context: NpcActionLoopContext): void;
   abstract actionAfter(context: NpcActionLoopContext): void;
+  
 }
 
 export { NpcDynamicEntity };

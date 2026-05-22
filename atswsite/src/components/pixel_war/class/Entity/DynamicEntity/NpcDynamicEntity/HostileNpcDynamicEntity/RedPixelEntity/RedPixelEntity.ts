@@ -14,8 +14,6 @@ import type { EntityDebugFlags, DynamicEntitieList } from '@/components/pixel_wa
  * - 若被其他方式击杀（如玩家子弹），死亡时也会生成炸弹
  */
 class RedPixelEntity extends HostileNpcDynamicEntity {
-  static readonly WIDTH = 25;
-  static readonly HEIGHT = 25;
   static GENERATE_WEIGHT = 0.1;
 
   private playerPosition: Point | null = null;
@@ -31,7 +29,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
   private hasSpawnedDeathBomb: boolean = false;
 
   constructor(position: Point) {
-    super(position, RedPixelEntity.WIDTH, RedPixelEntity.HEIGHT, '', 'RedPixel', 0, 'red_pixel');
+    super(position, '', 'RedPixel', 0, 'red_pixel');
     this.fillColor = '#ff1313';
     this.strokeColor = '#444444';
     this.health = 60;

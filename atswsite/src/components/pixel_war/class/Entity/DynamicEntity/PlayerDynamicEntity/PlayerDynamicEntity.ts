@@ -1,5 +1,11 @@
-﻿import type { DynamicEntitieList, GameConfig, Point } from '@/components/pixel_war/interface/Interface';
-import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
+﻿import type { 
+  DynamicEntitieList,
+  GameConfig,
+  Point,
+  EntityDebugFlags,
+  ServantGrid
+} from '@/components/pixel_war/interface/Interface';
+
 import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
@@ -15,12 +21,15 @@ class PlayerDynamicEntity extends DynamicEntity {
     playerMoveS: false,
     playerMoveD: false
   };
-  isme: boolean;
-
+  
   readonly personRule = {
     fireCooldownNow: 0,//计算数值单位秒
     fireCooldownMax: 0.12//cd最大值单位秒
   };
+
+  isme: boolean;
+
+  servantGrid:ServantGrid|null = null;
 
   constructor(
     position: Point,
@@ -38,6 +47,25 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.health = 100;
     this.healthMax = 100;
     this.movementPassion = 1;
+    /**
+     * 初始化从者网格start
+     */
+    this.servantGrid = Array.from(
+      { length: 9 },
+      (_, r) =>
+        Array.from(
+          { length: 9 },
+          (_, c) => ({
+            row: r,
+            col: c,
+            exist: false,
+            npcId: -1
+          })
+        )
+    ) as unknown as ServantGrid;
+    /**
+     * 初始化从者网格end
+     */
     this.stop();
   }
 
@@ -124,13 +152,6 @@ class PlayerDynamicEntity extends DynamicEntity {
       this.lastMoveDirection = { ...this.facingDirection };
     }
 
-    // next_(2026-05-15)
-    // 检测与其他NPC是否有碰撞
-    // 如果有碰撞则检测碰撞面(初始状态有六个面)
-    // 将npc附加到玩家的 servants 
-    // npc.ownerId = player.id
-    // player 的碰撞检测要额外加上servants(尤其是移动时)
-    // 
   }
 
   override updateCrowdStuckState(_dt: number) {}
@@ -146,25 +167,25 @@ class PlayerDynamicEntity extends DynamicEntity {
   }
 
   /**
- * 拾取物品检测
- * @param item 
- * @returns 
- */
-tryPickupItem(item: ItemEntity): boolean {
-  if(item instanceof FoodItemEntity && this.health < this.healthMax){
-    // 添加碰撞/距离检测
-    const distance = Math.hypot(
-      this.position.x - item.position.x,
-      this.position.y - item.position.y
-    );
-    const pickupRadius = (this.width + item.width) / 2; // 玩家和物品半径之和
-    
-    if (distance <= pickupRadius) {
-      return true;
+   * 拾取物品检测
+   * @param item 
+   * @returns 
+   */
+  tryPickupItem(item: ItemEntity): boolean {
+    if(item instanceof FoodItemEntity && this.health < this.healthMax){
+      // 添加碰撞/距离检测
+      const distance = Math.hypot(
+        this.position.x - item.position.x,
+        this.position.y - item.position.y
+      );
+      const pickupRadius = (this.width + item.width) / 2; // 玩家和物品半径之和
+      
+      if (distance <= pickupRadius) {
+        return true;
+      }
     }
+    return false;
   }
-  return false;
-}
 
   /**
    * 拾取物品
@@ -328,6 +349,24 @@ tryPickupItem(item: ItemEntity): boolean {
     /////// 调试信息end
   }
 
+  /**
+   * 重置玩家的从者网格
+   */
+  private resetServantGrid(): void {
+    if(this.servantGrid===null){
+      return;
+    }
+    for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+            this.servantGrid[r][c] = {
+                row: r,
+                col: c,
+                exist: false,
+                npcId: -1
+            };
+        }
+    }
+}
 }
 
 export { PlayerDynamicEntity };

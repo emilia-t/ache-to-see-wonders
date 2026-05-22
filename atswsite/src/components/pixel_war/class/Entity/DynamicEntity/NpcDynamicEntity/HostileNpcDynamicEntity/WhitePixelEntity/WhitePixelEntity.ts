@@ -7,8 +7,6 @@ import type { Point, DynamicEntitieList, GameConfig} from '@/components/pixel_wa
 import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 
 class WhitePixelEntity extends HostileNpcDynamicEntity {
-  static readonly WIDTH = 25;
-  static readonly HEIGHT = 25;
   static GENERATE_WEIGHT = 0.8;
   private static readonly ACTION_INTERVAL = 1;
 
@@ -16,7 +14,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
   private actionCooldownRemaining: number;
 
   constructor(position: Point) {
-    super(position, WhitePixelEntity.WIDTH, WhitePixelEntity.HEIGHT, '', '', 0, 'white_pixel');
+    super(position, '', '', 0, 'white_pixel');
     this.fillColor = '#ffffff';
     this.strokeColor = '#bebebe';
     this.health = 100;
