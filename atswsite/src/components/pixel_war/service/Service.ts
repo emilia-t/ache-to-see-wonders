@@ -16,7 +16,6 @@ import {
   PlayerDynamicEntity,
   WhitePixelEntity,
   RedPixelEntity,
-  RedPixelBombEntity,
   HealingGemItemEntity,
   GrenadeDynamicEntity
 } from '@/components/pixel_war/class';
@@ -110,7 +109,7 @@ let itemSpawnLowTimer = GCFG.npcSpawnLowInterval;
 //<--变量区
 ////////////////////
 
-const getNpcPlayerDynamicEntityList = (): DynamicEntity[] => [
+const getNpcPlayerDynamicEntityList = (): (PlayerDynamicEntity | NpcDynamicEntity)[] => [
   ...MAP_DATA.dynamicEntitie.playerDynamicEntitys,
   ...MAP_DATA.dynamicEntitie.npcDynamicEntitys
 ];
@@ -172,7 +171,7 @@ const initMapData = () => {
   MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y: curbHalfside + 25 }));
   MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y: -curbHalfside - 25 }));
 
-  MAP_DATA.dynamicEntitie.playerDynamicEntitys.push(new PlayerDynamicEntity({ x: 0, y: 0 }, 'Player', true));
+  MAP_DATA.dynamicEntitie.playerDynamicEntitys.push(new PlayerDynamicEntity({ x: 0, y: 0 }, createTeamIdLength14(), 'Player', true));
 };
 ////////////////////
 //<--初始化函数区
@@ -181,6 +180,14 @@ const initMapData = () => {
 ////////////////////
 // 游戏逻辑区-->
 ////////////////////
+
+const createTeamIdLength14 = (): number => {
+  let num = Math.floor(Math.random() * 9) + 1;
+  for (let i = 0; i < 13; i++) {
+    num = num * 10 + Math.floor(Math.random() * 10);
+  }
+  return num;
+};
 
 const spawnPlayerBullet = (targetCanvas: Point) => {
   const playerEntity = MAP_DATA.dynamicEntitie.playerDynamicEntitys[0];
@@ -201,7 +208,8 @@ const spawnPlayerBullet = (targetCanvas: Point) => {
         y: playerEntity.position.y + direction.y * spawnDistance,
       },
       direction,
-      playerEntity.id
+      playerEntity.id,
+      playerEntity.teamId
     )
   );
   playerEntity.personRule.fireCooldownNow=playerEntity.personRule.fireCooldownMax;
@@ -272,7 +280,8 @@ const updateBulletEntities = (deltaTime: number): boolean => {
 
     for (const entity of dynamicEntityList) {
       if (entity.isDead) continue;
-      if (entity.id === bullet.ownerId) continue; // 避免自己击杀自己
+      if (bullet.ownerId === entity.id) continue; // 避免自残
+      if (bullet.teamId === entity.teamId) continue; // 避免误伤队友
       const hitDistance = Math.hypot(
         entity.position.x - bullet.position.x,
         entity.position.y - bullet.position.y
@@ -398,6 +407,7 @@ const resolveDynamicEntityCollisions = () => {
                 continue;// RC异常
               }
               entityB.ownerId = entityA.id;
+              entityB.teamId = entityA.teamId;
             } 
           }
         }
@@ -568,7 +578,7 @@ const spawnNpcInRingAroundPlayer = (
 
     // 根据权重随机选择一个 NPC 类型
     const NpcCtor = selectRandomNpcCtor();
-    const npc = new NpcCtor(position);
+    const npc = new NpcCtor(position,null,null);
     npc.setTarget(position, MAP_DATA.staticEntities, { preferStraight: true });
     MAP_DATA.dynamicEntitie.npcDynamicEntitys.push(npc);
     return true;
@@ -580,7 +590,7 @@ const spawnNpcInRingAroundPlayer = (
  * 根据静态权重随机选择一个 NPC 构造函数
  * 权重越高，被选中的概率越大
  */
-const selectRandomNpcCtor = (): new (position: Point) => NpcDynamicEntity => {
+const selectRandomNpcCtor = (): new (position: Point, ownerId: number | null, teamId: number | null) => NpcDynamicEntity => {
   // 计算总权重（注意每个权重 <=1，总和可能小于 1，但无影响）
   const totalWeight = NPC_WEIGHTS.reduce((sum, { weight }) => sum + weight, 0);
   let random = Math.random() * totalWeight;

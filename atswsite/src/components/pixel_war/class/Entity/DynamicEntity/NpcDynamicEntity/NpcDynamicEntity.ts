@@ -20,11 +20,14 @@ abstract class NpcDynamicEntity extends DynamicEntity {
   public static GENERATE_WEIGHT = 1;//随机刷新的权重 (0,1]
 
   public ownerId: number | null;
+  public teamId: number | null;
   public attitude: NpcAttitude; // 友好/中立/敌对
   public pickupRange: number; // 拾取范围
 
   constructor(
     position: Point,
+    ownerId: number | null,
+    teamId: number | null,
     texturePath: string,
     name: string,
     attitude: NpcAttitude,
@@ -34,7 +37,8 @@ abstract class NpcDynamicEntity extends DynamicEntity {
     super(position, NpcDynamicEntity.WIDTH, NpcDynamicEntity.HEIGHT, texturePath, name, 'npc', tag);
     this.attitude = attitude;
     this.pickupRange = pickupRange;
-    this.ownerId = null;
+    this.ownerId = ownerId;
+    this.teamId = teamId;
   }
 
   public abstract tryPickupItem(item: ItemEntity): boolean;

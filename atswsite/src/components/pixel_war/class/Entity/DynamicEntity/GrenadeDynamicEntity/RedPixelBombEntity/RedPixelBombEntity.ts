@@ -21,13 +21,13 @@ export class RedPixelBombEntity extends GrenadeDynamicEntity {
 
   constructor(
     position: Point,
-    ownerId: number,
+    ownerId: number | null,
+    teamId: number | null,
     countdown = 0.5,
     radius = 80,
     damage = 40
   ) {
-    super(position, 10, 10, '', 'RedPixelBomb', 'bomb', 'red_pixel_bomb');
-    this.ownerId = ownerId;
+    super(position, 10, 10, ownerId, teamId, '', 'RedPixelBomb', 'bomb', 'red_pixel_bomb');
     this.countdown = countdown;
     this.explosionRadius = radius;
     this.explosionDamage = damage;

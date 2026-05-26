@@ -27,8 +27,12 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
   // 防止死亡时重复生成炸弹
   private hasSpawnedDeathBomb: boolean = false;
 
-  constructor(position: Point) {
-    super(position, '', 'RedPixel', 0, 'red_pixel');
+  constructor(
+    position: Point,
+    ownerId: number | null,
+    teamId: number | null
+  ) {
+    super(position, ownerId, teamId ,'', 'RedPixel', 0, 'red_pixel');
     this.fillColor = '#ff1313';
     this.strokeColor = '#444444';
     this.health = 60;
@@ -122,7 +126,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
       this.selfDestruct();
 
       // 生成炸弹实体（直接通过 dynamicEntity 添加）
-      const bomb = new RedPixelBombEntity({ ...this.position }, this.id);
+      const bomb = new RedPixelBombEntity({ ...this.position }, this.id, this.teamId);
       dynamicEntity.grenadeDynamicEntitys.push(bomb);
       this.hasSpawnedDeathBomb = true; // 标记炸弹已生成
     }

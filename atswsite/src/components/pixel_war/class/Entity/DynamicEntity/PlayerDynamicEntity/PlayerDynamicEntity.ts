@@ -23,7 +23,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     playerMoveD: false
   };
   
-
+  public teamId: number | null;
   public readonly personRule = {
     fireCooldownNow: 0,//计算数值单位秒
     fireCooldownMax: 0.12//cd最大值单位秒
@@ -34,6 +34,7 @@ class PlayerDynamicEntity extends DynamicEntity {
 
   constructor(
     position: Point,
+    teamId: number | null,
     name: string = 'Player',
     isme: boolean = false
   ) {
@@ -50,6 +51,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.health = 100000;
     this.healthMax = 100000;
     this.movementPassion = 1;
+    this.teamId = teamId;
     /**
      * 初始化从者网格start
      */
@@ -390,6 +392,7 @@ class PlayerDynamicEntity extends DynamicEntity {
    */
   public setServant(row:number,col:number,npcEntityId:number): boolean {
     if(this.servantGrid === null)return false;
+    if(row === 4 && col === 4)return false;
     if(this.trySetServant(row,col,npcEntityId) === false){
       return false;
     }
@@ -463,7 +466,12 @@ class PlayerDynamicEntity extends DynamicEntity {
     const col = 4 - colOffset;
     const row = 4 - rowOffset;
 
-    return { row, col };
+    if(row === 4 && col === 4){
+      return null;
+    }
+    else{
+      return { row, col };
+    }
   }
 
   /**

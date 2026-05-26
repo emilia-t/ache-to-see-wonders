@@ -6,11 +6,14 @@ import type { StaticEntity } from '../../StaticEntity/StaticEntity';
 abstract class GrenadeDynamicEntity extends DynamicEntity {
   public purpose: GrenadePurpose;// 投掷物类型
   public ownerId: number | null;
+  public teamId: number | null;
 
   constructor(
     position: Point,
     width: number,
     height: number,
+    ownerId: number | null,
+    teamId: number | null,
     texturePath: string,
     name: string,
     purpose: GrenadePurpose,
@@ -20,7 +23,8 @@ abstract class GrenadeDynamicEntity extends DynamicEntity {
     this.purpose = purpose;
     this.health = 1;
     this.healthMax = 1;
-    this.ownerId = null;
+    this.ownerId = ownerId;
+    this.teamId = teamId;
   }
 }
 

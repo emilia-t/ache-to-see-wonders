@@ -4,12 +4,14 @@ import type { Point } from '@/components/pixel_war/interface/Interface';
 abstract class HostileNpcDynamicEntity extends NpcDynamicEntity {
   constructor(
     position: Point,
+    ownerId: number | null,
+    teamId: number | null,
     texturePath: string,
     name: string,
     pickupRange: number,
     tag: string
   ) {
-    super(position, texturePath, name, 'hostile', pickupRange, tag);
+    super(position, ownerId, teamId, texturePath, name, 'hostile', pickupRange, tag);
   }
 }
 export { HostileNpcDynamicEntity };

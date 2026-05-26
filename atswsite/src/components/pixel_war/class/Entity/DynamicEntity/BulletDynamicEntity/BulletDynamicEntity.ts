@@ -15,6 +15,7 @@ abstract class BulletDynamicEntity extends DynamicEntity {
   protected velocity: Point;
 
   public ownerId: number | null;
+  public teamId: number | null;
   public shouldRemove: boolean;
   public rangeType: BulletRangeType;// 子弹射程类型（短/长）
   public damage: number;
@@ -23,6 +24,7 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     position: Point,
     direction: Point,
     ownerId: number | null,
+    teamId: number | null,
     rangeType: BulletRangeType,
     name: string = 'Bullet',
     damage: number = BulletDynamicEntity.DEFAULT_DAMAGE,
@@ -44,6 +46,7 @@ abstract class BulletDynamicEntity extends DynamicEntity {
       y: direction.y * BulletDynamicEntity.MOVE_SPEED,
     };
     this.ownerId = ownerId;
+    this.teamId = teamId;
     this.lifetimeRemaining = BulletDynamicEntity.MAX_LIFETIME;
     this.shouldRemove = false;
     this.isMoving = true;

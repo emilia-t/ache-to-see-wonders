@@ -12,8 +12,12 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
   private isActionLoopRunning: boolean;
   private actionCooldownRemaining: number;
 
-  constructor(position: Point) {
-    super(position, '', '', 0, 'white_pixel');
+  constructor(
+    position: Point,
+    ownerId: number | null,
+    teamId: number | null
+  ) {
+    super(position, ownerId, teamId, '', '', 0, 'white_pixel');
     this.fillColor = '#ffffff';
     this.strokeColor = '#bebebe';
     this.health = 100;
@@ -60,7 +64,8 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
           y: this.position.y + direction.y * spawnDistance,
         },
         direction,
-        this.id
+        this.id,
+        this.teamId
       )
     );
   }

@@ -6,11 +6,13 @@ class SmokeGrenadeDynamicEntity extends GrenadeDynamicEntity {
     position: Point,
     width: number,
     height: number,
+    ownerId: number | null,
+    teamId: number | null,
     texturePath: string,
     name: string = 'Smoke Grenade',
     tag: string
   ) {
-    super(position, width, height, texturePath, name, 'smoke', tag);
+    super(position, width, height, ownerId, teamId, texturePath, name, 'smoke', tag);
   }
 
   public draw(ctx: CanvasRenderingContext2D, worldToScreen: (x: number, y: number) => { x: number; y: number; }, canvasSize: { width: number; height: number; }, debugFlags?: EntityDebugFlags): void {

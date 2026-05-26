@@ -333,9 +333,17 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
     const tag = snapshot.tag;
     switch (tag){
       case 'white_pixel':
-        return new WhitePixelEntity(snapshot.position);
+        return new WhitePixelEntity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
       case 'red_pixel':
-        return new RedPixelEntity(snapshot.position);
+        return new RedPixelEntity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
     }
   }
   else if(kind === 'player'){
@@ -349,6 +357,7 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.position,
           H_getBulletDirectionFromSnapshot(snapshot),
           snapshot.ownerId,
+          snapshot.teamId,
           snapshot.name
         );
       case 'laser_bullet':
@@ -356,6 +365,7 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.position,
           H_getBulletDirectionFromSnapshot(snapshot),
           snapshot.ownerId,
+          snapshot.teamId,
           snapshot.name
         );
       case 'sniper_bullet':
@@ -363,6 +373,7 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.position,
           H_getBulletDirectionFromSnapshot(snapshot),
           snapshot.ownerId,
+          snapshot.teamId,
           snapshot.name
         );
       case 'buckshot_bullet':
@@ -370,6 +381,7 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.position,
           H_getBulletDirectionFromSnapshot(snapshot),
           snapshot.ownerId,
+          snapshot.teamId,
           snapshot.name
         );
     }
@@ -380,7 +392,8 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
       case 'red_pixel_bomb':{
         return new RedPixelBombEntity(
           snapshot.position,
-          snapshot.ownerId
+          snapshot.ownerId,
+          snapshot.teamId
         );
       }
     }

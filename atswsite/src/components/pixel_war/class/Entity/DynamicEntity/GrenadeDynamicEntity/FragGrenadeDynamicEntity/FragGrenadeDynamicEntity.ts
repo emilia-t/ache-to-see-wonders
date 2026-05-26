@@ -6,11 +6,13 @@ class FragGrenadeDynamicEntity extends GrenadeDynamicEntity {
     position: Point,
     width: number,
     height: number,
+    ownerId: number | null,
+    teamId: number | null,
     texturePath: string,
     name: string = 'Frag Grenade',
     tag: string
   ) {
-    super(position, width, height, texturePath, name, 'frag', tag);
+    super(position, width, height, ownerId, teamId, texturePath, name, 'frag', tag);
   }
   
   public draw(ctx: CanvasRenderingContext2D, worldToScreen: (x: number, y: number) => { x: number; y: number; }, canvasSize: { width: number; height: number; }, debugFlags?: EntityDebugFlags): void {
