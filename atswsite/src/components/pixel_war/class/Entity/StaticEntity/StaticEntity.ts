@@ -20,7 +20,7 @@ abstract class StaticEntity extends Entity {
    * @param canvasSize 
    * @param debugFlags 
    */
-  draw(
+  public draw(
     ctx: CanvasRenderingContext2D,
     worldToScreen: (x: number, y: number) => { x: number; y: number },
     canvasSize: { width: number; height: number },

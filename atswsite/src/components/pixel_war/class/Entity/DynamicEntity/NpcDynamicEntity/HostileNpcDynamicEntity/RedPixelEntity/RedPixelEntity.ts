@@ -1,10 +1,9 @@
 import { HostileNpcDynamicEntity } from '@/components/pixel_war/class';
 import { RedPixelBombEntity } from '@/components/pixel_war/class';
-import type { NpcActionLoopContext } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { GameConfig, Point } from '@/components/pixel_war/interface/Interface';
-import type { EntityDebugFlags, DynamicEntitieList } from '@/components/pixel_war/interface/Interface';
+import type { EntityDebugFlags, DynamicEntitieList, ActionLoopContext} from '@/components/pixel_war/interface/Interface';
 
 /**
  * 自走爆炸敌人：
@@ -14,7 +13,7 @@ import type { EntityDebugFlags, DynamicEntitieList } from '@/components/pixel_wa
  * - 若被其他方式击杀（如玩家子弹），死亡时也会生成炸弹
  */
 class RedPixelEntity extends HostileNpcDynamicEntity {
-  static GENERATE_WEIGHT = 0.1;
+  public static GENERATE_WEIGHT = 0.1;
 
   private playerPosition: Point | null = null;
 
@@ -36,16 +35,16 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     this.healthMax = 60;
   }
 
-  tryPickupItem(_item: ItemEntity): boolean {
+  public tryPickupItem(_item: ItemEntity): boolean {
     return false;
   }
 
-  pickupItem(_item: ItemEntity): void {
+  public pickupItem(_item: ItemEntity): void {
     // 黑像素不拾取物品
   }
 
   // 覆盖移动目标设定：向玩家位置移动
-  override setTarget(
+  public override setTarget(
     target: Point,
     staticEntities: StaticEntity[] = [],
     options: { preferStraight?: boolean } = {}
@@ -58,7 +57,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
   }
 
   // 每帧检测与玩家的距离，决定是否爆炸或闪烁
-  override update(
+  public override update(
     dt: number,
     staticEntities: StaticEntity[],
     dynamicEntity: DynamicEntitieList,
@@ -138,7 +137,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
   }
 
   // 绘制时处理闪烁效果：预警状态下黑白交替
-  draw(
+  public draw(
     ctx: CanvasRenderingContext2D,
     worldToScreen: (x: number, y: number) => { x: number; y: number },
     canvasSize: { width: number; height: number },
@@ -195,12 +194,12 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
   }
 
   // 动作循环
-  override actionLoop(context: NpcActionLoopContext): void {
+  public override actionLoop(context: ActionLoopContext): void {
     
   }
-  override action(context: NpcActionLoopContext): void {}
-  override actionBefore(context: NpcActionLoopContext): void {}
-  override actionAfter(context: NpcActionLoopContext): void {}
+  public override action(context: ActionLoopContext): void {}
+  public override actionBefore(context: ActionLoopContext): void {}
+  public override actionAfter(context: ActionLoopContext): void {}
 }
 
 export { RedPixelEntity, RedPixelBombEntity };

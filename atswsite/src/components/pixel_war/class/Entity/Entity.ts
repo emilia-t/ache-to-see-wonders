@@ -2,18 +2,18 @@
 
 abstract class Entity {
   private static nextEntityId = 100;
-  id: number;
-  type: 'static' | 'dynamic' | 'item' | 'empty';
-  position: Point;           // 世界坐标-画布坐标
-  width: number;
-  height: number;
-  texturePath: string;
-  texture: Texture | null;
-  name: string;
-  collisionBox: CollisionBox;
-  fillColor?: string;    // 填充颜色
-  strokeColor?: string;  // 描边颜色
-  tag: string;              // 属性标签，如 "箱子", "猫"
+  public id: number;
+  public type: 'static' | 'dynamic' | 'item' | 'empty';
+  public position: Point;           // 世界坐标-画布坐标
+  public width: number;
+  public height: number;
+  public texturePath: string;
+  public texture: Texture | null;
+  public name: string;
+  public collisionBox: CollisionBox;
+  public fillColor?: string;    // 填充颜色
+  public strokeColor?: string;  // 描边颜色
+  public tag: string;              // 属性标签，如 "箱子", "猫"
 
   constructor(
     type: 'static' | 'dynamic' | 'item' | 'empty',
@@ -42,13 +42,13 @@ abstract class Entity {
   }
 
   // 更新碰撞盒-位置变化时调用
-  updateCollisionBox() {
+  public updateCollisionBox() {
     this.collisionBox.x = this.position.x - this.width / 2;
     this.collisionBox.y = this.position.y - this.height / 2;
   }
 
   // 加载纹理
-  async loadTexture(): Promise<void> {
+  public async loadTexture(): Promise<void> {
     if (!this.texturePath) {
       this.texture = null;
       return;
@@ -69,7 +69,7 @@ abstract class Entity {
   }
 
   // 视口裁剪检测
-  isInViewport(
+  public isInViewport(
     worldToScreen: (x: number, y: number) => { x: number; y: number },
     canvasSize: { width: number; height: number },
     margin = 0
@@ -84,7 +84,7 @@ abstract class Entity {
   }
 
   // 绘制实体的抽象方法
-  abstract draw(
+  public abstract draw(
     ctx: CanvasRenderingContext2D,
     worldToScreen: (x: number, y: number) => { x: number; y: number },
     canvasSize: { width: number; height: number },

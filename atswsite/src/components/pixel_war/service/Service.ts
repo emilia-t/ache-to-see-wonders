@@ -345,6 +345,11 @@ const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
   return entity.tryFallbackTarget(MAP_DATA.staticEntities);
 };
 
+/**
+ * 动态实体的碰撞处理
+ * 包含碰撞检测
+ * @returns 
+ */
 const resolveDynamicEntityCollisions = () => {
   const dynamicEntityList = getNpcPlayerDynamicEntityList().filter(entity => !entity.isDead);
   if (dynamicEntityList.length < 2) return;
@@ -352,29 +357,81 @@ const resolveDynamicEntityCollisions = () => {
   for (let iter = 0; iter < 3; iter++) {// 动态实体碰撞分离的迭代次数,单位次
     for (let i = 0; i < dynamicEntityList.length - 1; i++) {
       const entityA = dynamicEntityList[i];
-      for (let j = i + 1; j < dynamicEntityList.length; j++) {
-        const entityB = dynamicEntityList[j];
-        const boxA = entityA.collisionBox;
-        const boxB = entityB.collisionBox;
-        const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);
-        const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
+      if(entityA instanceof PlayerDynamicEntity){
+        /**
+         * 对于玩家实体,不需要推开npc
+         * 玩家将碰到自己的npc吸附为servant
+         * npc的运动方式将被动接受玩家的运动(移动)
+         */
+        for (let j = i + 1; j < dynamicEntityList.length; j++) {
+          const entityB = dynamicEntityList[j];
+          if(!(entityB instanceof NpcDynamicEntity))continue;
+          if(entityA.selectServantByID(entityB.id)!==null)continue;//避免重复添加
+          const boxA = entityA.collisionBox;
+          const boxB = entityB.collisionBox;
+          const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);// 叠合长度
+          const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
 
-        if (overlapX <= 0 || overlapY <= 0) continue;
-
-        if (overlapX < overlapY) {
-          const pushX = overlapX / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
-          const direction = entityA.position.x <= entityB.position.x ? -1 : 1;
-          entityA.position.x += direction * pushX;
-          entityB.position.x -= direction * pushX;
-        } else {
-          const pushY = overlapY / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
-          const direction = entityA.position.y <= entityB.position.y ? -1 : 1;
-          entityA.position.y += direction * pushY;
-          entityB.position.y -= direction * pushY;
+          if (overlapX <= 0 || overlapY <= 0){continue;}//没有产生碰撞
+          else{//产生碰撞
+            //1.根据npc的坐标判断添加到player的servant的哪个位置
+            let RC = entityA.worldPositionToRowCol(entityB.position);
+            if(RC === null){
+              continue;// npc位置无法映射到玩家的servantGrid
+            }
+            //2.更新玩家的servantGrid
+            let servant = entityA.selectServantByRC(RC.row,RC.col);
+            if(servant===null){
+              continue;// 玩家的servantGrid为空
+            }
+            if(servant.exist === true){
+              continue;// 当期位置已经占用了
+            }
+            let setStatus = entityA.setServant(RC.row,RC.col,entityB.id);
+            if(setStatus === false){
+              continue;// 设置失败
+            }
+            else{//设置成功
+              //3.修改npc部分属性
+              let newPosition = entityA.rowColToWorldPosition(RC.row,RC.col);
+              if(newPosition === null){
+                continue;// RC异常
+              }
+              entityB.ownerId = entityA.id;
+            } 
+          }
         }
+      }
+      else{
+        /**
+         * npc和npc之间的推挤保持原状
+         */
+        for (let j = i + 1; j < dynamicEntityList.length; j++) {
+          const entityB = dynamicEntityList[j];
+          const boxA = entityA.collisionBox;
+          const boxB = entityB.collisionBox;
+          const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);// 叠合长度
+          const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
 
-        entityA.updateCollisionBox();
-        entityB.updateCollisionBox();
+          if (overlapX <= 0 || overlapY <= 0){continue;}//没有产生碰撞
+          else{//产生碰撞
+            if (overlapX < overlapY) {
+              const pushX = overlapX / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
+              const direction = entityA.position.x <= entityB.position.x ? -1 : 1;
+              entityA.position.x += direction * pushX;
+              entityB.position.x -= direction * pushX;
+            }
+            else {
+              const pushY = overlapY / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
+              const direction = entityA.position.y <= entityB.position.y ? -1 : 1;
+              entityA.position.y += direction * pushY;
+              entityB.position.y -= direction * pushY;
+            }
+
+            entityA.updateCollisionBox();
+            entityB.updateCollisionBox();
+          }
+        }
       }
     }
   }

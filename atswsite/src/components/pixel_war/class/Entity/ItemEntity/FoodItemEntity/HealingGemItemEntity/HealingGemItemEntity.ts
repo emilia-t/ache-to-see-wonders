@@ -2,9 +2,9 @@
 import { FoodItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/FoodItemEntity/FoodItemEntity';
 
 class HealingGemItemEntity extends FoodItemEntity {
-  static readonly WIDTH = 25;
-  static readonly HEIGHT = 25;
-  static readonly TEXTURE_PATH = './textures/healing_gem_item_entity.png';
+  public static readonly WIDTH = 25;
+  public static readonly HEIGHT = 25;
+  public static readonly TEXTURE_PATH = './textures/healing_gem_item_entity.png';
 
   constructor(
     position: Point,

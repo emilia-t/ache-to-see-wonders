@@ -4,7 +4,8 @@ import type { DynamicEntitieList, GameConfig, Point } from '@/components/pixel_w
 import type { StaticEntity } from '../../StaticEntity/StaticEntity';
 
 abstract class GrenadeDynamicEntity extends DynamicEntity {
-  purpose: GrenadePurpose;// 投掷物类型
+  public purpose: GrenadePurpose;// 投掷物类型
+  public ownerId: number | null;
 
   constructor(
     position: Point,
@@ -19,10 +20,8 @@ abstract class GrenadeDynamicEntity extends DynamicEntity {
     this.purpose = purpose;
     this.health = 1;
     this.healthMax = 1;
+    this.ownerId = null;
   }
-
-  
-
 }
 
 export { GrenadeDynamicEntity };

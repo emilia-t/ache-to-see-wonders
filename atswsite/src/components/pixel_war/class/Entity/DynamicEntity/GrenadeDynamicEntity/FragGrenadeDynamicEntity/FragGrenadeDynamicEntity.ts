@@ -13,7 +13,7 @@ class FragGrenadeDynamicEntity extends GrenadeDynamicEntity {
     super(position, width, height, texturePath, name, 'frag', tag);
   }
   
-  draw(ctx: CanvasRenderingContext2D, worldToScreen: (x: number, y: number) => { x: number; y: number; }, canvasSize: { width: number; height: number; }, debugFlags?: EntityDebugFlags): void {
+  public draw(ctx: CanvasRenderingContext2D, worldToScreen: (x: number, y: number) => { x: number; y: number; }, canvasSize: { width: number; height: number; }, debugFlags?: EntityDebugFlags): void {
     //待定
   }
 }

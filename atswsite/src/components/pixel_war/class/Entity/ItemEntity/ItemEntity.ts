@@ -2,11 +2,11 @@
 import type { EntityDebugFlags, Point } from '@/components/pixel_war/interface/Interface';
 
 abstract class ItemEntity extends Entity {
-  lifetimeTotal: number; // 初始寿命（秒）
-  lifetimeRemaining: number; // 寿命剩余时间（秒）
-  isDisappearing: boolean; // 是否进入消失特效阶段
-  disappearDuration: number; // 消失特效总时长（秒）
-  disappearTimer: number; // 消失特效剩余时长（秒）
+  public lifetimeTotal: number; // 初始寿命（秒）
+  public lifetimeRemaining: number; // 寿命剩余时间（秒）
+  public isDisappearing: boolean; // 是否进入消失特效阶段
+  public disappearDuration: number; // 消失特效总时长（秒）
+  public disappearTimer: number; // 消失特效剩余时长（秒）
 
   constructor(
     position: Point,
@@ -33,9 +33,9 @@ abstract class ItemEntity extends Entity {
   }
 
   // item 无碰撞盒，位置变化不需要更新碰撞盒
-  updateCollisionBox() {}
+  public updateCollisionBox() {}
 
-  updateLifetime(dt: number) {
+  public updateLifetime(dt: number) {
     if (this.isDisappearing) {
       this.disappearTimer = Math.max(0, this.disappearTimer - dt);
       return;
@@ -50,17 +50,17 @@ abstract class ItemEntity extends Entity {
     }
   }
 
-  beginDisappear() {
+  public beginDisappear() {
     if (this.isDisappearing) return;
     this.isDisappearing = true;
     this.disappearTimer = this.disappearDuration;
   }
 
-  isReadyToRemove() {
+  public isReadyToRemove() {
     return this.isDisappearing && this.disappearTimer <= 0;
   }
 
-  getLifetimeOpacity() {
+  public getLifetimeOpacity() {
     if (this.lifetimeTotal <= 0) return 1;
     const ratio = this.lifetimeRemaining / this.lifetimeTotal;
     if (ratio > 0.75) return 1;
@@ -76,7 +76,7 @@ abstract class ItemEntity extends Entity {
    * @param canvasSize 
    * @param debugFlags 
    */
-  draw(
+  public draw(
     ctx: CanvasRenderingContext2D,
     worldToScreen: (x: number, y: number) => { x: number; y: number },
     canvasSize: { width: number; height: number },

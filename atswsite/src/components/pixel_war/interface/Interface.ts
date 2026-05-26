@@ -277,3 +277,10 @@ export interface ServantGrid extends Array<ServantRow> {
     8: ServantRow;
     [index: number]: ServantRow;
 }
+
+export interface ActionLoopContext {
+  deltaTime: number;
+  staticEntities: StaticEntity[];
+  spawnBullet: (bullet: BulletDynamicEntity) => void;
+  spawnGrenade: (grenade: GrenadeDynamicEntity) => void;
+};

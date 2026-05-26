@@ -18,7 +18,6 @@ export class RedPixelBombEntity extends GrenadeDynamicEntity {
   private countdown: number;
   private explosionRadius: number;
   private explosionDamage: number;
-  private ownerId: number;
 
   constructor(
     position: Point,
@@ -40,7 +39,7 @@ export class RedPixelBombEntity extends GrenadeDynamicEntity {
     this.strokeColor = 'transparent';
   }
 
-  override update(
+  public override update(
     dt: number,
     staticEntities: StaticEntity[],
     dynamicEntitie: DynamicEntitieList,
@@ -92,7 +91,7 @@ export class RedPixelBombEntity extends GrenadeDynamicEntity {
     }
   }
 
-  draw(
+  public draw(
       ctx: CanvasRenderingContext2D,
       worldToScreen: (x: number, y: number) => { x: number; y: number },
       canvasSize: { width: number; height: number },

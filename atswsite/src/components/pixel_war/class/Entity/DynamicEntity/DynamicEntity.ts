@@ -1,46 +1,39 @@
 ﻿import { Entity } from '@/components/pixel_war/class/Entity/Entity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
-import type { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/BulletDynamicEntity';
-import type { CollisionBox, Point, DynamicEntitieList, GameConfig} from '@/components/pixel_war/interface/Interface';
+import type { CollisionBox, Point, DynamicEntitieList, GameConfig, ActionLoopContext} from '@/components/pixel_war/interface/Interface';
 import type { DynamicEntityKind } from '@/components/pixel_war/type/Type';
 
-export type DynamicActionLoopContext = {
-  deltaTime: number;
-  staticEntities: StaticEntity[];
-  spawnBullet: (bullet: BulletDynamicEntity) => void;
-};
-
 abstract class DynamicEntity extends Entity {
-  kind: DynamicEntityKind;      // 动态实体类别
-  nextTarget: Point;            // 下一刻要去的地点-世界坐标
-  healthMax: number;            // 最大生命值
-  health: number;               // 生命值
-  speed: number;                // 当前有效移动速度-单位/秒
-  wanderRange: number;          // 随机游走半径(固定属性)
-  perceptionRange: number;      // 感知范围(固定属性)
-  minMoveSpeed: number;         // 最小运动速度(固定属性，10~200)
-  maxMoveSpeed: number;         // 最大运动速度(固定属性，10~200)
-  movementPassion: number;      // 运动激情值(每次换目标重置，80%~120%)
-  isMoving: boolean;            // 当前是否处于移动状态
-  facingDirection: Point;             // 朝向矢量(单位向量，世界坐标)
-  stayDurationRemaining: number;      // 到点后随机驻足剩余时间(秒)
-  targetHistory: Point[];             // 目标点历史记录
-  curvePoints: Point[];               // 平滑路径采样点
-  currentCurveIndex: number;          // 当前路径上的索引
-  lastMoveDirection: Point | null;    // 上一段移动的单位方向，用于路径衔接
-  insideStaticDamageTimer: number;    // 被挤压在静态实体内的伤害计时器
-  wasInsideStaticEntity: boolean;     // 上一帧是否处于静态实体内部
-  insideStaticRetargetCD: number;     // 被挤压时重新寻路冷却(秒)
-  insideStaticBlockedTimer: number;   // 被挤压且无法前进时的阻塞计时器
-  damageFlashTimer: number;           // 受伤发红特效计时器(秒)
-  crowdStuckTimer: number;            // 动态实体群体拥挤导致停滞的计时器
-  crowdRetargetCooldown: number;      // 停滞后重新寻路冷却，避免所有实体同频
-  lastStuckCheckPos: Point;           // 用于判断是否卡住的上一帧位置
-  noMoveDuration: number;             // 连续未位移时长(秒)
-  noMoveLastPos: Point;               // 未位移检测的上一位置
-  isDead: boolean;                    // 是否已死亡
-  deathEffectTimer: number;           // 死亡特效剩余时长(秒)
-  deathEffectDuration: number;        // 死亡特效总时长(秒)
+  public kind: DynamicEntityKind;      // 动态实体类别
+  public nextTarget: Point;            // 下一刻要去的地点-世界坐标
+  public healthMax: number;            // 最大生命值
+  public health: number;               // 生命值
+  public speed: number;                // 当前有效移动速度-单位/秒
+  public wanderRange: number;          // 随机游走半径(固定属性)
+  public perceptionRange: number;      // 感知范围(固定属性)
+  public minMoveSpeed: number;         // 最小运动速度(固定属性，10~200)
+  public maxMoveSpeed: number;         // 最大运动速度(固定属性，10~200)
+  public movementPassion: number;      // 运动激情值(每次换目标重置，80%~120%)
+  public isMoving: boolean;            // 当前是否处于移动状态
+  public facingDirection: Point;             // 朝向矢量(单位向量，世界坐标)
+  public stayDurationRemaining: number;      // 到点后随机驻足剩余时间(秒)
+  public targetHistory: Point[];             // 目标点历史记录
+  public curvePoints: Point[];               // 平滑路径采样点
+  public currentCurveIndex: number;          // 当前路径上的索引
+  public lastMoveDirection: Point | null;    // 上一段移动的单位方向，用于路径衔接
+  public insideStaticDamageTimer: number;    // 被挤压在静态实体内的伤害计时器
+  public wasInsideStaticEntity: boolean;     // 上一帧是否处于静态实体内部
+  public insideStaticRetargetCD: number;     // 被挤压时重新寻路冷却(秒)
+  public insideStaticBlockedTimer: number;   // 被挤压且无法前进时的阻塞计时器
+  public damageFlashTimer: number;           // 受伤发红特效计时器(秒)
+  public crowdStuckTimer: number;            // 动态实体群体拥挤导致停滞的计时器
+  public crowdRetargetCooldown: number;      // 停滞后重新寻路冷却，避免所有实体同频
+  public lastStuckCheckPos: Point;           // 用于判断是否卡住的上一帧位置
+  public noMoveDuration: number;             // 连续未位移时长(秒)
+  public noMoveLastPos: Point;               // 未位移检测的上一位置
+  public isDead: boolean;                    // 是否已死亡
+  public deathEffectTimer: number;           // 死亡特效剩余时长(秒)
+  public deathEffectDuration: number;        // 死亡特效总时长(秒)
 
   constructor(
     position: Point,
@@ -87,7 +80,7 @@ abstract class DynamicEntity extends Entity {
     this.deathEffectTimer = 0;
   }
 
-  applyDamage(amount: number) {
+  public applyDamage(amount: number) {
     if (amount <= 0 || this.isDead) return;
     this.health = Math.max(0, this.health - amount);
     // 受伤后触发短暂红色闪烁
@@ -97,32 +90,32 @@ abstract class DynamicEntity extends Entity {
     }
   }
 
-  updateDamageEffect(dt: number) {
+  public updateDamageEffect(dt: number) {
     if (this.damageFlashTimer <= 0) return;
     this.damageFlashTimer = Math.max(0, this.damageFlashTimer - dt);
   }
 
-  updateDeathEffect(dt: number) {
+  public updateDeathEffect(dt: number) {
     if (!this.isDead || this.deathEffectTimer <= 0) return;
     this.deathEffectTimer = Math.max(0, this.deathEffectTimer - dt);
   }
 
-  isDeathEffectFinished() {
+  public isDeathEffectFinished() {
     return this.isDead && this.deathEffectTimer <= 0;
   }
 
-  actionLoop(context: DynamicActionLoopContext): void {
+  public actionLoop(context: ActionLoopContext): void {
     if (this.isDead) return;
     this.actionBefore(context);
     this.action(context);
     this.actionAfter(context);
   }
 
-  action(_context: DynamicActionLoopContext): void {}
+  public action(_context: ActionLoopContext): void {}
 
-  actionBefore(_context: DynamicActionLoopContext): void {}
+  public actionBefore(_context: ActionLoopContext): void {}
 
-  actionAfter(_context: DynamicActionLoopContext): void {}
+  public actionAfter(_context: ActionLoopContext): void {}
 
   public triggerDeath() {
     this.isDead = true;
@@ -140,7 +133,7 @@ abstract class DynamicEntity extends Entity {
   }
 
   // 检测群体拥挤导致的停滞，必要时打断当前运动以触发重新寻路
-  updateCrowdStuckState(dt: number) {
+  public updateCrowdStuckState(dt: number) {
     if (this.isDead) return;
     this.crowdRetargetCooldown = Math.max(0, this.crowdRetargetCooldown - dt);
 
@@ -173,7 +166,7 @@ abstract class DynamicEntity extends Entity {
   }
 
   // 超过 10 秒未位移则触发重新寻路
-  updateNoMovementWatchdog(dt: number): boolean {
+  public updateNoMovementWatchdog(dt: number): boolean {
     if (this.isDead) return false;
     const moved = Math.hypot(
       this.position.x - this.noMoveLastPos.x,
@@ -208,7 +201,7 @@ abstract class DynamicEntity extends Entity {
   /**
    * 根据 targetHistory 生成平滑路径点(CatmullRom 样条采样)
    */
-  generateSmoothPath() {
+  public generateSmoothPath() {
     const points = this.targetHistory;
     if (points.length < 2) {
       // 不足两点，路径就是单点
@@ -484,7 +477,7 @@ abstract class DynamicEntity extends Entity {
   }
 
   // 当常规寻路失败时的兜底:优先脱离静态实体;否则尝试近邻目标，避免长期静止
-  tryFallbackTarget(staticEntities: StaticEntity[]): boolean {
+  public tryFallbackTarget(staticEntities: StaticEntity[]): boolean {
     const current = { ...this.position };
 
     // 1) 若当前被挤在静态实体内，优先做"脱困位移"
@@ -545,7 +538,7 @@ abstract class DynamicEntity extends Entity {
   }
 
   // 设置新的目标点
-  setTarget(
+  public setTarget(
     target: Point,
     staticEntities: StaticEntity[] = [],
     options: { preferStraight?: boolean } = {}
@@ -675,19 +668,19 @@ abstract class DynamicEntity extends Entity {
   }
 
   // 更新驻足计时
-  updateStayDuration(dt: number) {
+  public updateStayDuration(dt: number) {
     if (this.isDead) return;
     if (this.isMoving || this.stayDurationRemaining <= 0) return;
     this.stayDurationRemaining = Math.max(0, this.stayDurationRemaining - dt);
   }
 
   // 当前是否在任一静态实体内部
-  isInsideStaticEntity(staticEntities: StaticEntity[]) {
+  public isInsideStaticEntity(staticEntities: StaticEntity[]) {
     return this.getTotalStaticOverlap(this.position, staticEntities) > 0.0001;
   }
 
   // 被挤压在静态实体中时:每 1 秒扣 2 点血
-  updateStaticCompressionEffects(dt: number, staticEntities: StaticEntity[]) {
+  public updateStaticCompressionEffects(dt: number, staticEntities: StaticEntity[]) {
     if (this.isDead) return;
     const insideNow = this.isInsideStaticEntity(staticEntities);
 
@@ -712,7 +705,7 @@ abstract class DynamicEntity extends Entity {
   }
 
   // 当前是否可分配新的游走目标(被挤压时做 1 秒节流，避免疯狂重算)
-  canGetNewWanderTarget(dt: number, staticEntities: StaticEntity[]) {
+  public canGetNewWanderTarget(dt: number, staticEntities: StaticEntity[]) {
     if (this.isDead) return false;
     if (this.isMoving || this.stayDurationRemaining > 0) return false;
 
@@ -730,7 +723,7 @@ abstract class DynamicEntity extends Entity {
   }
 
   // 停止移动
-  stop() {
+  public stop() {
     this.isMoving = false;
     this.nextTarget = { ...this.position };
     this.targetHistory = [{ ...this.position }];
@@ -741,8 +734,15 @@ abstract class DynamicEntity extends Entity {
     this.noMoveLastPos = { ...this.position };
   }
 
-  // 更新位置-基于时间差 dt 秒
-  update(
+  /**
+   * 更新位置-基于时间差 dt 秒
+   * @param dt 
+   * @param staticEntities 
+   * @param dynamicEntity 
+   * @param gameConfig 
+   * @returns 
+   */
+  public update(
     dt: number,
     staticEntities: StaticEntity[],
     dynamicEntity: DynamicEntitieList,

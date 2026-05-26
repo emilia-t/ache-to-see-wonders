@@ -4,18 +4,20 @@ import type { BulletRangeType, BulletTag } from '@/components/pixel_war/type/Typ
 import type { Point } from '@/components/pixel_war/interface/Interface';
 
 abstract class BulletDynamicEntity extends DynamicEntity {
-  static readonly WIDTH = 8;
-  static readonly HEIGHT = 8;
-  static readonly MOVE_SPEED = 720;
-  static readonly DEFAULT_DAMAGE = 30;
-  static readonly MAX_LIFETIME = 1.2;
+  public static readonly WIDTH = 8;
+  public static readonly HEIGHT = 8;
+  public static readonly MOVE_SPEED = 720;
+  public static readonly DEFAULT_DAMAGE = 30;
+  public static readonly MAX_LIFETIME = 1.2;
 
-  velocity: Point;
-  ownerId: number | null;
-  lifetimeRemaining: number;
-  shouldRemove: boolean;
-  rangeType: BulletRangeType;// 子弹射程类型（短/长）
-  damage: number;
+  private lifetimeRemaining: number;
+
+  protected velocity: Point;
+
+  public ownerId: number | null;
+  public shouldRemove: boolean;
+  public rangeType: BulletRangeType;// 子弹射程类型（短/长）
+  public damage: number;
 
   constructor(
     position: Point,
@@ -70,7 +72,7 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     return false;
   }
 
-  override update(dt: number, staticEntities: StaticEntity[]) {
+  public override update(dt: number, staticEntities: StaticEntity[]) {
     if (this.shouldRemove) return;
 
     this.lifetimeRemaining = Math.max(0, this.lifetimeRemaining - dt);
@@ -97,15 +99,15 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     this.currentCurveIndex = 0;
   }
 
-  override updateCrowdStuckState(_dt: number) {}
+  public override updateCrowdStuckState(_dt: number) {}
 
-  override updateNoMovementWatchdog(_dt: number): boolean {
+  public override updateNoMovementWatchdog(_dt: number): boolean {
     return false;
   }
 
-  override updateStayDuration(_dt: number) {}
+  public override updateStayDuration(_dt: number) {}
 
-  override canGetNewWanderTarget(_dt: number, _staticEntities: StaticEntity[]) {
+  public override canGetNewWanderTarget(_dt: number, _staticEntities: StaticEntity[]) {
     return false;
   }
 }

@@ -3,7 +3,7 @@ import type { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/Dy
 import { GrenadeDynamicEntity } from '@/components/pixel_war/class';
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
-import type { Point } from '@/components/pixel_war/interface/Interface';
+import type {Point, ActionLoopContext} from '@/components/pixel_war/interface/Interface';
 import type { NpcAttitude } from '@/components/pixel_war/type/Type';
 
 export type NpcActionLoopContext = {
@@ -15,13 +15,13 @@ export type NpcActionLoopContext = {
 
 abstract class NpcDynamicEntity extends DynamicEntity {
 
-  static readonly WIDTH = 25;
-  static readonly HEIGHT = 25;
-  static GENERATE_WEIGHT = 1;//随机刷新的权重 (0,1]
+  public static readonly WIDTH = 25;
+  public static readonly HEIGHT = 25;
+  public static GENERATE_WEIGHT = 1;//随机刷新的权重 (0,1]
 
-  ownerId: number | null;
-  attitude: NpcAttitude; // 友好/中立/敌对
-  pickupRange: number; // 拾取范围
+  public ownerId: number | null;
+  public attitude: NpcAttitude; // 友好/中立/敌对
+  public pickupRange: number; // 拾取范围
 
   constructor(
     position: Point,
@@ -37,13 +37,12 @@ abstract class NpcDynamicEntity extends DynamicEntity {
     this.ownerId = null;
   }
 
-  abstract tryPickupItem(item: ItemEntity): boolean;
-  abstract pickupItem(item: ItemEntity): void;
-  abstract actionLoop(context: NpcActionLoopContext): void;
-  abstract action(context: NpcActionLoopContext): void;
-  abstract actionBefore(context: NpcActionLoopContext): void;
-  abstract actionAfter(context: NpcActionLoopContext): void;
-  
+  public abstract tryPickupItem(item: ItemEntity): boolean;
+  public abstract pickupItem(item: ItemEntity): void;
+  public abstract actionLoop(context: ActionLoopContext): void;
+  public abstract action(context: ActionLoopContext): void;
+  public abstract actionBefore(context: ActionLoopContext): void;
+  public abstract actionAfter(context: ActionLoopContext): void;
 }
 
 export { NpcDynamicEntity };

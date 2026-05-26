@@ -1,13 +1,12 @@
 import { OrdinaryBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
 import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
-import type { NpcActionLoopContext } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
-import type { Point, DynamicEntitieList, GameConfig} from '@/components/pixel_war/interface/Interface';
+import type { Point, DynamicEntitieList, GameConfig, ActionLoopContext} from '@/components/pixel_war/interface/Interface';
 import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 
 class WhitePixelEntity extends HostileNpcDynamicEntity {
-  static GENERATE_WEIGHT = 0.8;
+  public static GENERATE_WEIGHT = 0.8;
   private static readonly ACTION_INTERVAL = 1;
 
   private isActionLoopRunning: boolean;
@@ -23,15 +22,15 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     this.actionCooldownRemaining = 0;
   }
 
-  tryPickupItem(_item: ItemEntity): boolean {
+  public tryPickupItem(_item: ItemEntity): boolean {
     return false;
   }
 
-  pickupItem(_item: ItemEntity): void {
+  public pickupItem(_item: ItemEntity): void {
     // 白色像素不拾取任何物品。
   }
 
-  actionLoop(context: NpcActionLoopContext): void {
+  public actionLoop(context: ActionLoopContext): void {
     if (this.isDead || !this.isMoving) {
       if (this.isActionLoopRunning) {
         this.actionAfter(context);
@@ -51,7 +50,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     }
   }
 
-  action(context: NpcActionLoopContext): void {
+  public action(context: ActionLoopContext): void {
     const direction = this.getNormalizedFacingDirection();
     const spawnDistance = this.width * 0.6;
     context.spawnBullet(
@@ -66,13 +65,13 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     );
   }
 
-  actionBefore(context: NpcActionLoopContext): void {
+  public actionBefore(context: ActionLoopContext): void {
     this.isActionLoopRunning = true;
     this.action(context);
     this.actionCooldownRemaining = WhitePixelEntity.ACTION_INTERVAL;
   }
 
-  actionAfter(_context: NpcActionLoopContext): void {
+  public actionAfter(_context: ActionLoopContext): void {
     this.isActionLoopRunning = false;
     this.actionCooldownRemaining = 0;
   }
@@ -83,7 +82,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
    * @param staticEntities 静态实体列表，用于避障
    * @param options 忽略
    */
-  override setTarget(
+  public override setTarget(
     target: Point,
     staticEntities: StaticEntity[] = [],
     options: { preferStraight?: boolean } = {}
@@ -106,14 +105,38 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
   }
 
   /**
-   * 移动完成后缩短停留时间，停留结束后自动开始下一段正交移动。
+   * 改写了部分
+   * 1.移动完成后缩短停留时间，停留结束后自动开始下一段正交移动。
+   * 2.如果npc有ownerId 则跟随ovner移动
    */
-  override update(
+  public override update(
     dt: number,
     staticEntities: StaticEntity[],
     dynamicEntity: DynamicEntitieList,
     gameConfig: GameConfig
   ): void {
+    if(this.ownerId !== null ){
+      for(let pi=0;pi<dynamicEntity.playerDynamicEntitys.length;pi++){
+        if(dynamicEntity.playerDynamicEntitys[pi].id === this.ownerId){
+          let servant = dynamicEntity.playerDynamicEntitys[pi].selectServantByID(this.id);
+          if(servant !== null){
+            let newPosition = dynamicEntity.playerDynamicEntitys[pi].rowColToWorldPosition(servant.row,servant.col);
+            if(newPosition !== null){
+              this.position.x = newPosition.x;
+              this.position.y = newPosition.y;
+              this.updateCollisionBox();
+              this.isMoving = false;
+              this.nextTarget = { ...newPosition };
+              this.targetHistory = [{ ...newPosition }];
+              this.curvePoints = [{ ...newPosition }];
+              this.currentCurveIndex = 0;
+            }
+          }
+        }
+      }
+      return;
+    }
+
     const wasMoving = this.isMoving;
 
     super.update(dt, staticEntities, dynamicEntity, gameConfig);
@@ -145,7 +168,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
    * @param canvasSize 
    * @param debugFlags 
    */
-  draw(
+  public draw(
     ctx: CanvasRenderingContext2D,
     worldToScreen: (x: number, y: number) => { x: number; y: number },
     canvasSize: { width: number; height: number },
