@@ -35,7 +35,7 @@ const GCFG:GameConfig = {
   npcSpawnHighInterval:4,// 高频刷怪区生成间隔,单位秒
   npcSpawnMediumInterval:8,// 中频刷怪区生成间隔,单位秒
   npcSpawnLowInterval:16,// 低频刷怪区生成间隔,单位秒
-  npcSpawnMaxCountSinglePlayer:30,// 地图中同时存在的 NPC 数量上限,单位个
+  npcSpawnMaxCountSinglePlayer:240,// 地图中同时存在的 NPC 数量上限,单位个
   npcSpawnMaxAttempts:30,// 每次刷怪在目标环形区域内寻找可用生成点的最大尝试次数,单位次
   npcSpawnPadding:12,// 新 NPC 与已有动态实体之间额外保留的安全距离,单位px
   
@@ -46,7 +46,7 @@ const GCFG:GameConfig = {
   itemSpawnHighInterval:4,// 高频生成间隔,单位秒
   itemSpawnMediumInterval:8,// 中频生成间隔,单位秒
   itemSpawnLowInterval:16,// 低频生成间隔,单位秒
-  itemSpawnMaxCountSinglePlayer:10,// 地图中同时存在的 ITEM 数量上限,单位个
+  itemSpawnMaxCountSinglePlayer:20,// 地图中同时存在的 ITEM 数量上限,单位个
   itemSpawnMaxAttempts:30, // 每Tk最大尝试生成次数
   itemSpawnPadding:50,// 生成物品的间距
 
@@ -113,6 +113,13 @@ const getNpcPlayerDynamicEntityList = (): (PlayerDynamicEntity | NpcDynamicEntit
   ...MAP_DATA.dynamicEntitie.playerDynamicEntitys,
   ...MAP_DATA.dynamicEntitie.npcDynamicEntitys
 ];
+
+const getPlayerDynamicEntityById = (entityId: number):PlayerDynamicEntity|null => {
+  for(const player of MAP_DATA.dynamicEntitie.playerDynamicEntitys){
+    if(player.id = entityId) return player;
+  }
+  return null;
+};
 
 const refreshPlayerMoveState = (moveState: Partial<typeof PlayerDynamicEntity.playerMoveState>) => {
   PlayerDynamicEntity.playerMoveState.playerMoveW = moveState.playerMoveW === true;
@@ -355,6 +362,21 @@ const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
 };
 
 /**
+ * 处理玩家的从者死亡的函数
+ * @param npcEntity 
+ */
+const resolvePlayerServantDead = (npcEntity:NpcDynamicEntity):void => {
+  if(npcEntity.isDead && npcEntity.ownerId!==null){
+    for(const player of MAP_DATA.dynamicEntitie.playerDynamicEntitys){
+      if(npcEntity.ownerId === player.id){
+        player.removeServant(npcEntity.id);
+        break;
+      }
+    }
+  }
+}
+
+/**
  * 动态实体的碰撞处理
  * 包含碰撞检测
  * @returns 
@@ -366,7 +388,7 @@ const resolveDynamicEntityCollisions = () => {
   for (let iter = 0; iter < 3; iter++) {// 动态实体碰撞分离的迭代次数,单位次
     for (let i = 0; i < dynamicEntityList.length - 1; i++) {
       const entityA = dynamicEntityList[i];
-      if(entityA instanceof PlayerDynamicEntity){
+      if(entityA instanceof PlayerDynamicEntity){//玩家与npc之间的碰撞
         /**
          * 对于玩家实体,不需要推开npc
          * 玩家将碰到自己的npc吸附为servant
@@ -412,58 +434,123 @@ const resolveDynamicEntityCollisions = () => {
           }
         }
       }
-      else{
-        /**
-         * npc和npc之间的推挤保持原状
-         */
-        for (let j = i + 1; j < dynamicEntityList.length; j++) {
-          const entityB = dynamicEntityList[j];
-          const boxA = entityA.collisionBox;
-          const boxB = entityB.collisionBox;
-          const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);// 叠合长度
-          const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
+      else{//npc和npc之间的碰撞
 
-          if (overlapX <= 0 || overlapY <= 0){continue;}//没有产生碰撞
-          else{//产生碰撞
-            if (overlapX < overlapY) {
-              const pushX = overlapX / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
-              const direction = entityA.position.x <= entityB.position.x ? -1 : 1;
-              entityA.position.x += direction * pushX;
-              entityB.position.x -= direction * pushX;
-            }
-            else {
-              const pushY = overlapY / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
-              const direction = entityA.position.y <= entityB.position.y ? -1 : 1;
-              entityA.position.y += direction * pushY;
-              entityB.position.y -= direction * pushY;
-            }
+        if(entityA.ownerId !== null){//该npc是玩家实体的一部分
+          /**
+           * 对于有 ownerId 的 npc 实体,不需要推开 npc b
+           * 提交此 npc b 的 id 至 player
+           * 由 player 处理
+           */
+          const ownerPlayer = getPlayerDynamicEntityById(entityA.ownerId);
+          if(ownerPlayer !== null){
+            for (let j = i + 1; j < dynamicEntityList.length; j++) {
+              const entityB = dynamicEntityList[j];
+              if(!(entityB instanceof NpcDynamicEntity))continue;
+              if(ownerPlayer.selectServantByID(entityB.id)!==null)continue;//避免重复添加
+              const boxA = entityA.collisionBox;
+              const boxB = entityB.collisionBox;
+              const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);// 叠合长度
+              const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
 
-            entityA.updateCollisionBox();
-            entityB.updateCollisionBox();
+              if (overlapX <= 0 || overlapY <= 0){continue;}//没有产生碰撞
+              else{//产生碰撞
+                //1.根据npc的坐标判断添加到player的servant的哪个位置
+                let RC = ownerPlayer.worldPositionToRowCol(entityB.position);
+                if(RC === null){
+                  continue;// npc位置无法映射到玩家的servantGrid
+                }
+                //2.更新玩家的servantGrid
+                let servant = ownerPlayer.selectServantByRC(RC.row,RC.col);
+                if(servant===null){
+                  continue;// 玩家的servantGrid为空
+                }
+                if(servant.exist === true){
+                  continue;// 当期位置已经占用了
+                }
+                let setStatus = ownerPlayer.setServant(RC.row,RC.col,entityB.id);
+                if(setStatus === false){
+                  continue;// 设置失败
+                }
+                else{//设置成功
+                  //3.修改npc部分属性
+                  let newPosition = ownerPlayer.rowColToWorldPosition(RC.row,RC.col);
+                  if(newPosition === null){
+                    continue;// RC异常
+                  }
+                  entityB.ownerId = ownerPlayer.id;
+                  entityB.teamId = ownerPlayer.teamId;
+                } 
+              }
+            }
           }
         }
+        else{//该npc是独立的实体
+          for (let j = i + 1; j < dynamicEntityList.length; j++) {
+            const entityB = dynamicEntityList[j];
+            const boxA = entityA.collisionBox;
+            const boxB = entityB.collisionBox;
+            const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);// 叠合长度
+            const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
+
+            if (overlapX <= 0 || overlapY <= 0){continue;}//没有产生碰撞
+            else{//产生碰撞
+              if (overlapX < overlapY) {
+                const pushX = overlapX / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
+                const direction = entityA.position.x <= entityB.position.x ? -1 : 1;
+                entityA.position.x += direction * pushX;
+                entityB.position.x -= direction * pushX;
+              }
+              else {
+                const pushY = overlapY / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
+                const direction = entityA.position.y <= entityB.position.y ? -1 : 1;
+                entityA.position.y += direction * pushY;
+                entityB.position.y -= direction * pushY;
+              }
+
+              entityA.updateCollisionBox();
+              entityB.updateCollisionBox();
+            }
+          }
+        }
+
       }
     }
   }
 };
 
+/**`
+ * next_ 
+ * 1.修复(拥有30 个 servant的player)靠近边缘 curb 时a异常卡顿的问题(已复现)
+ * 2.red pixel 触发爆炸后存在无法击杀的问题?
+ * 3.npc成为从者后依然在生成target(性能问题)
+ * 4.性能问题
+ * 
+ */
+
+/**
+ * 更新动态实体
+ * @param deltaTime 
+ */
 const updateDynamicEntities = (deltaTime: number) => {
-  const dynamicEntityList = getNpcPlayerDynamicEntityList();
+  for (const entity of getNpcPlayerDynamicEntityList()) {
+    entity.update(deltaTime, MAP_DATA.staticEntities, MAP_DATA.dynamicEntitie, GCFG);
+    entity.updateDamageEffect(deltaTime);
+    entity.updateDeathEffect(deltaTime);
+    if(entity instanceof NpcDynamicEntity){
+      resolvePlayerServantDead(entity);
+    }
+  }
+
+  removeFinishedDeadDynamicEntities();
+  resolveDynamicEntityCollisions();
+
   const actionLoopContext = {
     deltaTime,
     staticEntities: MAP_DATA.staticEntities,
     spawnBullet: spawnBulletDynamicEntity,
     spawnGrenade: spawnGrenadeDynamicEntity
   };
-
-  for (const entity of dynamicEntityList) {
-    entity.update(deltaTime, MAP_DATA.staticEntities, MAP_DATA.dynamicEntitie, GCFG);
-    entity.updateDamageEffect(deltaTime);
-    entity.updateDeathEffect(deltaTime);
-  }
-
-  removeFinishedDeadDynamicEntities();
-  resolveDynamicEntityCollisions();
 
   for (const entity of getNpcPlayerDynamicEntityList()) {
     entity.updateCrowdStuckState(deltaTime);
@@ -602,7 +689,16 @@ const selectRandomNpcCtor = (): new (position: Point, ownerId: number | null, te
   return NPC_WEIGHTS[0].ctor;
 };
 
-
+/**
+ * npc刷怪计时器
+ * @param timer 
+ * @param deltaTime 
+ * @param interval 
+ * @param playerEntity 
+ * @param minRadius 
+ * @param maxRadius 
+ * @returns 
+ */
 const updateNpcSpawnTimer = (
   timer: number,
   deltaTime: number,

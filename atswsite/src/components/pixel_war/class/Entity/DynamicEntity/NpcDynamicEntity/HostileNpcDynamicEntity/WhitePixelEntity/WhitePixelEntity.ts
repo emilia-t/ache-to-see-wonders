@@ -34,7 +34,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     // 白色像素不拾取任何物品。
   }
 
-  public actionLoop(context: ActionLoopContext): void {
+  public override actionLoop(context: ActionLoopContext): void {
     if (this.isDead || !this.isMoving) {
       if (this.isActionLoopRunning) {
         this.actionAfter(context);
@@ -54,7 +54,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     }
   }
 
-  public action(context: ActionLoopContext): void {
+  public override action(context: ActionLoopContext): void {
     const direction = this.getNormalizedFacingDirection();
     const spawnDistance = this.width * 0.6;
     context.spawnBullet(
@@ -70,13 +70,13 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     );
   }
 
-  public actionBefore(context: ActionLoopContext): void {
+  public override actionBefore(context: ActionLoopContext): void {
     this.isActionLoopRunning = true;
     this.action(context);
     this.actionCooldownRemaining = WhitePixelEntity.ACTION_INTERVAL;
   }
 
-  public actionAfter(_context: ActionLoopContext): void {
+  public override actionAfter(_context: ActionLoopContext): void {
     this.isActionLoopRunning = false;
     this.actionCooldownRemaining = 0;
   }
