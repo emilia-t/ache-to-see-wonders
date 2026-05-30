@@ -20,6 +20,7 @@ class CurbStaticEntity extends StaticEntity {
       tag
     );
   }
+  
 }
 
 export { CurbStaticEntity };

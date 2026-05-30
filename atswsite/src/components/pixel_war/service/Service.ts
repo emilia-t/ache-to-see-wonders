@@ -12,6 +12,7 @@ import {
   Instruct
 } from '@/components/pixel_war/instruct/Instruct';
 import {
+  MixCurbStaticEntity,
   CurbStaticEntity,
   BulletDynamicEntity,
   DynamicEntity,
@@ -94,9 +95,102 @@ const NPC_WEIGHTS = SPAWNABLE_NPC_CLASSES.map((ctor) => {
   }
   return { ctor, weight };
 });
+
+
 ////////////////////
 //<--常量区
 ////////////////////
+
+
+
+////////////////////
+// 空间索引区 -->
+////////////////////
+/**
+ * 简单网格索引，用于快速判断点是否与任何静态实体碰撞
+ */
+class StaticEntitySpatialGrid {
+  private cellSize: number;
+  private grid: Map<string, CurbStaticEntity[]>;
+
+  constructor(staticEntities: CurbStaticEntity[], cellSize: number = 200) {
+    this.cellSize = cellSize;
+    this.grid = new Map();
+    for (const entity of staticEntities) {
+      const box = entity.collisionBox;
+      // 获取实体覆盖的所有格子（考虑可能跨格子）
+      const minCellX = Math.floor(box.x / this.cellSize);
+      const maxCellX = Math.floor((box.x + box.width) / this.cellSize);
+      const minCellY = Math.floor(box.y / this.cellSize);
+      const maxCellY = Math.floor((box.y + box.height) / this.cellSize);
+      for (let cx = minCellX; cx <= maxCellX; cx++) {
+        for (let cy = minCellY; cy <= maxCellY; cy++) {
+          const key = `${cx},${cy}`;
+          if (!this.grid.has(key)) this.grid.set(key, []);
+          this.grid.get(key)!.push(entity);
+        }
+      }
+    }
+  }
+
+  //用于获取指定矩形区域内的所有静态实体
+  public getEntitiesInRect(x: number, y: number, width: number, height: number): CurbStaticEntity[] {
+    const minCellX = Math.floor(x / this.cellSize);
+    const maxCellX = Math.floor((x + width) / this.cellSize);
+    const minCellY = Math.floor(y / this.cellSize);
+    const maxCellY = Math.floor((y + height) / this.cellSize);
+    const result: CurbStaticEntity[] = [];
+    const added = new Set<CurbStaticEntity>();
+
+    for (let cx = minCellX; cx <= maxCellX; cx++) {
+      for (let cy = minCellY; cy <= maxCellY; cy++) {
+        const key = `${cx},${cy}`;
+        const entities = this.grid.get(key);
+        if (entities) {
+          for (const e of entities) {
+            if (!added.has(e)) {
+              added.add(e);
+              result.push(e);
+            }
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  /**
+   * 检查点 (x, y) 是否与任何静态实体碰撞（点在碰撞盒内即碰撞）
+   */
+  isPointColliding(x: number, y: number): boolean {
+    const cellX = Math.floor(x / this.cellSize);
+    const cellY = Math.floor(y / this.cellSize);
+    // 检查自身及周围 8 个邻居格子（防止边界遗漏）
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const key = `${cellX + dx},${cellY + dy}`;
+        const entities = this.grid.get(key);
+        if (entities) {
+          for (const se of entities) {
+            const box = se.collisionBox;
+            if (x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+}
+
+let staticEntitySpatialGrid: StaticEntitySpatialGrid | null = null;
+////////////////////
+//<-- 空间索引区
+////////////////////
+
+
+
 
 ////////////////////
 // 变量区-->
@@ -117,9 +211,13 @@ const getNpcPlayerDynamicEntityList = (): (PlayerDynamicEntity | NpcDynamicEntit
   ...MAP_DATA.dynamicEntitie.npcDynamicEntitys
 ];
 
+const getNpcDynamicEntityList = (): NpcDynamicEntity[] => [
+  ...MAP_DATA.dynamicEntitie.npcDynamicEntitys
+];
+
 const getPlayerDynamicEntityById = (entityId: number):PlayerDynamicEntity|null => {
   for(const player of MAP_DATA.dynamicEntitie.playerDynamicEntitys){
-    if(player.id = entityId) return player;
+    if(player.id === entityId) return player;
   }
   return null;
 };
@@ -173,28 +271,46 @@ const runTickTimer = () => {
 };
 
 const initMapData = () => {
-  const curbHalfside = 10000;// 边长的一半(px)
-  const step      = 50;// 每个curb之间的间距(px)
-  const offset = step/2;// 偏移量(px)
+  const curbHalfside = 10000; // 边界半长
+  const curbThickness = 50;    // 路缘厚度（与原有 curb 宽度一致）
 
-  for (let x = -curbHalfside + offset; x <= curbHalfside - offset; x += step) {
-    MAP_DATA.staticEntities.push(new CurbStaticEntity({ x, y: -curbHalfside - 25 }));
-  }
-  for (let x = -curbHalfside + offset; x <= curbHalfside - offset; x += step) {
-    MAP_DATA.staticEntities.push(new CurbStaticEntity({ x, y: curbHalfside + 25 }));
-  }
-  for (let y = -curbHalfside + offset; y <= curbHalfside - offset; y += step) {
-    MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y }));
-  }
-  for (let y = -curbHalfside + offset; y <= curbHalfside - offset; y += step) {
-    MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: curbHalfside + 25, y }));
-  }
-  MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: curbHalfside + 25, y: curbHalfside + 25 }));
-  MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: curbHalfside + 25, y: -curbHalfside - 25 }));
-  MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y: curbHalfside + 25 }));
-  MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y: -curbHalfside - 25 }));
+  // 上边界：从 (-curbHalfside, -curbHalfside - 25) 到 (curbHalfside, -curbHalfside - 25 + curbThickness)
+  const topCurb = MixCurbStaticEntity.fromRectangle(
+    { x: -curbHalfside, y: -curbHalfside - 25 },
+    { x: curbHalfside, y: -curbHalfside - 25 + curbThickness }
+  );
+  MAP_DATA.staticEntities.push(topCurb);
 
-  MAP_DATA.dynamicEntitie.playerDynamicEntitys.push(new PlayerDynamicEntity({ x: 0, y: 0 }, createTeamIdLength14(), 'Player', true));
+  // 下边界
+  const bottomCurb = MixCurbStaticEntity.fromRectangle(
+    { x: -curbHalfside, y: curbHalfside + 25 - curbThickness },
+    { x: curbHalfside, y: curbHalfside + 25 }
+  );
+  MAP_DATA.staticEntities.push(bottomCurb);
+
+  // 左边界
+  const leftCurb = MixCurbStaticEntity.fromRectangle(
+    { x: -curbHalfside - 25, y: -curbHalfside },
+    { x: -curbHalfside - 25 + curbThickness, y: curbHalfside }
+  );
+  MAP_DATA.staticEntities.push(leftCurb);
+
+  // 右边界
+  const rightCurb = MixCurbStaticEntity.fromRectangle(
+    { x: curbHalfside + 25 - curbThickness, y: -curbHalfside },
+    { x: curbHalfside + 25, y: curbHalfside }
+  );
+  MAP_DATA.staticEntities.push(rightCurb);
+  // MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: curbHalfside + 25, y: curbHalfside + 25 }));
+  // MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: curbHalfside + 25, y: -curbHalfside - 25 }));
+  // MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y: curbHalfside + 25 }));
+  // MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y: -curbHalfside - 25 }));
+
+  MAP_DATA.dynamicEntitie.playerDynamicEntitys.push(new PlayerDynamicEntity({ x: -9800, y: -9800 }, createTeamIdLength14(), 'Player', true));
+
+  // 所有静态实体构建完毕后，创建空间索引
+  staticEntitySpatialGrid = new StaticEntitySpatialGrid(MAP_DATA.staticEntities, 200);
+  DynamicEntity.staticEntitySpatialGrid = staticEntitySpatialGrid;
 };
 ////////////////////
 //<--初始化函数区
@@ -293,7 +409,22 @@ const updateBulletEntities = (deltaTime: number): boolean => {
   if (MAP_DATA.dynamicEntitie.bulletDynamicEntitys.length === 0) return false;
 
   let changed = false;
-  const dynamicEntityList = getNpcPlayerDynamicEntityList();
+
+  const dynamicEntityList = getNpcPlayerDynamicEntityList().filter(e => !e.isDead);
+
+  // 构建空间哈希以降低子弹与实体的碰撞检测复杂度
+  const CELL_SIZE = 64;
+  const cellKey = (cx: number, cy: number) => `${cx},${cy}`;
+  const spatial = new Map<string, (PlayerDynamicEntity | NpcDynamicEntity)[]>();
+  for (const e of dynamicEntityList) {
+    const cx = Math.floor(e.position.x / CELL_SIZE);
+    const cy = Math.floor(e.position.y / CELL_SIZE);
+    const key = cellKey(cx, cy);
+    const arr = spatial.get(key);
+    if (arr) arr.push(e as PlayerDynamicEntity | NpcDynamicEntity);
+    else spatial.set(key, [e as PlayerDynamicEntity | NpcDynamicEntity]);
+  }
+
   for (const bullet of MAP_DATA.dynamicEntitie.bulletDynamicEntitys) {
     bullet.update(deltaTime, MAP_DATA.staticEntities);
     if (bullet.shouldRemove) {
@@ -301,10 +432,21 @@ const updateBulletEntities = (deltaTime: number): boolean => {
       continue;
     }
 
-    for (const entity of dynamicEntityList) {
+    const bx = Math.floor(bullet.position.x / CELL_SIZE);
+    const by = Math.floor(bullet.position.y / CELL_SIZE);
+    const candidates: (PlayerDynamicEntity | NpcDynamicEntity)[] = [];
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const list = spatial.get(cellKey(bx + dx, by + dy));
+        if (list) candidates.push(...list);
+      }
+    }
+
+    for (const entity of candidates) {
       if (entity.isDead) continue;
       if (bullet.ownerId === entity.id) continue; // 避免自残
       if (bullet.teamId === entity.teamId) continue; // 避免误伤队友
+
       const hitDistance = Math.hypot(
         entity.position.x - bullet.position.x,
         entity.position.y - bullet.position.y
@@ -340,12 +482,16 @@ const updateGrenadeEntities = (deltaTime: number): boolean => {
 };
 
 
-const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
+const setRandomTargetForDynamic = (entity: NpcDynamicEntity): boolean => {
+
+  if(entity.ownerId !== null){
+    return false;
+  }
 
   const radius = Math.max(1, entity.wanderRange);
   const center = entity.position;
   let attempts = 0;
-  const maxAttempts = 60;
+  const maxAttempts = 30;
 
   while (attempts < maxAttempts) {
     const angle = Math.random() * Math.PI * 2;
@@ -355,21 +501,11 @@ const setRandomTargetForDynamic = (entity: DynamicEntity): boolean => {
       y: center.y + Math.sin(angle) * dist,
     };
 
-    let safe = true;
-    for (const se of MAP_DATA.staticEntities) {
-      const box = se.collisionBox;
-      if (
-        target.x >= box.x &&
-        target.x <= box.x + box.width &&
-        target.y >= box.y &&
-        target.y <= box.y + box.height
-      ) {
-        safe = false;
-        break;
+    // 使用空间索引快速检测碰撞
+    if (staticEntitySpatialGrid && !staticEntitySpatialGrid.isPointColliding(target.x, target.y)) {
+      if (entity.setTarget(target, MAP_DATA.staticEntities)) {
+        return true;
       }
-    }
-    if (safe && entity.setTarget(target, MAP_DATA.staticEntities)) {
-      return true;
     }
     attempts++;
   }
@@ -401,135 +537,139 @@ const resolveDynamicEntityCollisions = () => {
   const dynamicEntityList = getNpcPlayerDynamicEntityList().filter(entity => !entity.isDead);
   if (dynamicEntityList.length < 2) return;
 
-  for (let iter = 0; iter < 3; iter++) {// 动态实体碰撞分离的迭代次数,单位次
-    for (let i = 0; i < dynamicEntityList.length - 1; i++) {
-      const entityA = dynamicEntityList[i];
-      if(entityA instanceof PlayerDynamicEntity){//玩家与npc之间的碰撞
-        /**
-         * 对于玩家实体,不需要推开npc
-         * 玩家将碰到自己的npc吸附为servant
-         * npc的运动方式将被动接受玩家的运动(移动)
-         */
-        for (let j = i + 1; j < dynamicEntityList.length; j++) {
-          const entityB = dynamicEntityList[j];
-          if(!(entityB instanceof NpcDynamicEntity))continue;
-          if(entityA.selectServantByID(entityB.id)!==null)continue;//避免重复添加
-          const boxA = entityA.collisionBox;
-          const boxB = entityB.collisionBox;
-          const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);// 叠合长度
-          const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
+  const CELL_SIZE = 64; // 空间哈希格子大小,可根据实体平均尺寸调整 CELL单元格
+  const cellKey = (cx: number, cy: number) => `${cx},${cy}`;
 
-          if (overlapX <= 0 || overlapY <= 0){continue;}//没有产生碰撞
-          else{//产生碰撞
-            //1.根据npc的坐标判断添加到player的servant的哪个位置
-            let RC = entityA.worldPositionToRowCol(entityB.position);
-            if(RC === null){
-              continue;// npc位置无法映射到玩家的servantGrid
-            }
-            //2.更新玩家的servantGrid
-            let servant = entityA.selectServantByRC(RC.row,RC.col);
-            if(servant===null){
-              continue;// 玩家的servantGrid为空
-            }
-            if(servant.exist === true){
-              continue;// 当期位置已经占用了
-            }
-            let setStatus = entityA.setServant(RC.row,RC.col,entityB.id);
-            if(setStatus === false){
-              continue;// 设置失败
-            }
-            else{//设置成功
-              //3.修改npc部分属性
-              let newPosition = entityA.rowColToWorldPosition(RC.row,RC.col);
-              if(newPosition === null){
-                continue;// RC异常
-              }
-              entityB.ownerId = entityA.id;
-              entityB.teamId = entityA.teamId;
-            } 
-          }
+  for (let iter = 0; iter < 3; iter++) {// 动态实体碰撞分离的迭代次数,单位次
+    // 构建空间哈希(基于实体位置),把实体放入其所在格子
+    const spatial = new Map<string, DynamicEntity[]>();// 空间哈系地图
+    for (const e of dynamicEntityList) {
+      const cx = Math.floor(e.position.x / CELL_SIZE);
+      const cy = Math.floor(e.position.y / CELL_SIZE);
+      const key = cellKey(cx, cy);
+      const arr = spatial.get(key);
+      if (arr) arr.push(e);
+      else spatial.set(key, [e]);
+    }
+
+    // 对每个实体,只与相邻格子的实体比较,避免全表 O(n^2)
+    for (const entityA of dynamicEntityList) {
+      const ax = Math.floor(entityA.position.x / CELL_SIZE);
+      const ay = Math.floor(entityA.position.y / CELL_SIZE);
+
+      // 收集周围 3x3 格子的候选实体
+      const candidates: DynamicEntity[] = [];
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const list = spatial.get(cellKey(ax + dx, ay + dy));
+          if (list) candidates.push(...list);
         }
       }
-      else{//npc和npc之间的碰撞
 
-        if(entityA.ownerId !== null){//该npc是玩家实体的一部分
-          /**
-           * 对于有 ownerId 的 npc 实体,不需要推开 npc b
-           * 提交此 npc b 的 id 至 player
-           * 由 player 处理
-           */
-          const ownerPlayer = getPlayerDynamicEntityById(entityA.ownerId);
-          if(ownerPlayer !== null){
-            for (let j = i + 1; j < dynamicEntityList.length; j++) {
-              const entityB = dynamicEntityList[j];
-              if(!(entityB instanceof NpcDynamicEntity))continue;
-              if(ownerPlayer.selectServantByID(entityB.id)!==null)continue;//避免重复添加
-              const boxA = entityA.collisionBox;
-              const boxB = entityB.collisionBox;
-              const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);// 叠合长度
-              const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
+      for (const entityB of candidates) {
+        // 只处理一次(按 id 避免重复),并忽略自身与死亡实体
+        if (entityB.id <= entityA.id) continue;
+        if (entityB.isDead) continue;
 
-              if (overlapX <= 0 || overlapY <= 0){continue;}//没有产生碰撞
-              else{//产生碰撞
-                //1.根据npc的坐标判断添加到player的servant的哪个位置
-                let RC = ownerPlayer.worldPositionToRowCol(entityB.position);
-                if(RC === null){
-                  continue;// npc位置无法映射到玩家的servantGrid
-                }
-                //2.更新玩家的servantGrid
-                let servant = ownerPlayer.selectServantByRC(RC.row,RC.col);
-                if(servant===null){
-                  continue;// 玩家的servantGrid为空
-                }
-                if(servant.exist === true){
-                  continue;// 当期位置已经占用了
-                }
-                let setStatus = ownerPlayer.setServant(RC.row,RC.col,entityB.id);
-                if(setStatus === false){
-                  continue;// 设置失败
-                }
-                else{//设置成功
-                  //3.修改npc部分属性
-                  let newPosition = ownerPlayer.rowColToWorldPosition(RC.row,RC.col);
-                  if(newPosition === null){
-                    continue;// RC异常
-                  }
-                  entityB.ownerId = ownerPlayer.id;
-                  entityB.teamId = ownerPlayer.teamId;
-                } 
-              }
-            }
-          }
+        // player <-> npc 吸附逻辑(保持原有行为)
+        if (
+          (entityA instanceof PlayerDynamicEntity && entityB instanceof NpcDynamicEntity) ||
+          (entityB instanceof PlayerDynamicEntity && entityA instanceof NpcDynamicEntity)
+        ) {
+          const player = entityA instanceof PlayerDynamicEntity ? entityA : (entityB as PlayerDynamicEntity);
+          const npc = entityA instanceof NpcDynamicEntity ? (entityA as NpcDynamicEntity) : (entityB as NpcDynamicEntity);
+
+          if (npc.ownerId !== null) continue; // 已有归属
+          if (player.selectServantByID(npc.id) !== null) continue; // 重复
+
+          const boxA = player.collisionBox;
+          const boxB = npc.collisionBox;
+          const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);
+          const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
+          if (overlapX <= 0 || overlapY <= 0) continue;
+
+          const RC = player.worldPositionToRowCol(npc.position);
+          if (RC === null) continue;
+          const servant = player.selectServantByRC(RC.row, RC.col);
+          if (servant === null || servant.exist === true) continue;
+          if (!player.setServant(RC.row, RC.col, npc.id)) continue;
+
+          // 设置归属
+          npc.ownerId = player.id;
+          npc.teamId = player.teamId;
+
+          continue;
         }
-        else{//该npc是独立的实体
-          for (let j = i + 1; j < dynamicEntityList.length; j++) {
-            const entityB = dynamicEntityList[j];
+
+        // 如果某方是已归属的 npc,尝试由 owner 收纳另一个 npc(保持原逻辑)
+        if (entityA instanceof NpcDynamicEntity && entityA.ownerId !== null && entityB instanceof NpcDynamicEntity) {
+          const owner = getPlayerDynamicEntityById(entityA.ownerId);
+          if (owner !== null) {
+            if (owner.selectServantByID(entityB.id) !== null) continue;
             const boxA = entityA.collisionBox;
             const boxB = entityB.collisionBox;
-            const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);// 叠合长度
+            const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);
             const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
+            if (overlapX <= 0 || overlapY <= 0) continue;
 
-            if (overlapX <= 0 || overlapY <= 0){continue;}//没有产生碰撞
-            else{//产生碰撞
-              if (overlapX < overlapY) {
-                const pushX = overlapX / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
-                const direction = entityA.position.x <= entityB.position.x ? -1 : 1;
-                entityA.position.x += direction * pushX;
-                entityB.position.x -= direction * pushX;
-              }
-              else {
-                const pushY = overlapY / 2 + 0.1;//0.1PX 动态实体碰撞分离时额外推出的距离
-                const direction = entityA.position.y <= entityB.position.y ? -1 : 1;
-                entityA.position.y += direction * pushY;
-                entityB.position.y -= direction * pushY;
-              }
+            const RC = owner.worldPositionToRowCol(entityB.position);
+            if (RC === null) continue;
+            const servant = owner.selectServantByRC(RC.row, RC.col);
+            if (servant === null || servant.exist === true) continue;
+            if (!owner.setServant(RC.row, RC.col, entityB.id)) continue;
 
-              entityA.updateCollisionBox();
-              entityB.updateCollisionBox();
-            }
+            entityB.ownerId = owner.id;
+            entityB.teamId = owner.teamId;
           }
+          continue;
         }
 
+        if (entityB instanceof NpcDynamicEntity && entityB.ownerId !== null && entityA instanceof NpcDynamicEntity) {
+          const owner = getPlayerDynamicEntityById(entityB.ownerId);
+          if (owner !== null) {
+            if (owner.selectServantByID(entityA.id) !== null) continue;
+            const boxA = entityB.collisionBox;
+            const boxB = entityA.collisionBox;
+            const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);
+            const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
+            if (overlapX <= 0 || overlapY <= 0) continue;
+
+            const RC = owner.worldPositionToRowCol(entityA.position);
+            if (RC === null) continue;
+            const servant = owner.selectServantByRC(RC.row, RC.col);
+            if (servant === null || servant.exist === true) continue;
+            if (!owner.setServant(RC.row, RC.col, entityA.id)) continue;
+
+            entityA.ownerId = owner.id;
+            entityA.teamId = owner.teamId;
+          }
+          continue;
+        }
+
+        // 独立 npc <-> npc 碰撞分离(位移)
+        // 只处理 NpcDynamicEntity 与 NpcDynamicEntity 之间的分离
+        if (entityA instanceof NpcDynamicEntity && entityB instanceof NpcDynamicEntity) {
+          const boxA = entityA.collisionBox;
+          const boxB = entityB.collisionBox;
+          const overlapX = Math.min(boxA.x + boxA.width, boxB.x + boxB.width) - Math.max(boxA.x, boxB.x);
+          const overlapY = Math.min(boxA.y + boxA.height, boxB.y + boxB.height) - Math.max(boxA.y, boxB.y);
+          if (overlapX <= 0 || overlapY <= 0) continue;
+
+          if (overlapX < overlapY) {
+            const pushX = overlapX / 2 + 0.1;
+            const direction = entityA.position.x <= entityB.position.x ? -1 : 1;
+            entityA.position.x += direction * pushX;
+            entityB.position.x -= direction * pushX;
+          } else {
+            const pushY = overlapY / 2 + 0.1;
+            const direction = entityA.position.y <= entityB.position.y ? -1 : 1;
+            entityA.position.y += direction * pushY;  
+            entityB.position.y -= direction * pushY;
+          }
+
+          entityA.updateCollisionBox();
+          entityB.updateCollisionBox();
+        }
       }
     }
   }
@@ -559,7 +699,7 @@ const updateDynamicEntities = (deltaTime: number) => {
     spawnGrenade: spawnGrenadeDynamicEntity
   };
 
-  for (const entity of getNpcPlayerDynamicEntityList()) {
+  for (const entity of getNpcDynamicEntityList()) {
     entity.updateCrowdStuckState(deltaTime);
     entity.updateStayDuration(deltaTime);
     entity.updateStaticCompressionEffects(deltaTime, MAP_DATA.staticEntities);
@@ -592,8 +732,8 @@ const getRandomPointInRing = (center: Point, minRadius: number, maxRadius: numbe
   };
 };
 
-const canSpawnNpcOrItemAt = (position: Point,spawnItem:boolean,spawnNpc:boolean): boolean => {
-  if(!spawnItem && !spawnNpc)return false;
+const canSpawnNpcOrItemAt = (position: Point, spawnItem: boolean, spawnNpc: boolean): boolean => {
+  if (!spawnItem && !spawnNpc) return false;
   const halfW = WhitePixelEntity.WIDTH / 2;
   const halfH = WhitePixelEntity.HEIGHT / 2;
   const spawnBox = {
@@ -603,19 +743,39 @@ const canSpawnNpcOrItemAt = (position: Point,spawnItem:boolean,spawnNpc:boolean)
     height: WhitePixelEntity.HEIGHT,
   };
 
-  for (const staticEntity of MAP_DATA.staticEntities) {
-    const box = staticEntity.collisionBox;
-    const separated =
-      spawnBox.x + spawnBox.width <= box.x ||
-      spawnBox.x >= box.x + box.width ||
-      spawnBox.y + spawnBox.height <= box.y ||
-      spawnBox.y >= box.y + box.height;
-    if (!separated) return false;
+  // 使用空间索引快速判断是否与静态实体重叠
+  // 需要检查生成实体的整个矩形区域是否与任何静态实体碰撞
+  // 简单实现：检查矩形四个角点是否在静态实体内（更精确可遍历格子）
+  if (staticEntitySpatialGrid) {
+    // 检查包围盒四个顶点以及中心（保守检测）
+    const pointsToCheck = [
+      { x: spawnBox.x, y: spawnBox.y },
+      { x: spawnBox.x + spawnBox.width, y: spawnBox.y },
+      { x: spawnBox.x, y: spawnBox.y + spawnBox.height },
+      { x: spawnBox.x + spawnBox.width, y: spawnBox.y + spawnBox.height },
+      { x: spawnBox.x + spawnBox.width / 2, y: spawnBox.y + spawnBox.height / 2 }
+    ];
+    for (const p of pointsToCheck) {
+      if (staticEntitySpatialGrid.isPointColliding(p.x, p.y)) return false;
+    }
+    return true;
+  } else {
+    // fallback 遍历
+    for (const staticEntity of MAP_DATA.staticEntities) {
+      const box = staticEntity.collisionBox;
+      const separated =
+        spawnBox.x + spawnBox.width <= box.x ||
+        spawnBox.x >= box.x + box.width ||
+        spawnBox.y + spawnBox.height <= box.y ||
+        spawnBox.y >= box.y + box.height;
+      if (!separated) return false;
+    }
   }
 
+  // 动态实体碰撞检测
   for (const entity of getNpcPlayerDynamicEntityList()) {
     if (entity.isDead) continue;
-    const maxPadding = Math.max(GCFG.npcSpawnPadding,GCFG.itemSpawnPadding);
+    const maxPadding = Math.max(GCFG.npcSpawnPadding, GCFG.itemSpawnPadding);
     const padding = (spawnItem && spawnNpc) ? maxPadding : (spawnItem ? GCFG.itemSpawnPadding : GCFG.npcSpawnPadding);
     const minDistance =
       Math.max(WhitePixelEntity.WIDTH, WhitePixelEntity.HEIGHT) / 2 +
@@ -682,17 +842,17 @@ const spawnNpcInRingAroundPlayer = (
 
 /**
  * 根据静态权重随机选择一个 NPC 构造函数
- * 权重越高，被选中的概率越大
+ * 权重越高,被选中的概率越大
  */
 const selectRandomNpcCtor = (): new (position: Point, ownerId: number | null, teamId: number | null) => NpcDynamicEntity => {
-  // 计算总权重（注意每个权重 <=1，总和可能小于 1，但无影响）
+  // 计算总权重(注意每个权重 <=1,总和可能小于 1,但无影响)
   const totalWeight = NPC_WEIGHTS.reduce((sum, { weight }) => sum + weight, 0);
   let random = Math.random() * totalWeight;
   for (const { ctor, weight } of NPC_WEIGHTS) {
     if (random < weight) return ctor;
     random -= weight;
   }
-  // fallback（理论上不会到达）
+  // fallback
   return NPC_WEIGHTS[0].ctor;
 };
 

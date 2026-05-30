@@ -192,7 +192,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
       if (debugFlags.showTag) {
         ctx.font = '10px Arial';
         ctx.fillStyle = '#ffff00';
-        ctx.fillText(this.name, screenPos.x, screenPos.y + halfH + 20);
+        ctx.fillText(this.tag, screenPos.x, screenPos.y + halfH + 20);
       }
     }
   }

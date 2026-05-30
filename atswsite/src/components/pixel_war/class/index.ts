@@ -35,6 +35,7 @@ export { HealingGemItemEntity } from './Entity/ItemEntity/FoodItemEntity/Healing
 export { StaticEntity } from './Entity/StaticEntity/StaticEntity';
 export { BoxStaticEntity } from './Entity/StaticEntity/BoxStaticEntity/BoxStaticEntity';
 export { CurbStaticEntity } from './Entity/StaticEntity/CurbStaticEntity/CurbStaticEntity';
+export { MixCurbStaticEntity } from './Entity/StaticEntity/CurbStaticEntity/MixCurbStaticEntity/MixCurbStaticEntity';
 export { WallStaticEntity } from './Entity/StaticEntity/WallStaticEntity/WallStaticEntity';
 
 export const PrototypeChain = {
@@ -72,7 +73,9 @@ export const PrototypeChain = {
     },
     "StaticEntity": {
       "BoxStaticEntity": "BoxStaticEntity",
-      "CurbStaticEntity": "CurbStaticEntity",
+      "CurbStaticEntity": {
+        "MixCurbStaticEntity":"MixCurbStaticEntity"
+      },
       "WallStaticEntity": "WallStaticEntity"
     }
   }

@@ -35,6 +35,8 @@ abstract class DynamicEntity extends Entity {
   public deathEffectTimer: number;           // 死亡特效剩余时长(秒)
   public deathEffectDuration: number;        // 死亡特效总时长(秒)
 
+  public static staticEntitySpatialGrid: { getEntitiesInRect: (x: number, y: number, w: number, h: number) => StaticEntity[] } | null = null;
+
   constructor(
     position: Point,
     width: number,
@@ -258,10 +260,21 @@ abstract class DynamicEntity extends Entity {
     this.curvePoints = samples;
   }
 
-  private getInflatedStaticBoxes(staticEntities: StaticEntity[], extraPadding = 8): CollisionBox[] {
+  // private getInflatedStaticBoxes(staticEntities: StaticEntity[], extraPadding = 8): CollisionBox[] {
+  //   const inflateX = this.width / 2 + extraPadding;
+  //   const inflateY = this.height / 2 + extraPadding;
+  //   return staticEntities.map(se => ({
+  //     x: se.collisionBox.x - inflateX,
+  //     y: se.collisionBox.y - inflateY,
+  //     width: se.collisionBox.width + inflateX * 2,
+  //     height: se.collisionBox.height + inflateY * 2,
+  //   }));
+  // }
+
+  private getInflatedStaticBoxes(nearbyEntities: StaticEntity[], extraPadding = 8): CollisionBox[] {
     const inflateX = this.width / 2 + extraPadding;
     const inflateY = this.height / 2 + extraPadding;
-    return staticEntities.map(se => ({
+    return nearbyEntities.map(se => ({
       x: se.collisionBox.x - inflateX,
       y: se.collisionBox.y - inflateY,
       width: se.collisionBox.width + inflateX * 2,
@@ -328,7 +341,21 @@ abstract class DynamicEntity extends Entity {
 
   private buildAvoidancePath(target: Point, staticEntities: StaticEntity[]): Point[] | null {
     const start = { ...this.position };
-    const boxes = this.getInflatedStaticBoxes(staticEntities);
+    
+    // 使用空间索引获取附近的静态实体（如果可用）
+    let nearbyStatic: StaticEntity[] = [];
+    if (DynamicEntity.staticEntitySpatialGrid) {
+      const minX = Math.min(start.x, target.x) - this.wanderRange;
+      const maxX = Math.max(start.x, target.x) + this.wanderRange;
+      const minY = Math.min(start.y, target.y) - this.wanderRange;
+      const maxY = Math.max(start.y, target.y) + this.wanderRange;
+      nearbyStatic = DynamicEntity.staticEntitySpatialGrid.getEntitiesInRect(minX, minY, maxX - minX, maxY - minY);
+    } else {
+      // fallback：使用全部静态实体
+      nearbyStatic = staticEntities;
+    }
+
+    const boxes = this.getInflatedStaticBoxes(nearbyStatic);
 
     if (this.isPointBlocked(start, boxes) || this.isPointBlocked(target, boxes)) {
       return null;
@@ -675,14 +702,37 @@ abstract class DynamicEntity extends Entity {
   }
 
   // 当前是否在任一静态实体内部
-  public isInsideStaticEntity(staticEntities: StaticEntity[]) {
-    return this.getTotalStaticOverlap(this.position, staticEntities) > 0.0001;
+  // public isInsideStaticEntity(staticEntities: StaticEntity[]) {
+  //   return this.getTotalStaticOverlap(this.position, staticEntities) > 0.0001;
+  // }
+  public isInsideStaticEntity(staticEntities: StaticEntity[]): boolean {
+    let nearby: StaticEntity[];
+    if (DynamicEntity.staticEntitySpatialGrid) {
+      const range = Math.max(this.width, this.height);
+      nearby = DynamicEntity.staticEntitySpatialGrid.getEntitiesInRect(
+        this.position.x - range, this.position.y - range,
+        range * 2, range * 2
+      );
+    } else {
+      nearby = staticEntities;
+    }
+    return this.getTotalStaticOverlap(this.position, nearby) > 0.0001;
   }
 
   // 被挤压在静态实体中时:每 1 秒扣 2 点血
   public updateStaticCompressionEffects(dt: number, staticEntities: StaticEntity[]) {
     if (this.isDead) return;
-    const insideNow = this.isInsideStaticEntity(staticEntities);
+      let nearby: StaticEntity[];
+    if (DynamicEntity.staticEntitySpatialGrid) {
+      const range = Math.max(this.width, this.height) * 2;
+      nearby = DynamicEntity.staticEntitySpatialGrid.getEntitiesInRect(
+        this.position.x - range, this.position.y - range,
+        range * 2, range * 2
+      );
+    } else {
+      nearby = staticEntities;
+    }
+    const insideNow = this.getTotalStaticOverlap(this.position, nearby) > 0.0001;
 
     if (!insideNow) {
       this.insideStaticDamageTimer = 0;
@@ -835,6 +885,7 @@ abstract class DynamicEntity extends Entity {
     }
     return total;
   }
+
 
   private getOverlapArea(pos: Point, staticEntity: StaticEntity): number {
     const myBox = {

@@ -266,7 +266,7 @@ class PlayerDynamicEntity extends DynamicEntity {
       if (debugFlags.showTag) {//底部的tag
         ctx.font = '10px Arial';
         ctx.fillStyle = '#ffff00';
-        ctx.fillText(this.name, screenPos.x, screenPos.y + halfH + 20);
+        ctx.fillText(this.tag, screenPos.x, screenPos.y + halfH + 20);
       }
       const debugLines: string[] = [];//顶部的属性文本
       if(debugFlags.showHealth){

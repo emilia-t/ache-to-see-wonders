@@ -35,22 +35,43 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
   }
 
   public override actionLoop(context: ActionLoopContext): void {
-    if (this.isDead || !this.isMoving) {
-      if (this.isActionLoopRunning) {
-        this.actionAfter(context);
+    if(this.ownerId === null){// 普通情况下只能在移动时射击
+      if (this.isDead || !this.isMoving) {
+        if (this.isActionLoopRunning) {
+          this.actionAfter(context);
+        }
+        return;
       }
-      return;
-    }
 
-    if (!this.isActionLoopRunning) {
-      this.actionBefore(context);
-      return;
-    }
+      if (!this.isActionLoopRunning) {
+        this.actionBefore(context);
+        return;
+      }
 
-    this.actionCooldownRemaining -= context.deltaTime;
-    while (this.actionCooldownRemaining <= 0 && this.isMoving && !this.isDead) {
-      this.action(context);
-      this.actionCooldownRemaining += WhitePixelEntity.ACTION_INTERVAL;
+      this.actionCooldownRemaining -= context.deltaTime;
+      while (this.actionCooldownRemaining <= 0 && this.isMoving && !this.isDead) {
+        this.action(context);
+        this.actionCooldownRemaining += WhitePixelEntity.ACTION_INTERVAL;
+      }
+    }
+    else{// 被玩家吸附情况下不考虑移动的条件
+      if (this.isDead) {
+        if (this.isActionLoopRunning) {
+          this.actionAfter(context);
+        }
+        return;
+      }
+
+      if (!this.isActionLoopRunning) {
+        this.actionBefore(context);
+        return;
+      }
+
+      this.actionCooldownRemaining -= context.deltaTime;
+      while (this.actionCooldownRemaining <= 0 && !this.isDead) {
+        this.action(context);
+        this.actionCooldownRemaining += WhitePixelEntity.ACTION_INTERVAL;
+      }
     }
   }
 
@@ -217,7 +238,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
       if (debugFlags.showTag) {//底部的tag
         ctx.font = '10px Arial';
         ctx.fillStyle = '#ffff00';
-        ctx.fillText(this.name, screenPos.x, screenPos.y + halfH + 20);
+        ctx.fillText(this.tag, screenPos.x, screenPos.y + halfH + 20);
       }
       const debugLines: string[] = [];//顶部的属性文本
       if(debugFlags.showHealth){

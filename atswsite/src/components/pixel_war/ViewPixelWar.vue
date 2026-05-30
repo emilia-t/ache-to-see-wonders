@@ -31,6 +31,7 @@ import {
   BoxStaticEntity,
   WallStaticEntity,
   CurbStaticEntity,
+  MixCurbStaticEntity,
   ItemEntity,
   HealingGemItemEntity,
   RedPixelBombEntity,
@@ -318,6 +319,8 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
         return new WallStaticEntity(snapshot.position, snapshot.name, tag);
       case 'curb':
         return new CurbStaticEntity(snapshot.position, snapshot.name, tag);
+      case 'mix_curb':
+        return new MixCurbStaticEntity(snapshot.position, snapshot.width, snapshot.height);
       case 'box':
         return new BoxStaticEntity(snapshot.position, snapshot.name, tag);
     }
