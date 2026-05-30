@@ -53,6 +53,9 @@ import ServiceWorker from '@/components/pixel_war/service/Service?worker';
 ////////////////////
 
 const serviceWorker = new ServiceWorker();
+setTimeout(() => {
+  console.log(serviceWorker)
+}, 2000);
 
 const handleWorkerMessage = (event: MessageEvent) => {
   let dpkg = event.data as DataPackage;

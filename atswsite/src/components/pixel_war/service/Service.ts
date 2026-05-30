@@ -1,3 +1,5 @@
+/// <reference lib="webworker" />
+declare const self: DedicatedWorkerGlobalScope;
 import type { 
   DataPackage,
   InstructObject,
@@ -6,7 +8,9 @@ import type {
   TickTimer,
   GameConfig
 } from '@/components/pixel_war/interface/Interface';
-import { Instruct } from '@/components/pixel_war/instruct/Instruct';
+import { 
+  Instruct
+} from '@/components/pixel_war/instruct/Instruct';
 import {
   CurbStaticEntity,
   BulletDynamicEntity,
@@ -19,13 +23,12 @@ import {
   HealingGemItemEntity,
   GrenadeDynamicEntity
 } from '@/components/pixel_war/class';
-import { RedIntegerFormat } from 'three';
 
 ////////////////////
 // 常量区-->
 ////////////////////
 // 当前 Worker 实例,用于接收客户端指令并回传地图快照
-const SERVICE: Worker = self as any;
+const SERVICE: DedicatedWorkerGlobalScope = self;
 
 const GCFG:GameConfig = {
   npcSpawnNoSpawnRadius:200,// 玩家周围 0-200px 半径内为禁刷怪区,单位px
@@ -132,9 +135,22 @@ const refreshPlayerMoveState = (moveState: Partial<typeof PlayerDynamicEntity.pl
 // 初始化函数区-->
 ////////////////////
 const main = () => {
+  sendReadySignal(); // 立即发送就绪信号
   startSetting();
   SERVICE.addEventListener('message', handleMessage);
+  // 添加错误边界
+  SERVICE.addEventListener('error', (error) => {
+    console.error('Worker internal error:', error);
+  });
   sendMapDataInitial(MAP_DATA);
+};
+
+// 添加初始化确认
+const sendReadySignal = () => {
+  SERVICE.postMessage({ 
+    type: 'worker_ready',
+    timestamp: performance.now()
+  });
 };
 
 const startSetting = () => {
@@ -519,15 +535,6 @@ const resolveDynamicEntityCollisions = () => {
   }
 };
 
-/**`
- * next_ 
- * 1.修复(拥有30 个 servant的player)靠近边缘 curb 时a异常卡顿的问题(已复现)
- * 2.red pixel 触发爆炸后存在无法击杀的问题?
- * 3.npc成为从者后依然在生成target(性能问题)
- * 4.性能问题
- * 
- */
-
 /**
  * 更新动态实体
  * @param deltaTime 
@@ -866,7 +873,13 @@ const createDataPackage = (instructs: InstructObject[]): DataPackage => ({
 });
 
 const sendMapDataInitial = (mapData: MapData) => {
-  sendDataPackage(createDataPackage([Instruct.I_MapDataInitial(mapData)]));
+  try {
+    const dataPackage = createDataPackage([Instruct.I_MapDataInitial(mapData)]);
+    sendDataPackage(dataPackage);
+    console.log('MapData initial sent successfully');
+  } catch (error) {
+    console.error('Failed to send map data:', error);
+  }
 };
 
 const sendMapDataUpdate = (mapData: MapData) => {
