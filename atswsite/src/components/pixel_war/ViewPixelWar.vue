@@ -31,7 +31,7 @@ import {
   BoxStaticEntity,
   WallStaticEntity,
   CurbStaticEntity,
-  MixCurbStaticEntity,
+  CurbStaticEntity8Length,
   ItemEntity,
   HealingGemItemEntity,
   RedPixelBombEntity,
@@ -54,9 +54,6 @@ import ServiceWorker from '@/components/pixel_war/service/Service?worker';
 ////////////////////
 
 const serviceWorker = new ServiceWorker();
-setTimeout(() => {
-  console.log(serviceWorker)
-}, 2000);
 
 const handleWorkerMessage = (event: MessageEvent) => {
   let dpkg = event.data as DataPackage;
@@ -319,8 +316,8 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
         return new WallStaticEntity(snapshot.position, snapshot.name, tag);
       case 'curb':
         return new CurbStaticEntity(snapshot.position, snapshot.name, tag);
-      case 'mix_curb':
-        return new MixCurbStaticEntity(snapshot.position, snapshot.width, snapshot.height);
+      case 'curb8':
+        return new CurbStaticEntity8Length(snapshot.position, snapshot.direction);
       case 'box':
         return new BoxStaticEntity(snapshot.position, snapshot.name, tag);
     }

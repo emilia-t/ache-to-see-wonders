@@ -234,6 +234,8 @@ export interface GameConfig {
 
   singleplayerMode:boolean;
 
+  setRandomTargetMaxAttempts:number;
+
 }
 
 // 定义单个从者的结构

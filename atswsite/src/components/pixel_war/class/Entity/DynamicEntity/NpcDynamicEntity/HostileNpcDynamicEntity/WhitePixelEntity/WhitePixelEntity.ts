@@ -397,6 +397,10 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     }
     /////// 调试信息end
   }
+
+  public override updateNoMovementWatchdog(dt: number): boolean {// 不需要监测,此行为由actionLoop接管
+    return false;
+  }
 }
 
 export { WhitePixelEntity };

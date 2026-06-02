@@ -12,8 +12,8 @@ import {
   Instruct
 } from '@/components/pixel_war/instruct/Instruct';
 import {
-  MixCurbStaticEntity,
   CurbStaticEntity,
+  CurbStaticEntity8Length,
   BulletDynamicEntity,
   DynamicEntity,
   NpcDynamicEntity,
@@ -54,7 +54,9 @@ const GCFG:GameConfig = {
   itemSpawnMaxAttempts:30, // 每Tk最大尝试生成次数
   itemSpawnPadding:50,// 生成物品的间距
 
-  singleplayerMode: true
+  singleplayerMode: true,
+
+  setRandomTargetMaxAttempts:1
 }
 
 // 主循环计时器配置,interval 单位毫秒；tickTime 单位毫秒时间戳
@@ -233,7 +235,6 @@ const refreshPlayerMoveState = (moveState: Partial<typeof PlayerDynamicEntity.pl
 // 初始化函数区-->
 ////////////////////
 const main = () => {
-  sendReadySignal(); // 立即发送就绪信号
   startSetting();
   SERVICE.addEventListener('message', handleMessage);
   // 添加错误边界
@@ -241,14 +242,6 @@ const main = () => {
     console.error('Worker internal error:', error);
   });
   sendMapDataInitial(MAP_DATA);
-};
-
-// 添加初始化确认
-const sendReadySignal = () => {
-  SERVICE.postMessage({ 
-    type: 'worker_ready',
-    timestamp: performance.now()
-  });
 };
 
 const startSetting = () => {
@@ -271,44 +264,57 @@ const runTickTimer = () => {
 };
 
 const initMapData = () => {
-  const curbHalfside = 10000; // 边界半长
-  const curbThickness = 50;    // 路缘厚度（与原有 curb 宽度一致）
+  const curbHalfside = 10000;               // 边界半长 (px)
+  const tile = CurbStaticEntity8Length.TILE;       // 50
+  const length = CurbStaticEntity8Length.LENGTH;   // 8
+  const unit = tile * length;                      // 400 (单个长条覆盖长度)
 
-  // 上边界：从 (-curbHalfside, -curbHalfside - 25) 到 (curbHalfside, -curbHalfside - 25 + curbThickness)
-  const topCurb = MixCurbStaticEntity.fromRectangle(
-    { x: -curbHalfside, y: -curbHalfside - 25 },
-    { x: curbHalfside, y: -curbHalfside - 25 + curbThickness }
+  // 计算主体长条覆盖的起止范围：从 -curbHalfside + unit/2 到 curbHalfside - unit/2
+  // 这样长条不会延伸到角部，为角部留出长度为 unit/2 的空隙 (即 200px)
+  const start = -curbHalfside + unit / 2;
+  const end = curbHalfside - unit / 2;
+
+  // 1. 上边界 (方向 'up')，仅主体部分
+  const topY = -curbHalfside - 25;
+  for (let x = start; x <= end; x += unit) {
+    MAP_DATA.staticEntities.push(new CurbStaticEntity8Length({ x, y: topY }, 'up'));
+  }
+
+  // 2. 下边界 (方向 'down')
+  const bottomY = curbHalfside + 25;
+  for (let x = start; x <= end; x += unit) {
+    MAP_DATA.staticEntities.push(new CurbStaticEntity8Length({ x, y: bottomY }, 'down'));
+  }
+
+  // 3. 左边界 (方向 'left')
+  const leftX = -curbHalfside - 25;
+  for (let y = start; y <= end; y += unit) {
+    MAP_DATA.staticEntities.push(new CurbStaticEntity8Length({ x: leftX, y }, 'left'));
+  }
+
+  // 4. 右边界 (方向 'right')
+  const rightX = curbHalfside + 25;
+  for (let y = start; y <= end; y += unit) {
+    MAP_DATA.staticEntities.push(new CurbStaticEntity8Length({ x: rightX, y }, 'right'));
+  }
+
+  // 5. 四个角：用原有的 CurbStaticEntity（50×50）填补，确保无空隙且不重叠
+  const corners = [
+    { x: -curbHalfside - 25, y: -curbHalfside - 25 }, // 左上
+    { x:  curbHalfside + 25, y: -curbHalfside - 25 }, // 右上
+    { x: -curbHalfside - 25, y:  curbHalfside + 25 }, // 左下
+    { x:  curbHalfside + 25, y:  curbHalfside + 25 }  // 右下
+  ];
+  for (const corner of corners) {
+    MAP_DATA.staticEntities.push(new CurbStaticEntity(corner));
+  }
+
+  // 创建玩家实体
+  MAP_DATA.dynamicEntitie.playerDynamicEntitys.push(
+    new PlayerDynamicEntity({ x: -9800, y: -9800 }, createTeamIdLength14(), 'Player', true)
   );
-  MAP_DATA.staticEntities.push(topCurb);
 
-  // 下边界
-  const bottomCurb = MixCurbStaticEntity.fromRectangle(
-    { x: -curbHalfside, y: curbHalfside + 25 - curbThickness },
-    { x: curbHalfside, y: curbHalfside + 25 }
-  );
-  MAP_DATA.staticEntities.push(bottomCurb);
-
-  // 左边界
-  const leftCurb = MixCurbStaticEntity.fromRectangle(
-    { x: -curbHalfside - 25, y: -curbHalfside },
-    { x: -curbHalfside - 25 + curbThickness, y: curbHalfside }
-  );
-  MAP_DATA.staticEntities.push(leftCurb);
-
-  // 右边界
-  const rightCurb = MixCurbStaticEntity.fromRectangle(
-    { x: curbHalfside + 25 - curbThickness, y: -curbHalfside },
-    { x: curbHalfside + 25, y: curbHalfside }
-  );
-  MAP_DATA.staticEntities.push(rightCurb);
-  // MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: curbHalfside + 25, y: curbHalfside + 25 }));
-  // MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: curbHalfside + 25, y: -curbHalfside - 25 }));
-  // MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y: curbHalfside + 25 }));
-  // MAP_DATA.staticEntities.push(new CurbStaticEntity({ x: -curbHalfside - 25, y: -curbHalfside - 25 }));
-
-  MAP_DATA.dynamicEntitie.playerDynamicEntitys.push(new PlayerDynamicEntity({ x: -9800, y: -9800 }, createTeamIdLength14(), 'Player', true));
-
-  // 所有静态实体构建完毕后，创建空间索引
+  // 构建静态实体空间索引
   staticEntitySpatialGrid = new StaticEntitySpatialGrid(MAP_DATA.staticEntities, 200);
   DynamicEntity.staticEntitySpatialGrid = staticEntitySpatialGrid;
 };
@@ -482,7 +488,7 @@ const updateGrenadeEntities = (deltaTime: number): boolean => {
 };
 
 
-const setRandomTargetForDynamic = (entity: NpcDynamicEntity): boolean => {
+const setRandomTargetForNpc = (entity: NpcDynamicEntity): boolean => {
 
   if(entity.ownerId !== null){
     return false;
@@ -491,7 +497,7 @@ const setRandomTargetForDynamic = (entity: NpcDynamicEntity): boolean => {
   const radius = Math.max(1, entity.wanderRange);
   const center = entity.position;
   let attempts = 0;
-  const maxAttempts = 30;
+  const maxAttempts = GCFG.setRandomTargetMaxAttempts;
 
   while (attempts < maxAttempts) {
     const angle = Math.random() * Math.PI * 2;
@@ -540,7 +546,7 @@ const resolveDynamicEntityCollisions = () => {
   const CELL_SIZE = 64; // 空间哈希格子大小,可根据实体平均尺寸调整 CELL单元格
   const cellKey = (cx: number, cy: number) => `${cx},${cy}`;
 
-  for (let iter = 0; iter < 3; iter++) {// 动态实体碰撞分离的迭代次数,单位次
+  for (let iter = 0; iter < 1; iter++) {// 动态实体碰撞分离的迭代次数,单位次
     // 构建空间哈希(基于实体位置),把实体放入其所在格子
     const spatial = new Map<string, DynamicEntity[]>();// 空间哈系地图
     for (const e of dynamicEntityList) {
@@ -705,12 +711,12 @@ const updateDynamicEntities = (deltaTime: number) => {
     entity.updateStaticCompressionEffects(deltaTime, MAP_DATA.staticEntities);
 
     if (entity.updateNoMovementWatchdog(deltaTime)) {
-      setRandomTargetForDynamic(entity);
+      setRandomTargetForNpc(entity);
       continue;
     }
 
     if (entity.canGetNewWanderTarget(deltaTime, MAP_DATA.staticEntities)) {
-      setRandomTargetForDynamic(entity);
+      setRandomTargetForNpc(entity);
     }
 
     entity.actionLoop(actionLoopContext);
@@ -972,8 +978,6 @@ const generateItemAroundPlayerSingle = (deltaTime: number) => {
   );
   
 };
-
-
 
 const updateGame = (deltaTime: number) => {
   updateItemEntityLifetimes(deltaTime);
