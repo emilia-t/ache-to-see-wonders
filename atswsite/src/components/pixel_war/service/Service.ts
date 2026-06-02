@@ -12,6 +12,7 @@ import {
   Instruct
 } from '@/components/pixel_war/instruct/Instruct';
 import {
+  StaticEntity,
   CurbStaticEntity,
   CurbStaticEntity8Length,
   BulletDynamicEntity,
@@ -56,7 +57,13 @@ const GCFG:GameConfig = {
 
   singleplayerMode: true,
 
-  setRandomTargetMaxAttempts:1
+  setRandomTargetMaxAttempts:1,
+
+  worldSize: 20000,
+  worldMinX: -10000,
+  worldMaxX: 10000,
+  worldMinY: -10000,
+  worldMaxY: 10000
 }
 
 // 主循环计时器配置,interval 单位毫秒；tickTime 单位毫秒时间戳
@@ -112,11 +119,11 @@ const NPC_WEIGHTS = SPAWNABLE_NPC_CLASSES.map((ctor) => {
  * 简单网格索引，用于快速判断点是否与任何静态实体碰撞
  */
 class StaticEntitySpatialGrid {
-  private cellSize: number;
-  private grid: Map<string, CurbStaticEntity[]>;
+  private cellSize: number;// px
+  private grid: Map<string, StaticEntity[]>;
 
-  constructor(staticEntities: CurbStaticEntity[], cellSize: number = 200) {
-    this.cellSize = cellSize;
+  constructor(staticEntities: StaticEntity[], cellSize: number = 400) {
+    this.cellSize = cellSize;//
     this.grid = new Map();
     for (const entity of staticEntities) {
       const box = entity.collisionBox;
@@ -136,13 +143,13 @@ class StaticEntitySpatialGrid {
   }
 
   //用于获取指定矩形区域内的所有静态实体
-  public getEntitiesInRect(x: number, y: number, width: number, height: number): CurbStaticEntity[] {
+  public getEntitiesInRect(x: number, y: number, width: number, height: number): StaticEntity[] {
     const minCellX = Math.floor(x / this.cellSize);
     const maxCellX = Math.floor((x + width) / this.cellSize);
     const minCellY = Math.floor(y / this.cellSize);
     const maxCellY = Math.floor((y + height) / this.cellSize);
-    const result: CurbStaticEntity[] = [];
-    const added = new Set<CurbStaticEntity>();
+    const result: StaticEntity[] = [];
+    const added = new Set<StaticEntity>();
 
     for (let cx = minCellX; cx <= maxCellX; cx++) {
       for (let cy = minCellY; cy <= maxCellY; cy++) {
@@ -191,7 +198,34 @@ let staticEntitySpatialGrid: StaticEntitySpatialGrid | null = null;
 //<-- 空间索引区
 ////////////////////
 
+////////////////////
+// 排序与碰撞检测区 -->
+////////////////////
 
+// 内省排序 (Introsort)
+// 静态实体 id => 排名
+const  staticEntitySortA = {
+  index: {},
+  sort: []
+};
+
+// 内省排序 (Introsort)
+// 动态实体 id => 排名
+const dynamicEntitySortB = {
+  index: {},
+  sort: []
+};
+
+// 合并两个有序数组：使用双指针归并，O(|A| + |B|)，不需要重新全量排序。
+const entitySortC = {
+  index: {},
+  sort: []
+}
+
+
+////////////////////
+//<-- 排序与碰撞检测区
+////////////////////
 
 
 ////////////////////
@@ -264,7 +298,7 @@ const runTickTimer = () => {
 };
 
 const initMapData = () => {
-  const curbHalfside = 10000;               // 边界半长 (px)
+  const curbHalfside = GCFG.worldSize/2;          // 边界半长 (px)
   const tile = CurbStaticEntity8Length.TILE;       // 50
   const length = CurbStaticEntity8Length.LENGTH;   // 8
   const unit = tile * length;                      // 400 (单个长条覆盖长度)
@@ -315,7 +349,7 @@ const initMapData = () => {
   );
 
   // 构建静态实体空间索引
-  staticEntitySpatialGrid = new StaticEntitySpatialGrid(MAP_DATA.staticEntities, 200);
+  staticEntitySpatialGrid = new StaticEntitySpatialGrid(MAP_DATA.staticEntities, 400);
   DynamicEntity.staticEntitySpatialGrid = staticEntitySpatialGrid;
 };
 ////////////////////
@@ -451,7 +485,7 @@ const updateBulletEntities = (deltaTime: number): boolean => {
     for (const entity of candidates) {
       if (entity.isDead) continue;
       if (bullet.ownerId === entity.id) continue; // 避免自残
-      if (bullet.teamId === entity.teamId) continue; // 避免误伤队友
+      if(bullet.teamId!==null){if (bullet.teamId === entity.teamId) continue;} // 避免误伤队友
 
       const hitDistance = Math.hypot(
         entity.position.x - bullet.position.x,
@@ -740,6 +774,7 @@ const getRandomPointInRing = (center: Point, minRadius: number, maxRadius: numbe
 
 const canSpawnNpcOrItemAt = (position: Point, spawnItem: boolean, spawnNpc: boolean): boolean => {
   if (!spawnItem && !spawnNpc) return false;
+  if (position.x <= GCFG.worldMinX || position.x >= GCFG.worldMaxX || position.y <= GCFG.worldMinY || position.y >= GCFG.worldMaxY)return false;
   const halfW = WhitePixelEntity.WIDTH / 2;
   const halfH = WhitePixelEntity.HEIGHT / 2;
   const spawnBox = {

@@ -236,6 +236,11 @@ export interface GameConfig {
 
   setRandomTargetMaxAttempts:number;
 
+  worldSize: number;// px
+  worldMinX: number;// px
+  worldMaxX: number;// px
+  worldMinY: number;// px
+  worldMaxY: number;// px
 }
 
 // 定义单个从者的结构
