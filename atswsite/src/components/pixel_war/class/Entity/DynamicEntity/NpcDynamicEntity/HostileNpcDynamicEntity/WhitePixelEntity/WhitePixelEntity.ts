@@ -109,6 +109,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
             direction,
             this.id,
             this.teamId,
+            '',
             bulletColor
           )
         );

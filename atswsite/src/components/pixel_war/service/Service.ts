@@ -389,6 +389,7 @@ const spawnPlayerBullet = (targetCanvas: Point) => {
       direction,
       playerEntity.id,
       playerEntity.teamId,
+      '',
       playerEntity.personRule.bulletColor
     )
   );
