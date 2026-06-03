@@ -4,7 +4,8 @@
   Point,
   EntityDebugFlags,
   ServantGrid,
-  Servant
+  Servant,
+  PersonRule
 } from '@/components/pixel_war/interface/Interface';
 
 import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
@@ -24,9 +25,10 @@ class PlayerDynamicEntity extends DynamicEntity {
   };
   
   public teamId: number | null;
-  public readonly personRule = {
+  public readonly personRule:PersonRule = {
     fireCooldownNow: 0,//计算数值单位秒
-    fireCooldownMax: 0.12//cd最大值单位秒
+    fireCooldownMax: 0.12,//cd最大值单位秒,
+    bulletColor: 'rgba(255, 255, 255, 0.9)'
   };
   private servantGrid:ServantGrid|null = null;
   readonly #isme: boolean;

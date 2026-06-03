@@ -6,6 +6,7 @@ import type { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/Dy
 import type { GrenadeDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/GrenadeDynamicEntity/GrenadeDynamicEntity';
 import type { NpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 import type { PlayerDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
+import type { DynamicEntity } from '../class';
 
 export interface Resolution { width: number; height: number }
 export interface PenPoint {x: number; y: number; g: number};//g是压力值，0-1通过鼠标移动速度模拟
@@ -288,6 +289,14 @@ export interface ServantGrid extends Array<ServantRow> {
 export interface ActionLoopContext {
   deltaTime: number;
   staticEntities: StaticEntity[];
+  npcEntities: NpcDynamicEntity[];
+  playerEntities: PlayerDynamicEntity[];
   spawnBullet: (bullet: BulletDynamicEntity) => void;
   spawnGrenade: (grenade: GrenadeDynamicEntity) => void;
+};
+
+export interface PersonRule {
+  fireCooldownNow: number,
+  fireCooldownMax: number,
+  bulletColor: string
 };

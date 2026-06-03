@@ -361,7 +361,8 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           H_getBulletDirectionFromSnapshot(snapshot),
           snapshot.ownerId,
           snapshot.teamId,
-          snapshot.name
+          snapshot.name,
+          snapshot.bulletColor
         );
       case 'laser_bullet':
         return new LaserBulletDynamicEntity(

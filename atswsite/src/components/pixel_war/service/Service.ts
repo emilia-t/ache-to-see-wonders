@@ -345,7 +345,7 @@ const initMapData = () => {
 
   // 创建玩家实体
   MAP_DATA.dynamicEntitie.playerDynamicEntitys.push(
-    new PlayerDynamicEntity({ x: -9800, y: -9800 }, createTeamIdLength14(), 'Player', true)
+    new PlayerDynamicEntity({ x: 0, y: 0 }, createTeamIdLength14(), 'Player', true)
   );
 
   // 构建静态实体空间索引
@@ -388,7 +388,8 @@ const spawnPlayerBullet = (targetCanvas: Point) => {
       },
       direction,
       playerEntity.id,
-      playerEntity.teamId
+      playerEntity.teamId,
+      playerEntity.personRule.bulletColor
     )
   );
   playerEntity.personRule.fireCooldownNow=playerEntity.personRule.fireCooldownMax;
@@ -735,6 +736,8 @@ const updateDynamicEntities = (deltaTime: number) => {
   const actionLoopContext = {
     deltaTime,
     staticEntities: MAP_DATA.staticEntities,
+    npcEntities: MAP_DATA.dynamicEntitie.npcDynamicEntitys,
+    playerEntities: MAP_DATA.dynamicEntitie.playerDynamicEntitys,
     spawnBullet: spawnBulletDynamicEntity,
     spawnGrenade: spawnGrenadeDynamicEntity
   };

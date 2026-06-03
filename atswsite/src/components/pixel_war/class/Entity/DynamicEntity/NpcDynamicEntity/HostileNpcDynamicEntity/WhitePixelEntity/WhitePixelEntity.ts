@@ -78,17 +78,55 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
   public override action(context: ActionLoopContext): void {
     const direction = this.getNormalizedFacingDirection();
     const spawnDistance = this.width * 0.6;
-    context.spawnBullet(
-      new OrdinaryBulletDynamicEntity(
-        {
-          x: this.position.x + direction.x * spawnDistance,
-          y: this.position.y + direction.y * spawnDistance,
-        },
-        direction,
-        this.id,
-        this.teamId
-      )
-    );
+    if(this.ownerId === null){
+      context.spawnBullet(
+        new OrdinaryBulletDynamicEntity(
+          {
+            x: this.position.x + direction.x * spawnDistance,
+            y: this.position.y + direction.y * spawnDistance,
+          },
+          direction,
+          this.id,
+          this.teamId
+        )
+      );
+    }
+    else{
+      let bulletColor = '';
+      for(const player of context.playerEntities){
+        if(player.personRule.bulletColor !== ''){
+          bulletColor = player.personRule.bulletColor;
+          break;
+        }
+      }
+      if(bulletColor !== ''){
+        context.spawnBullet(
+          new OrdinaryBulletDynamicEntity(
+            {
+              x: this.position.x + direction.x * spawnDistance,
+              y: this.position.y + direction.y * spawnDistance,
+            },
+            direction,
+            this.id,
+            this.teamId,
+            bulletColor
+          )
+        );
+      }
+      else{
+        context.spawnBullet(
+          new OrdinaryBulletDynamicEntity(
+            {
+              x: this.position.x + direction.x * spawnDistance,
+              y: this.position.y + direction.y * spawnDistance,
+            },
+            direction,
+            this.id,
+            this.teamId
+          )
+        );
+      }
+    }
   }
 
   public override actionBefore(context: ActionLoopContext): void {
