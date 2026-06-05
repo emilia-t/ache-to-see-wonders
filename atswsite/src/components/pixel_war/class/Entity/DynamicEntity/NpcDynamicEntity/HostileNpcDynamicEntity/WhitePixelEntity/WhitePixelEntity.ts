@@ -262,15 +262,18 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     }
 
     // 血条
-    const healthRatio = Math.max(0, Math.min(1, this.health / this.healthMax));
-    const barWidth = Math.max(36, this.width);
-    const barHeight = 4;
-    const barX = screenPos.x - barWidth / 2;
-    const topY = screenPos.y - halfH - 16;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';// 血条底
-    ctx.fillRect(barX, topY, barWidth, barHeight);
-    ctx.fillStyle = '#2ecc71';// 血条值
-    ctx.fillRect(barX, topY, barWidth * healthRatio, barHeight);
+    if(this.ownerId === null){
+      const healthRatio = Math.max(0, Math.min(1, this.health / this.healthMax));
+      const barWidth = Math.max(36, this.width);
+      const barHeight = 4;
+      const barX = screenPos.x - barWidth / 2;
+      const topY = screenPos.y - halfH - 16;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';// 血条底
+      ctx.fillRect(barX, topY, barWidth, barHeight);
+      ctx.fillStyle = '#2ecc71';// 血条值
+      ctx.fillRect(barX, topY, barWidth * healthRatio, barHeight);
+    }
+    
 
     /////// 调试信息start
     if (debugFlags) {
