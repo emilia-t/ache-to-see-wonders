@@ -55,6 +55,16 @@ import ServiceWorker from '@/components/pixel_war/service/Service?worker';
 
 const serviceWorker = new ServiceWorker();
 
+const handleVisibilityChange = () => {
+  isPageVisible = !document.hidden;
+  if (isPageVisible) {
+    // 页面恢复可见时立即重绘一次，确保画面与最新数据同步
+    drawGraphics();
+    drawEntities();
+    effectManager?.updateAndDraw(0);
+  }
+};
+
 const handleWorkerMessage = (event: MessageEvent) => {
   let dpkg = event.data as DataPackage;
   let tick = dpkg.tick as Tick;
@@ -74,6 +84,9 @@ const handleWorkerMessage = (event: MessageEvent) => {
         break;
       }
       case 'map_data_update':{
+        if (!isPageVisible) {
+          break;
+        }
         applyMapDataSnapshot(instruct.data as MapData);
         break;
       }
@@ -192,6 +205,7 @@ let cdtRafCursorId: number | null = null;
 let cdtLastMouseX = 0;//光标绘制节流Cursor drawing throttling
 let cdtLastMouseY = 0;
 
+let isPageVisible = true;
 let animationFrameId: number | null = null;                 // 动画帧ID
 let lastTimestamp: number = 0;                              // 上一帧时间戳
 let renderEntityList: Array<Entity> = [];                   // 要渲染的实体列表
@@ -541,6 +555,9 @@ const startSetting = () => {
   window.addEventListener('keyup', onGlobalKeyUp);
   drawGraphics();
   drawUI();
+
+  // 前端页面可见性变化监听
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 };
 ////////////////////
 //<--初始化函数区
@@ -1206,12 +1223,29 @@ const applyFirstPersonCameraMovement = (_deltaTime: number) => {
  * @param timestamp 当前时间戳
  */
 const animateEntities = (timestamp: number) => {
+  if (!isPageVisible) {
+    // 页面隐藏时，不进行任何绘制，只保持循环
+    lastTimestamp = timestamp;
+    animationFrameId = requestAnimationFrame(animateEntities);
+    return;
+  }
   if (!lastTimestamp) {// 初始帧
     lastTimestamp = timestamp;
     animationFrameId = requestAnimationFrame(animateEntities);
     return;
   }
-
+/**
+ * next_ 
+ * 1.修复(拥有30 个 servant的player)靠近边缘 curb 时a异常卡顿的问题(已复现) ok
+ * 2.red pixel 触发爆炸后存在无法击杀的问题? ??
+ * 3.npc成为从者后依然在生成target(性能问题) ok
+ * 4.性能问题 ok
+ * 5.子弹颜色的区分
+ * 6.渲染BUG
+ * 7.
+ * 
+ * 
+ */
   const deltaTime = Math.min(0.033, (timestamp - lastTimestamp) / 1000); // 当前时间减去上一帧的时间等于此帧的时间-并且限制最大33ms
   if (deltaTime > 0) {
     applyFirstPersonCameraMovement(deltaTime);  // 移动第一人称视角(背景)
@@ -1906,6 +1940,7 @@ onUnmounted(() => {
   window.removeEventListener('mouseenter', onWindowMouseEnter);
   window.removeEventListener('keydown', onGlobalKeyDown);
   window.removeEventListener('keyup', onGlobalKeyUp);
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   effectManager = null;
 });
 ////////////////////
