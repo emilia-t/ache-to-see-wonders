@@ -1234,18 +1234,7 @@ const animateEntities = (timestamp: number) => {
     animationFrameId = requestAnimationFrame(animateEntities);
     return;
   }
-/**
- * next_ 
- * 1.修复(拥有30 个 servant的player)靠近边缘 curb 时a异常卡顿的问题(已复现) ok
- * 2.red pixel 触发爆炸后存在无法击杀的问题? ??
- * 3.npc成为从者后依然在生成target(性能问题) ok
- * 4.性能问题 ok
- * 5.子弹颜色的区分
- * 6.渲染BUG
- * 7.
- * 
- * 
- */
+
   const deltaTime = Math.min(0.033, (timestamp - lastTimestamp) / 1000); // 当前时间减去上一帧的时间等于此帧的时间-并且限制最大33ms
   if (deltaTime > 0) {
     applyFirstPersonCameraMovement(deltaTime);  // 移动第一人称视角(背景)
