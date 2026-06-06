@@ -115,6 +115,21 @@ export class Instruct {
     }
 
     /**
+     * 创建动态地图更新指令
+     * @param dynamicItemMapData 
+     * @returns 
+     */
+    public static I_MapDataDynamicItemUpdate(dynamicItemMapData: MapData): InstructObject {
+        return {
+            type: 'map_data_dynamic_item_update',
+            class: '',
+            conveyor: 'server',
+            time: this.H_getFormatTime(),
+            data: dynamicItemMapData
+        };
+    }
+
+    /**
      * 创建玩家移动输入指令
      * @param moveState
      * @returns

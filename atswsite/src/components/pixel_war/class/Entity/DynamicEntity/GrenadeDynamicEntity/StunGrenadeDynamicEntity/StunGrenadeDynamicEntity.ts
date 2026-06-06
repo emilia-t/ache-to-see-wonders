@@ -9,7 +9,7 @@ class StunGrenadeDynamicEntity extends GrenadeDynamicEntity {
     ownerId: number | null,
     teamId: number | null,
     texturePath: string,
-    name: string = 'Stun Grenade',
+    name: string = '',
     tag: string
   ) {
     super(position, width, height, ownerId, teamId, texturePath, name, 'stun', tag);

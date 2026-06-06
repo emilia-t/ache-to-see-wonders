@@ -112,6 +112,22 @@ const NPC_WEIGHTS = SPAWNABLE_NPC_CLASSES.map((ctor) => {
 
 
 
+
+////////////////////
+// 变量区-->
+////////////////////
+let lastTickTime = performance.now();
+let npcSpawnHighTimer = GCFG.npcSpawnHighInterval;
+let npcSpawnMediumTimer = GCFG.npcSpawnMediumInterval;
+let npcSpawnLowTimer = GCFG.npcSpawnLowInterval;
+let itemSpawnHighTimer = GCFG.npcSpawnHighInterval;
+let itemSpawnMediumTimer = GCFG.npcSpawnMediumInterval;
+let itemSpawnLowTimer = GCFG.npcSpawnLowInterval;
+let staticEntitiesSent = false;
+////////////////////
+//<--变量区
+////////////////////
+
 ////////////////////
 // 空间索引区 -->
 ////////////////////
@@ -227,19 +243,8 @@ const entitySortC = {
 //<-- 排序与碰撞检测区
 ////////////////////
 
-
 ////////////////////
-// 变量区-->
-////////////////////
-let lastTickTime = performance.now();
-let npcSpawnHighTimer = GCFG.npcSpawnHighInterval;
-let npcSpawnMediumTimer = GCFG.npcSpawnMediumInterval;
-let npcSpawnLowTimer = GCFG.npcSpawnLowInterval;
-let itemSpawnHighTimer = GCFG.npcSpawnHighInterval;
-let itemSpawnMediumTimer = GCFG.npcSpawnMediumInterval;
-let itemSpawnLowTimer = GCFG.npcSpawnLowInterval;
-////////////////////
-//<--变量区
+// 其他函数 -->
 ////////////////////
 
 const getNpcPlayerDynamicEntityList = (): (PlayerDynamicEntity | NpcDynamicEntity)[] => [
@@ -264,6 +269,10 @@ const refreshPlayerMoveState = (moveState: Partial<typeof PlayerDynamicEntity.pl
   PlayerDynamicEntity.playerMoveState.playerMoveS = moveState.playerMoveS === true;
   PlayerDynamicEntity.playerMoveState.playerMoveD = moveState.playerMoveD === true;
 };
+
+////////////////////
+// <-- 其他函数
+////////////////////
 
 ////////////////////
 // 初始化函数区-->
@@ -293,7 +302,7 @@ const runTickTimer = () => {
     TICK_TIMER.tick.tickCount++;
     TICK_TIMER.tick.tickTime = now;
     updateGame(deltaTime);
-    sendMapDataUpdate(MAP_DATA);
+    sendMapDataUpdate();
   }, TICK_TIMER.interval) as unknown as number;
 };
 
@@ -359,6 +368,25 @@ const initMapData = () => {
 ////////////////////
 // 游戏逻辑区-->
 ////////////////////
+
+/**
+ * 创建动态更新数据包（不含静态实体）
+ */
+const createDynamicItemUpdateDataPackage = (): DataPackage => {
+  // 构建动态更新专用的数据结构，避免携带 staticEntities
+  const dynamicItemMapData = {
+    dynamicEntitie: MAP_DATA.dynamicEntitie,
+    itemEntities: MAP_DATA.itemEntities,
+    staticEntities: []
+  };
+  return {
+    tick: { ...TICK_TIMER.tick },
+    data: {
+      instructs: [Instruct.I_MapDataDynamicItemUpdate(dynamicItemMapData)]
+    }
+  };
+};
+
 
 const createTeamIdLength14 = (): number => {
   let num = Math.floor(Math.random() * 9) + 1;
@@ -1075,18 +1103,37 @@ const createDataPackage = (instructs: InstructObject[]): DataPackage => ({
   data: { instructs }
 });
 
+/**
+ * 全量发送（仅在初始化时调用）
+ */
 const sendMapDataInitial = (mapData: MapData) => {
   try {
     const dataPackage = createDataPackage([Instruct.I_MapDataInitial(mapData)]);
     sendDataPackage(dataPackage);
+    staticEntitiesSent = true;  // 标记已发送静态实体
     console.log('MapData initial sent successfully');
   } catch (error) {
-    console.error('Failed to send map data:', error);
+    console.error('Failed to send initial map data:', error);
   }
 };
 
-const sendMapDataUpdate = (mapData: MapData) => {
-  sendDataPackage(createDataPackage([Instruct.I_MapDataUpdate(mapData)]));
+/**
+ * 发送地图增量更新（仅动态部分）
+ */
+const sendMapDataUpdate = () => {
+  if (!staticEntitiesSent) {
+    // 理论上初始化时已发送全量，此处作为兜底
+    sendMapDataInitial(MAP_DATA);
+    staticEntitiesSent = true;
+    return;
+  }
+
+  try {
+    const dataPackage = createDynamicItemUpdateDataPackage();
+    sendDataPackage(dataPackage);
+  } catch (error) {
+    console.error('Failed to send dynamic map update:', error);
+  }
 };
 ////////////////////
 //<--通信处理区

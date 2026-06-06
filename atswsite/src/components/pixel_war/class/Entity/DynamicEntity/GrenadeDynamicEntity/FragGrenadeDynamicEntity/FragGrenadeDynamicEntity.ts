@@ -9,7 +9,7 @@ class FragGrenadeDynamicEntity extends GrenadeDynamicEntity {
     ownerId: number | null,
     teamId: number | null,
     texturePath: string,
-    name: string = 'Frag Grenade',
+    name: string = '',
     tag: string
   ) {
     super(position, width, height, ownerId, teamId, texturePath, name, 'frag', tag);

@@ -1,5 +1,6 @@
 ﻿export { CursorManager } from './CursorManager/CursorManager';
 export { EffectManager } from './EffectManager/EffectManager';
+export { NumericalManager }from './NumericalManager/NumericalManager';
 export { Entity } from './Entity/Entity';
 export { DynamicEntity } from './Entity/DynamicEntity/DynamicEntity';
 // BulletDynamicEntity and its subclasses
@@ -41,6 +42,7 @@ export { WallStaticEntity } from './Entity/StaticEntity/WallStaticEntity/WallSta
 export const PrototypeChain = {
   "CursorManager": "CursorManager",
   "EffectManager": "EffectManager",
+  "NumericalManager": "NumericalManager",
   "Entity": {
     "DynamicEntity": {
       "BulletDynamicEntity": {

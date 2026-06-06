@@ -9,7 +9,7 @@ class SmokeGrenadeDynamicEntity extends GrenadeDynamicEntity {
     ownerId: number | null,
     teamId: number | null,
     texturePath: string,
-    name: string = 'Smoke Grenade',
+    name: string = '',
     tag: string
   ) {
     super(position, width, height, ownerId, teamId, texturePath, name, 'smoke', tag);

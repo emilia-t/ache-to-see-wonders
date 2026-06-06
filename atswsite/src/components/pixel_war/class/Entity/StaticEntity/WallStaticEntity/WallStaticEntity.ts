@@ -8,7 +8,7 @@ class WallStaticEntity extends StaticEntity {
 
   constructor(
     position: Point,
-    name: string = 'Stone Wall',
+    name: string = '',
     tag: string = 'wall',
   ) {
     super(

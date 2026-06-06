@@ -8,7 +8,7 @@ class BoxStaticEntity extends StaticEntity {
 
   constructor(
     position: Point,
-    name: string = 'Wooden Box',
+    name: string = '',
     tag: string = 'box'
   ) {
     super(

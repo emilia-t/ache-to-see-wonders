@@ -32,7 +32,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     ownerId: number | null,
     teamId: number | null
   ) {
-    super(position, ownerId, teamId ,'', 'RedPixel', 0, 'red_pixel');
+    super(position, ownerId, teamId ,'', '', 0, 'red_pixel');
     this.fillColor = '#ff1313';
     this.strokeColor = '#444444';
     this.health = 60;

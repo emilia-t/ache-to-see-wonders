@@ -8,7 +8,7 @@ class HealingGemItemEntity extends FoodItemEntity {
 
   constructor(
     position: Point,
-    name: string = 'Healing Gem',
+    name: string = '',
     tag: string = 'healing_gem'
   ) {
     super(

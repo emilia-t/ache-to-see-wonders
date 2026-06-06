@@ -8,7 +8,7 @@ class CurbStaticEntity extends StaticEntity {
 
   constructor(
     position: Point,
-    name: string = 'Curb',
+    name: string = '',
     tag: string = 'curb'
   ) {
     super(

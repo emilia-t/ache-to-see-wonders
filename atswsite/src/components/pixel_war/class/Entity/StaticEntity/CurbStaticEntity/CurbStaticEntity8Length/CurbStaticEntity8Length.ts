@@ -8,7 +8,7 @@ class CurbStaticEntity8Length extends CurbStaticEntity {
   public static readonly LENGTH = 8;
   public direction: Direction;
 
-  constructor(position: Point, direction: Direction = 'up', name: string = 'Curb8', tag: string = 'curb8') {
+  constructor(position: Point, direction: Direction = 'up', name: string = '', tag: string = 'curb8') {
     super(position, name, tag);
     this.direction = direction;
 

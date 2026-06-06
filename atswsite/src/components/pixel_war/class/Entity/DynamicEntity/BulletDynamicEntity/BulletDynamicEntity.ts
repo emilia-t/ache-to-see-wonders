@@ -26,7 +26,7 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     ownerId: number | null,
     teamId: number | null,
     rangeType: BulletRangeType,
-    name: string = 'Bullet',
+    name: string = '',
     damage: number = BulletDynamicEntity.DEFAULT_DAMAGE,
     tag: BulletTag
   ) {

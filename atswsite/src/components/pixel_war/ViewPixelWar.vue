@@ -25,6 +25,7 @@ import type {
 import {
   CursorManager,
   EffectManager,
+  NumericalManager,
   Entity,
   EmptyEntity,
   StaticEntity,
@@ -48,6 +49,45 @@ import {
 } from '@/components/pixel_war/class';
 
 import ServiceWorker from '@/components/pixel_war/service/Service?worker';
+
+////////////////////
+// 数值管理器相关函数 -->
+////////////////////
+
+// 对比新旧实体列表，生成伤害/恢复数字
+const generateFloatingNumbersFromHealthChange = (
+  newEntities: (NpcDynamicEntity | PlayerDynamicEntity)[],
+  oldHealthMap: Map<number, number>
+) => {
+  for (const entity of newEntities) {
+    const oldHealth = oldHealthMap.get(entity.id);
+    if (oldHealth !== undefined && oldHealth !== entity.health) {
+      const delta = entity.health - oldHealth;
+      if (delta < 0) {
+        // 受到伤害
+        numericalManager.addNumber(
+          `${Math.floor(Math.abs(delta))}`,
+          entity.position.x,
+          entity.position.y,
+          '#ff6666'  // 红色
+        );
+      } else if (delta > 0) {
+        // 恢复血量
+        numericalManager.addNumber(
+          `+${Math.floor(delta)}`,
+          entity.position.x,
+          entity.position.y,
+          '#66ff66'  // 绿色
+        );
+      }
+    }
+  }
+}
+
+////////////////////
+// <-- 数值管理器相关函数
+////////////////////
+
 
 ////////////////////
 //服务器通信相关区-->
@@ -90,6 +130,13 @@ const handleWorkerMessage = (event: MessageEvent) => {
         applyMapDataSnapshot(instruct.data as MapData);
         break;
       }
+      case 'map_data_dynamic_item_update': {
+        if (!isPageVisible) {
+          break;
+        }
+        applyDynamicMapDataSnapshot(instruct.data as MapData);
+        break;
+      }
       default:{
         console.warn('Received unknown instruct type from worker:', type, instruct);
       }
@@ -102,6 +149,11 @@ serviceWorker.addEventListener('message', (event: MessageEvent) => {
 });
 
 const applyMapDataSnapshot = (mapData: MapData) => {
+  // 1. 保存旧的健康值快照
+  const oldHealthMap = new Map<number, number>();
+  for (const npc of npcEntityList) oldHealthMap.set(npc.id, npc.health);
+  if (playerEntity) oldHealthMap.set(playerEntity.id, playerEntity.health);
+
   const aliveIds = new Set<number>();
   const hydrateList = <T extends Entity>(list: T[]): T[] => {
     return list.map((entity) => {
@@ -117,6 +169,65 @@ const applyMapDataSnapshot = (mapData: MapData) => {
   playerEntity = playerEntityList[0] || null;
   grenadeEntityList = hydrateList(mapData.dynamicEntitie.grenadeDynamicEntitys) as GrenadeDynamicEntity[];
   bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
+
+  // 2. 生成数值浮层 (NPC + 玩家)
+  generateFloatingNumbersFromHealthChange(npcEntityList, oldHealthMap);
+  if (playerEntity) {
+    generateFloatingNumbersFromHealthChange([playerEntity], oldHealthMap);
+  }
+
+  // 3. 更新健康快照Map
+  prevHealthMap.clear();
+  for (const npc of npcEntityList) prevHealthMap.set(npc.id, npc.health);
+  if (playerEntity) prevHealthMap.set(playerEntity.id, playerEntity.health);
+
+  // 处理死亡实体的特效
+  for (const entity of [...npcEntityList, ...playerEntityList]) {
+    if (entity.isDead) {
+      effectManager?.emitDynamicEntityDeath(entity);
+    }
+  }
+  
+  refreshRenderEntityList();
+
+  for (const id of ENTITY_CACHE.keys()) {
+    if (!aliveIds.has(id)) {
+      ENTITY_CACHE.delete(id);
+    }
+  }
+};
+
+const applyDynamicMapDataSnapshot = (mapData: MapData) => {
+  // 1. 保存旧的健康值快照
+  const oldHealthMap = new Map<number, number>();
+  for (const npc of npcEntityList) oldHealthMap.set(npc.id, npc.health);
+  if (playerEntity) oldHealthMap.set(playerEntity.id, playerEntity.health);
+
+  const aliveIds = new Set<number>();
+  const hydrateList = <T extends Entity>(list: T[]): T[] => {
+    return list.map((entity) => {
+      aliveIds.add(entity.id);
+      return H_getRenderableEntityFromSnapshot(entity);
+    });
+  };
+
+  itemEntityList = hydrateList(mapData.itemEntities) as ItemEntity[];
+  npcEntityList = hydrateList(mapData.dynamicEntitie.npcDynamicEntitys) as NpcDynamicEntity[];
+  const playerEntityList = hydrateList(mapData.dynamicEntitie.playerDynamicEntitys) as PlayerDynamicEntity[];
+  playerEntity = playerEntityList[0] || null;
+  grenadeEntityList = hydrateList(mapData.dynamicEntitie.grenadeDynamicEntitys) as GrenadeDynamicEntity[];
+  bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
+
+  // 2. 生成数值浮层 (NPC + 玩家)
+  generateFloatingNumbersFromHealthChange(npcEntityList, oldHealthMap);
+  if (playerEntity) {
+    generateFloatingNumbersFromHealthChange([playerEntity], oldHealthMap);
+  }
+
+  // 3. 更新健康快照Map
+  prevHealthMap.clear();
+  for (const npc of npcEntityList) prevHealthMap.set(npc.id, npc.health);
+  if (playerEntity) prevHealthMap.set(playerEntity.id, playerEntity.health);
 
   // 处理死亡实体的特效
   for (const entity of [...npcEntityList, ...playerEntityList]) {
@@ -157,6 +268,7 @@ const GRAPHICS_CANVAS = ref<HTMLCanvasElement | null>(null);
 const UI_CANVAS = ref<HTMLCanvasElement | null>(null);
 const ENTITY_CANVAS = ref<HTMLCanvasElement | null>(null);
 const EFFECTS_CANVAS = ref<HTMLCanvasElement | null>(null);
+const NUMERICAL_CANVAS = ref<HTMLCanvasElement | null>(null);
 const DEBUG_TERMINAL_MAX_LOGS = 120;
 const EFFECT_SPRITE_FRAME_WIDTH = 100;
 const EFFECT_SPRITE_FRAME_HEIGHT = 100;
@@ -178,10 +290,12 @@ const STAR_FIELD_TWINKLE_SPEED = 0.125; // 星星闪烁速度倍率,越小闪烁
 ////////////////////
 let cursorManager: CursorManager | null = null;
 let effectManager: EffectManager | null = null;
+let numericalManager = new NumericalManager();
 let starFieldStars: StarFieldStar[] = [];// 星空背景的星星列表
 let ctxGraphics: CanvasRenderingContext2D | null = null;
 let ctxUi: CanvasRenderingContext2D | null = null;
 let ctxEntity: CanvasRenderingContext2D | null = null;
+let ctxNumerical: CanvasRenderingContext2D | null = null;
 
 let offsetXX = 0;  // 原点在x轴上的偏移
 let offsetYY = 0;  // 原点在y轴上的偏移
@@ -248,7 +362,8 @@ let firstPersonMoveS = false;
 let firstPersonMoveD = false;
 let playerFireMode = false;
 
-
+// 健康值快照Map (用于生成数值浮层)
+let prevHealthMap = new Map<number, number>();
 
 ////////////////////
 //<--变量区
@@ -510,6 +625,16 @@ const startSetting = () => {
     }
   }
 
+  // 初始化数值层
+  if (NUMERICAL_CANVAS.value) {
+    ctxNumerical = NUMERICAL_CANVAS.value.getContext('2d');
+    if (ctxNumerical) {
+      H_applyDprToCanvas(NUMERICAL_CANVAS.value, ctxNumerical);
+    }
+    numericalManager.bindCanvas(NUMERICAL_CANVAS.value);
+    numericalManager.setWorldToScreen(TOcanvas2Screen);
+  }
+
   // init effect manager
   if (!effectManager) {
     effectManager = new EffectManager({
@@ -536,6 +661,7 @@ const startSetting = () => {
   renderEntityList = [];
   playerFireMode = false;
   effectManager?.reset();
+  numericalManager.reset();
 
   // 加载纹理并开始动画
   // load textures and start animation
@@ -1242,6 +1368,14 @@ const animateEntities = (timestamp: number) => {
     drawEntities();                             // 重绘实体层
     effectManager?.updateAndDraw(deltaTime);    // 渲染特效层
     
+    // 更新并绘制数值层
+    numericalManager.update(deltaTime);
+    if (ctxNumerical && NUMERICAL_CANVAS.value) {
+      const { width, height } = H_getCanvasCssSize(NUMERICAL_CANVAS.value);
+      ctxNumerical.clearRect(0, 0, width, height);
+      numericalManager.draw();
+    }
+
     if(debugBoardVisible){
       if (!ctxUi || !UI_CANVAS.value) return;
       drawDebugBoard(ctxUi, UI_CANVAS.value);
@@ -1772,6 +1906,13 @@ const onResizeCanvas = () => {
     drawEntities(); // 重绘实体层
   }
 
+  // 数值层 DPR 适配
+  if (NUMERICAL_CANVAS.value && ctxNumerical) {
+    H_applyDprToCanvas(NUMERICAL_CANVAS.value, ctxNumerical);
+    numericalManager.bindCanvas(NUMERICAL_CANVAS.value);
+    numericalManager.setWorldToScreen(TOcanvas2Screen);
+  }
+
   // adjust effect layer DPR and redraw
   effectManager?.bindCanvas(EFFECTS_CANVAS.value);
   effectManager?.applyDprToCanvas();
@@ -1946,6 +2087,8 @@ onUnmounted(() => {
     <canvas id="canvas-effects" ref="EFFECTS_CANVAS"></canvas>
     <!-- UI用户界面层 -->
     <canvas id="canvas-ui" ref="UI_CANVAS"></canvas>
+    <!-- 数值显示层 -->
+    <canvas id="canvas-numerical" ref="NUMERICAL_CANVAS"></canvas>
     <!-- 鼠标指针 -->
     <canvas id="canvas-cursor"></canvas>
   </div>
@@ -1957,4 +2100,5 @@ onUnmounted(() => {
 #canvas-effects{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
 #canvas-ui{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:auto;cursor:none;}
 #canvas-cursor{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
+#canvas-numerical{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
 </style>

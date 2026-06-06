@@ -2,7 +2,13 @@
 import type { Point, EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 
 class SniperBulletDynamicEntity extends BulletDynamicEntity {
-  constructor(position: Point, direction: Point, ownerId: number | null, teamId: number | null, name: string = 'Sniper Bullet') {
+  constructor(
+    position: Point,
+    direction: Point,
+    ownerId: number | null,
+    teamId: number | null,
+    name: string = ''
+  ) {
     super(position, direction, ownerId, teamId, 'long', name, 100, 'sniper_bullet');
     //
   }

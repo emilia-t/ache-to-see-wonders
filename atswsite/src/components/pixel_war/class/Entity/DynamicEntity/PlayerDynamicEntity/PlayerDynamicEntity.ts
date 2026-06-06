@@ -31,7 +31,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     bulletColor: 'rgba(255, 255, 255, 0.9)'
   };
   private servantGrid:ServantGrid|null = null;
-  readonly #isme: boolean;
+  private isme: boolean;
   
 
   constructor(
@@ -41,7 +41,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     isme: boolean = false
   ) {
     super(position, PlayerDynamicEntity.WIDTH, PlayerDynamicEntity.HEIGHT, '', name, 'player', 'player');
-    this.#isme = isme;
+    this.isme = isme;
     this.fillColor = '#2d7ff9a1';
     this.minMoveSpeed = PlayerDynamicEntity.MOVE_SPEED;
     this.maxMoveSpeed = PlayerDynamicEntity.MOVE_SPEED;
@@ -499,7 +499,7 @@ class PlayerDynamicEntity extends DynamicEntity {
    * getter and setter
    */
   public getIsme():boolean{
-    return this.#isme;
+    return this.isme;
   }
   public setIsme():void{
     return;
