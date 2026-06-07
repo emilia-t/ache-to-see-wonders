@@ -21,6 +21,7 @@ export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntit
 // HostileNpcDynamicEntity and its subclasses
 export { HostileNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
 export { WhitePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelEntity';
+export { WhitePixelVa2Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelVa2Entity/WhitePixelVa2Entity';
 export { RedPixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/RedPixelEntity/RedPixelEntity';
 // NeutralNpcDynamicEntity
 export { NeutralNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/NeutralNpcDynamicEntity';
@@ -60,7 +61,9 @@ export const PrototypeChain = {
       "NpcDynamicEntity": {
         "FriendlyNpcDynamicEntity": "FriendlyNpcDynamicEntity",
         "HostileNpcDynamicEntity": {
-          "WhitePixelEntity": "WhitePixelEntity",
+          "WhitePixelEntity": {
+            "WhitePixelVa2Entity":"WhitePixelVa2Entity"
+          },
           "RedPixelEntity": "RedPixelEntity"
         },
         "NeutralNpcDynamicEntity": "NeutralNpcDynamicEntity"

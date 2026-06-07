@@ -39,6 +39,7 @@ import {
   NpcDynamicEntity,
   PlayerDynamicEntity,
   WhitePixelEntity,
+  WhitePixelVa2Entity,
   RedPixelEntity,
   BulletDynamicEntity,
   BuckshotBulletDynamicEntity,
@@ -466,6 +467,12 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
     switch (tag){
       case 'white_pixel':
         return new WhitePixelEntity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'white_pixel_va2':
+        return new WhitePixelVa2Entity(
           snapshot.position,
           snapshot.ownerId,
           snapshot.teamId

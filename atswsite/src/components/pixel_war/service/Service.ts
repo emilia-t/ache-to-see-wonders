@@ -21,6 +21,7 @@ import {
   OrdinaryBulletDynamicEntity,
   PlayerDynamicEntity,
   WhitePixelEntity,
+  WhitePixelVa2Entity,
   RedPixelEntity,
   HealingGemItemEntity,
   GrenadeDynamicEntity
@@ -90,7 +91,8 @@ const MAP_DATA: MapData = {
 // 生成权重
 const SPAWNABLE_NPC_CLASSES = [
   RedPixelEntity,
-  WhitePixelEntity
+  WhitePixelEntity,
+  WhitePixelVa2Entity
   // more
 ] as const;
 

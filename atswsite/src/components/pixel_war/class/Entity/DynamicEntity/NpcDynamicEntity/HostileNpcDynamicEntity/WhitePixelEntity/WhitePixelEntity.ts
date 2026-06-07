@@ -1,9 +1,5 @@
-import { OrdinaryBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
-import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
-import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
-import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
-import type { Point, DynamicEntitieList, GameConfig, ActionLoopContext} from '@/components/pixel_war/interface/Interface';
-import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
+import { OrdinaryBulletDynamicEntity,HostileNpcDynamicEntity,ItemEntity,StaticEntity } from '@/components/pixel_war/class';
+import type { Point,DynamicEntitieList,GameConfig,ActionLoopContext,EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 
 class WhitePixelEntity extends HostileNpcDynamicEntity {
   public static GENERATE_WEIGHT = 0.8;
