@@ -11,6 +11,7 @@ export class Instruct {
     public static H_getTimestamp = () => {
         return Date.now();
     };
+    
     /**
      * 生成格式为 'YYYY-MM-DD HH:mm:ss:SSS' 的时间字符串
      * @param date 可选，Date对象，默认为当前时间
@@ -165,6 +166,21 @@ export class Instruct {
     }
 
 
+    /*
+     *tick 暂停的指令
+     */
+    public static I_TickPause = (paused?: boolean): InstructObject => {
+        return {
+            type: 'tick_pause',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: { paused } // 携带暂停标志，若不传则服务端自行切换
+        };
+    };
+/**
+ * 
+ */
     ////////////////////
     //<--指令创建区(I_前缀)
     ////////////////////

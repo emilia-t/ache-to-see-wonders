@@ -128,6 +128,7 @@ const handleWorkerMessage = (event: MessageEvent) => {
         if (!isPageVisible) {
           break;
         }
+        //console.log(instruct.data);
         applyMapDataSnapshot(instruct.data as MapData);
         break;
       }
@@ -1489,6 +1490,7 @@ const DEBUG_COMMAND_SPECS = [
   { name: '/movement_passion', args: ['on', 'off', 'toggle'] },
   { name: '/all', args: ['on', 'off'] },
   { name: '/clear', args: [] as string[] },
+  { name: '/tick_pause', args: [] as string[] }
 ];
 
 const autoCompleteDebugCommand = () => {
@@ -1565,6 +1567,7 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
 
       pushDebugTerminalLog('/all [on|off]');
       pushDebugTerminalLog('/clear');
+      pushDebugTerminalLog('/tick_pause');
       break;
     }
     case 'status':{
@@ -1673,6 +1676,11 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
     case 'clear':{
       debugTerminalLogs = [];
       debugTerminalScrollOffset = 0;
+      break;
+    }
+    case 'tick_pause': {
+      sendClientInstruct(Instruct.I_TickPause());
+      pushDebugTerminalLog(`[SYS] Toggle game pause`);
       break;
     }
     default:{

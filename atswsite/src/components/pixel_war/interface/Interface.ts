@@ -254,12 +254,20 @@ export interface Servant {
     exist: boolean;
     // npc的实体id,默认为-1
     npcId: number;
+    // 邻居信息
+    neighbor: NeighborGrid;
 }
 
-// 定义一行从者：必须恰好包含 9 个 Sit，且长度为 9
+// 3 x 3 的网格(初中心点以外)表示从左到右从上到下的邻居实体id
+export interface NeighborGrid extends Array<number> {
+  length: 8;
+  [index: number]: number;
+}
+
+// 定义一行从者
 export interface ServantRow extends Array<Servant> {
-    length: 9;// 固定长度
-    0: Servant; 
+    length: 15;
+    0: Servant;
     1: Servant;
     2: Servant;
     3: Servant;
@@ -268,12 +276,18 @@ export interface ServantRow extends Array<Servant> {
     6: Servant;
     7: Servant;
     8: Servant;
-    [index: number]: Servant;// 索引签名 确保所有元素均为 Servant
+    9: Servant;
+    10: Servant;
+    11: Servant;
+    12: Servant;
+    13: Servant;
+    14: Servant;
+    [index: number]: Servant;
 }
 
-// 定义整个 9×9 从者网格：必须恰好包含 9 个 Row，且长度为 9
+// 定义整个从者网格
 export interface ServantGrid extends Array<ServantRow> {
-    length: 9;
+    length: 15;
     0: ServantRow;
     1: ServantRow;
     2: ServantRow;
@@ -283,8 +297,16 @@ export interface ServantGrid extends Array<ServantRow> {
     6: ServantRow;
     7: ServantRow;
     8: ServantRow;
+    9: ServantRow;
+    10: ServantRow;
+    11: ServantRow;
+    12: ServantRow;
+    13: ServantRow;
+    14: ServantRow;
     [index: number]: ServantRow;
 }
+
+export interface ServantMap extends Map<number, Servant> {}
 
 export interface ActionLoopContext {
   deltaTime: number;

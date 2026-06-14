@@ -5,7 +5,9 @@
   EntityDebugFlags,
   ServantGrid,
   Servant,
-  PersonRule
+  PersonRule,
+  ServantMap,
+  NeighborGrid
 } from '@/components/pixel_war/interface/Interface';
 
 import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
@@ -31,6 +33,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     bulletColor: 'rgba(255, 255, 255, 0.9)'
   };
   private servantGrid:ServantGrid|null = null;
+  private servantMap:ServantMap|null = null;
   private isme: boolean;
   
 
@@ -58,18 +61,20 @@ class PlayerDynamicEntity extends DynamicEntity {
      * 初始化从者网格start
      */
     this.servantGrid = Array.from(
-      { length: 9 },
-      (_, r) =>
-        Array.from(
-          { length: 9 },
-          (_, c) => ({
-            row: r,
-            col: c,
-            exist: false,
-            npcId: -1
-          })
-        )
+        { length: 15 },
+        (_, r) =>
+            Array.from(
+                { length: 15 },
+                (_, c) => ({
+                    row: r,
+                    col: c,
+                    exist: false,
+                    npcId: -1,
+                    neighbor: [-1,-1,-1,-1,-1,-1,-1,-1] as NeighborGrid
+                })
+            )
     ) as unknown as ServantGrid;
+    this.servantMap = new Map<number, Servant>();
     /**
      * 初始化从者网格end
      */
@@ -103,7 +108,6 @@ class PlayerDynamicEntity extends DynamicEntity {
     gameConfig: GameConfig
   ) {
     if (this.isDead) return;
-
     //cd count
     this.personRule.fireCooldownNow =  Math.max(0, this.personRule.fireCooldownNow - dt);
 
@@ -360,21 +364,32 @@ class PlayerDynamicEntity extends DynamicEntity {
    * 重置玩家的从者网格
    */
   private resetServantGrid(): void {
-    if(this.servantGrid===null){
-      return;
+    if (this.servantGrid === null) return;
+    for (let r = 0; r < 15; r++) {
+      for (let c = 0; c < 15; c++) {
+        this.servantGrid[r][c] = {
+          row: r,
+          col: c,
+          exist: false,
+          npcId: -1,
+          neighbor: [-1, -1, -1, -1, -1, -1, -1, -1] as NeighborGrid
+        };
+      }
     }
-    for (let r = 0; r < 9; r++) {
-        for (let c = 0; c < 9; c++) {
-            this.servantGrid[r][c] = {
-                row: r,
-                col: c,
-                exist: false,
-                npcId: -1
-            };
-        }
+    // 重置 Map
+    if (this.servantMap) {
+      this.servantMap.clear();
     }
   }
-  
+  /**
+   * 获取所有从者 ID 列表
+   * @returns array
+   */
+  public getAllServantIds(): number[] {
+    if (this.servantMap === null) return [];
+    return Array.from(this.servantMap.keys());
+  }
+
   /**
    * 查询servantGrid某个格子是否占用
    * @returns boolean 返回true则允许添加
@@ -392,29 +407,160 @@ class PlayerDynamicEntity extends DynamicEntity {
    * 添加一个servant
    * @returns boolean 返回true则添加成功
    */
-  public setServant(row:number,col:number,npcEntityId:number): boolean {
-    if(this.servantGrid === null)return false;
-    if(row === 4 && col === 4)return false;
-    if(this.trySetServant(row,col,npcEntityId) === false){
-      return false;
-    }
+  public setServant(row: number, col: number, npcEntityId: number): boolean {
+    if (this.servantGrid === null || this.servantMap === null) return false;
+    if (row === 7 && col === 7) return false;
+    if (!this.trySetServant(row, col, npcEntityId)) return false;
+
     this.servantGrid[row][col].exist = true;
     this.servantGrid[row][col].npcId = npcEntityId;
+    this.servantMap.set(npcEntityId, this.servantGrid[row][col]);
+
+    // 更新邻居关系
+    this.updateNeighborsForCell(row, col);
+
     return true;
   }
 
   /**
    * 移除一个servant
-   * @returns boolean 返回true则移除成功
+   * @returns { removedRow: number; removedCol: number } | null
    */
-  public removeServant(npcEntityId: number): boolean {
-    if(this.servantGrid === null)return false;
-    for(let r = 0; r < 9; r++){
-      for(let c = 0; c < 9 ; c++){
-        if(this.servantGrid[r][c].npcId === npcEntityId){
+  public removeServant(npcEntityId:number):{removedRow:number;removedCol:number}|null{
+    if (this.servantGrid === null || this.servantMap === null) return null;
+    for (let r = 0; r < 15; r++) {
+      for (let c = 0; c < 15; c++) {
+        if (this.servantGrid[r][c].npcId === npcEntityId) {
+          // 记录移除位置
+          const removedRow = r, removedCol = c;
           this.servantGrid[r][c].exist = false;
           this.servantGrid[r][c].npcId = -1;
+          this.servantGrid[r][c].neighbor = [-1,-1,-1,-1,-1,-1,-1,-1] as NeighborGrid;
+          this.servantMap.delete(npcEntityId);
+
+          // 更新邻居关系（只更新自身及周围即可）
+          this.updateNeighborsForCell(removedRow, removedCol);
+          return {removedRow,removedCol};
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 从指定格子开始，找出所有与玩家断连的从者并释放它们
+   * @param startRow 起始行
+   * @param startCol 起始列
+   * @param onReleaseNpc 释放回调，用于修改外部 NPC 对象的 ownerId/teamId
+   * @returns 被释放的 npcId 列表
+   */
+  public releaseDisconnectedServants(
+    startServant: Servant,
+    onReleaseNpc?: (npcId: number) => void
+  ): number[] {
+    if (!this.servantGrid || !this.servantMap) return [];
+
+    const startCell = startServant;
+    //BUG排查 next_
+    //{"row": 8,"col": 6,"exist": false,"npcId": -1,"neighbor": [719,-1,-1,-1,-1,-1,478,-1]}测试发现此值异常,看起来已经提前被删除了npcId和exist
+    /**
+     * 修复了npcId异常的问题，现在可以正确获取死亡的从者的数据了
+     * 下面排查无法建立BFS的问题
+     * {
+          "row": 7,
+          "col": 9,
+          "exist": true,
+          "npcId": 330,
+          "neighbor": [
+              -1,
+              -1,
+              -1,
+              315,
+              -1,
+              -1,
+              -1,
+              -1
+          ]
+      }
+     */
+    console.log(startCell);//
+    // 如果起始格子当前没有从者，则无需处理（但可能需检查其邻居）
+    if (!startCell.exist || startCell.npcId === -1) return [];
+
+    // 收集所有可能与起始从者联通的从者（通过 BFS）
+    const connectedIds = new Set<number>();
+    const queue: number[] = [startCell.npcId];
+    connectedIds.add(startCell.npcId);
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const servant = this.servantMap.get(currentId);
+      if (!servant) continue;
+      for (const neighborId of servant.neighbor) {
+        if (neighborId !== -1 && !connectedIds.has(neighborId)) {
+          connectedIds.add(neighborId);
+          queue.push(neighborId);
+        }
+      }
+    }
+
+    // 只保留与玩家断连的从者（未被连通到玩家的）
+    const disconnected: number[] = [];
+    for (const id of connectedIds) {
+      const servant = this.servantMap.get(id);
+      if (servant && !this.isServantConnectedToPlayer(servant)) {
+        disconnected.push(id);
+      }
+    }
+
+    // 释放这些从者
+    for (const id of disconnected) {
+      // 从玩家的记录中移除
+      this.removeServant(id); // 注意 removeServant 会更新邻居，这里会多次更新但性能可接受
+      if (onReleaseNpc) {
+        onReleaseNpc(id);
+      }
+    }
+
+    return disconnected;
+  }
+
+  /**
+   * 检查某个从者是否与玩家连通（通过 neighbor 链路可达玩家中心的邻居格子）
+   * @param startServant 起始从者对象
+   * @returns true 表示连通
+   */
+  private isServantConnectedToPlayer(startServant: Servant): boolean {
+    if (!this.servantMap) return false;
+
+    // 玩家中心格子的八个邻居坐标
+    const centerNeighbors: [number, number][] = [
+      [6,6], [6,7], [6,8],
+      [7,6],        [7,8],
+      [8,6], [8,7], [8,8]
+    ];
+
+    // BFS 队列存储 npcId
+    const queue: number[] = [startServant.npcId];
+    const visited = new Set<number>([startServant.npcId]);
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const currentServant = this.servantMap.get(currentId);
+      if (!currentServant) continue;
+
+      // 检查当前从者是否位于玩家中心的八个邻居之一
+      for (const [nr, nc] of centerNeighbors) {
+        if (currentServant.row === nr && currentServant.col === nc) {
           return true;
+        }
+      }
+
+      // 遍历当前从者的 neighbors 数组
+      for (const neighborId of currentServant.neighbor) {
+        if (neighborId !== -1 && !visited.has(neighborId)) {
+          visited.add(neighborId);
+          queue.push(neighborId);
         }
       }
     }
@@ -425,8 +571,9 @@ class PlayerDynamicEntity extends DynamicEntity {
    * 通过行列查询servant
    * @returns Servant|null 返回从者信息
    */
-  public selectServantByRC(row: number,col: number): Servant|null {
-    if(this.servantGrid === null)return null;
+  public selectServantByRC(row: number, col: number): Servant | null {
+    if (this.servantGrid === null) return null;
+    if (row < 0 || row > 14 || col < 0 || col > 14) return null;
     return this.servantGrid[row][col];
   }
 
@@ -434,16 +581,9 @@ class PlayerDynamicEntity extends DynamicEntity {
    * 通过npcId查询servant
    * @returns Servant|null 返回从者信息
    */
-  public selectServantByID(npcEntityId: number): Servant|null {
-    if(this.servantGrid === null)return null;
-    for(let r = 0; r < 9; r++){
-      for(let c = 0; c < 9 ; c++){
-        if(this.servantGrid[r][c].npcId === npcEntityId){
-          return this.servantGrid[r][c];
-        }
-      }
-    }
-    return null;
+  public selectServantByID(npcEntityId: number): Servant | null {
+    if (this.servantMap === null) return null;
+    return this.servantMap.get(npcEntityId) || null;
   }
 
   /**
@@ -451,48 +591,91 @@ class PlayerDynamicEntity extends DynamicEntity {
    * @returns {row:number,col:number} | null
    */
   public worldPositionToRowCol(worldPosition: Point): { row: number; col: number } | null {
-    const deltaX = worldPosition.x - this.position.x;
+    const deltaX = this.position.x - worldPosition.x;
     const deltaY = worldPosition.y - this.position.y;
-    const halfCell = 12.5; // 格子半长
+    const halfCell = 12.5; // 格子半长（格子边长25）
 
-    // 计算偏移量（格子索引，范围 -4..4）
+    // 计算偏移量（格子索引，范围 -7..7）
     let colOffset = Math.floor((deltaX + halfCell) / 25);
     let rowOffset = Math.floor((deltaY + halfCell) / 25);
 
     // 检查是否超出网格范围
-    if (colOffset < -4 || colOffset > 4 || rowOffset < -4 || rowOffset > 4) {
+    if (colOffset < -7 || colOffset > 7 || rowOffset < -7 || rowOffset > 7) {
         return null;
     }
 
-    // 偏移量到网格索引（0..8）的映射： offset = -4 → row=8, offset=0 → row=4, offset=4 → row=0
-    const col = 4 - colOffset;
-    const row = 4 - rowOffset;
+    // 偏移量到网格索引（0..14）的映射： offset = -7 → col=14, offset=0 → col=7, offset=7 → col=0
+    const col = 7 - colOffset;
+    const row = 7 - rowOffset;
 
-    if(row === 4 && col === 4){
-      return null;
-    }
-    else{
-      return { row, col };
+    if (row === 7 && col === 7) {
+        return null; // 中心格子不可占用
+    } else {
+        return { row, col };
     }
   }
 
   /**
    * 通过RC获得世界坐标（格子中心点）
-   * @param row 行索引 0-8
-   * @param col 列索引 0-8
+   * @param row 行索引 0-14
+   * @param col 列索引 0-14
    * @returns 世界坐标点，无效索引返回 null
    */
   public rowColToWorldPosition(row: number, col: number): Point | null {
-      if (row < 0 || row > 8 || col < 0 || col > 8) {
-          return null;
+    if (row < 0 || row > 14 || col < 0 || col > 14) {
+        return null;
+    }
+    // 索引到偏移量的映射：offset = 7 - index
+    const offsetX = col - 7;
+    const offsetY = 7 - row;
+    // 每个格子边长 25 像素
+    const worldX = this.position.x + offsetX * 25;
+    const worldY = this.position.y + offsetY * 25;
+    return { x: worldX, y: worldY };
+  }
+
+  /**
+   * 获取某格子八个方向的邻居 npcId 数组（顺序：左上、上、右上、左、右、左下、下、右下）
+   */
+  private buildNeighborForCell(row: number, col: number): NeighborGrid {
+    const neighbors: number[] = [];
+    const directions = [
+      [-1,-1],  [-1,0],  [-1,1],
+      [0, -1],           [0, 1],
+      [1, -1],  [1, 0],  [1, 1]
+    ];
+    for (const [dr, dc] of directions) {
+      const nr = row + dr;
+      const nc = col + dc;
+      if (nr >= 0 && nr < 15 && nc >= 0 && nc < 15) {
+        const cell = this.servantGrid![nr][nc];
+        if (cell.exist && cell.npcId !== -1) {
+          neighbors.push(cell.npcId);
+        } else {
+          neighbors.push(-1);
+        }
+      } else {
+        neighbors.push(-1);
       }
-      // 索引到偏移量的映射：offset = 4 - index
-      const offsetX = 4 - col;
-      const offsetY = 4 - row;
-      // 每个格子边长 25 像素
-      const worldX = this.position.x + offsetX * 25;
-      const worldY = this.position.y + offsetY * 25;
-      return { x: worldX, y: worldY };
+    }
+    // 断言长度为 8 的数组为 NeighborGrid 类型
+    return neighbors as NeighborGrid;
+  }
+
+  /**
+   * 更新指定格子及其周围 3x3 范围内所有格子的 neighbor 信息
+   */
+  private updateNeighborsForCell(row: number, col: number): void {
+    if (!this.servantGrid) return;
+    const minRow = Math.max(0, row - 1);
+    const maxRow = Math.min(14, row + 1);
+    const minCol = Math.max(0, col - 1);
+    const maxCol = Math.min(14, col + 1);
+    for (let r = minRow; r <= maxRow; r++) {
+      for (let c = minCol; c <= maxCol; c++) {
+        this.servantGrid[r][c].neighbor = this.buildNeighborForCell(r, c);
+      }
+    }
   }
 
   /**

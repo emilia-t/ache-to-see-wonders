@@ -126,6 +126,8 @@ let itemSpawnHighTimer = GCFG.npcSpawnHighInterval;
 let itemSpawnMediumTimer = GCFG.npcSpawnMediumInterval;
 let itemSpawnLowTimer = GCFG.npcSpawnLowInterval;
 let staticEntitiesSent = false;
+let gamePaused = false;      // 游戏逻辑是否暂停
+let lastPauseState = false;  // 用于日志去重
 ////////////////////
 //<--变量区
 ////////////////////
@@ -589,16 +591,32 @@ const setRandomTargetForNpc = (entity: NpcDynamicEntity): boolean => {
  * 处理玩家的从者死亡的函数
  * @param npcEntity 
  */
-const resolvePlayerServantDead = (npcEntity:NpcDynamicEntity):void => {
-  if(npcEntity.isDead && npcEntity.ownerId!==null){
-    for(const player of MAP_DATA.dynamicEntitie.playerDynamicEntitys){
-      if(npcEntity.ownerId === player.id){
-        player.removeServant(npcEntity.id);
+const resolvePlayerServantDead = (npcEntity: NpcDynamicEntity): void => {
+  if (npcEntity.isDead && npcEntity.ownerId !== null) {
+    for (const player of MAP_DATA.dynamicEntitie.playerDynamicEntitys) {
+      if (npcEntity.ownerId === player.id) {
+        //  先获取死亡从者的信息（此时仍存在于 servantMap 中）
+        const deadServant = player.selectServantByID(npcEntity.id);
+        if (deadServant === null) return;
+
+        //  找出所有因该从者断开连接的从者（包括死亡从者自身）
+        const disconnectedIds = player.releaseDisconnectedServants(deadServant, (npcId) => {
+          const npc = MAP_DATA.dynamicEntitie.npcDynamicEntitys.find(n => n.id === npcId);
+          if (npc) {
+            npc.ownerId = -1;
+            npc.teamId = -1;
+          }
+        });
+
+        //  批量移除所有断连的从者（包括死亡从者）
+        for (const id of disconnectedIds) {
+          player.removeServant(id);
+        }
         break;
       }
     }
   }
-}
+};
 
 /**
  * 动态实体的碰撞处理
@@ -643,7 +661,7 @@ const resolveDynamicEntityCollisions = () => {
         if (entityB.id <= entityA.id) continue;
         if (entityB.isDead) continue;
 
-        // player <-> npc 吸附逻辑(保持原有行为)
+        // player <-> npc 吸附逻辑
         if (
           (entityA instanceof PlayerDynamicEntity && entityB instanceof NpcDynamicEntity) ||
           (entityB instanceof PlayerDynamicEntity && entityA instanceof NpcDynamicEntity)
@@ -1049,6 +1067,7 @@ const generateItemAroundPlayerSingle = (deltaTime: number) => {
 };
 
 const updateGame = (deltaTime: number) => {
+  if (gamePaused) return;
   updateItemEntityLifetimes(deltaTime);
   updateDynamicEntities(deltaTime);
   updateDynamicEntityItemPickups();
@@ -1081,6 +1100,16 @@ const handleInstruct = (instruct: InstructObject) => {
     }
     case 'player_fire_input': {
       spawnPlayerBullet(instruct.data as Point);
+      break;
+    }
+    case 'tick_pause': {
+      const { paused } = instruct.data as { paused?: boolean };
+      if (paused !== undefined) {
+        gamePaused = paused;
+      } else {
+        gamePaused = !gamePaused;  // 无参数时切换状态
+      }
+      console.log(`[Service] Game ${gamePaused ? 'paused' : 'resumed'}`);
       break;
     }
     default: {
