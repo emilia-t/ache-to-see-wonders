@@ -111,7 +111,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     const servantCount = this.servantMap?.size ?? 0;
     this.speed = Math.max(
       PlayerDynamicEntity.MIN_MOVE_SPEED,
-      PlayerDynamicEntity.MOVE_SPEED - servantCount * 5
+      PlayerDynamicEntity.MOVE_SPEED - servantCount * 4
     );
   }
 
