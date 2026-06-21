@@ -209,6 +209,92 @@ class PlayerDynamicEntity extends DynamicEntity {
   }
 
   /**
+   * 绘制玩家与已连接从者的外轮廓
+   */
+  private drawServantOutline(
+    ctx: CanvasRenderingContext2D,
+    worldToScreen: (x: number, y: number) => { x: number; y: number }
+  ): void {
+    if (this.servantGrid === null) return;
+
+    const servantCellSize = 25;
+    const halfCell = servantCellSize / 2;
+    const occupiedCells = new Set<string>(['7,7']);
+    const queue: Array<{ row: number; col: number }> = [{ row: 7, col: 7 }];
+    const directions = [
+      [-1, -1], [-1, 0], [-1, 1],
+      [0, -1],           [0, 1],
+      [1, -1],  [1, 0],  [1, 1]
+    ];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const [dr, dc] of directions) {
+        const row = current.row + dr;
+        const col = current.col + dc;
+        if (row < 0 || row > 14 || col < 0 || col > 14) continue;
+
+        const cellKey = `${row},${col}`;
+        if (occupiedCells.has(cellKey)) continue;
+
+        const servant = this.servantGrid[row][col];
+        if (servant.exist) {
+          occupiedCells.add(cellKey);
+          queue.push({ row, col });
+        }
+      }
+    }
+
+    const hasCell = (row: number, col: number) => occupiedCells.has(`${row},${col}`);
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(1, 217, 255, 0.45)';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+
+    for (const cellKey of occupiedCells) {
+      const [row, col] = cellKey.split(',').map(Number);
+      const center = this.rowColToWorldPosition(row, col);
+      if (!center) continue;
+
+      const left = center.x - halfCell;
+      const right = center.x + halfCell;
+      const top = center.y + halfCell;
+      const bottom = center.y - halfCell;
+
+      if (!hasCell(row - 1, col)) {
+        const start = worldToScreen(left, top);
+        const end = worldToScreen(right, top);
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+      }
+      if (!hasCell(row + 1, col)) {
+        const start = worldToScreen(left, bottom);
+        const end = worldToScreen(right, bottom);
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+      }
+      if (!hasCell(row, col - 1)) {
+        const start = worldToScreen(left, top);
+        const end = worldToScreen(left, bottom);
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+      }
+      if (!hasCell(row, col + 1)) {
+        const start = worldToScreen(right, top);
+        const end = worldToScreen(right, bottom);
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+      }
+    }
+
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
    * 绘制实体
    * @param ctx 
    * @param worldToScreen 
@@ -227,13 +313,15 @@ class PlayerDynamicEntity extends DynamicEntity {
     const left = screenPos.x - halfW;
     const top = screenPos.y - halfH;
 
+    this.drawServantOutline(ctx, worldToScreen);
+
     // 绘制本体
     if (this.texture && this.texture.loaded) {
       ctx.drawImage(this.texture.img, left, top, this.width, this.height);
     } else {
       ctx.fillStyle = this.fillColor || '#2d7ff9a1';
       ctx.fillRect(left, top, this.width, this.height);
-      ctx.strokeStyle = this.strokeColor || '#000';
+      ctx.strokeStyle = this.strokeColor || 'rgba(1, 217, 255, 0.45)';
       ctx.strokeRect(left, top, this.width, this.height);
     }
 
