@@ -20,7 +20,7 @@ class OrdinaryBulletDynamicEntity extends BulletDynamicEntity {
     const screenPos = worldToScreen(this.position.x, this.position.y);
     ctx.save();
     ctx.translate(screenPos.x, screenPos.y);
-    const angle = Math.atan2(this.velocity.y, this.velocity.x);
+    const angle = this.getScreenRotationAngle();
     ctx.rotate(angle);
     ctx.fillStyle = this.bulletColor;
     ctx.fillRect(-BulletDynamicEntity.WIDTH / 2, -BulletDynamicEntity.HEIGHT / 4, BulletDynamicEntity.WIDTH, BulletDynamicEntity.HEIGHT / 2);

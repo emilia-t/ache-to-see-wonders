@@ -55,6 +55,13 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     this.damage = damage;
   }
 
+  /**
+   * 获取子弹在屏幕坐标系中的旋转角度
+   */
+  protected getScreenRotationAngle(): number {
+    return Math.atan2(-this.velocity.y, this.velocity.x);
+  }
+
   private collidesWithStatic(newPos: Point, staticEntities: StaticEntity[]) {
     const myBox = {
       x: newPos.x - this.width / 2,
@@ -116,4 +123,3 @@ abstract class BulletDynamicEntity extends DynamicEntity {
 }
 
 export { BulletDynamicEntity };
-

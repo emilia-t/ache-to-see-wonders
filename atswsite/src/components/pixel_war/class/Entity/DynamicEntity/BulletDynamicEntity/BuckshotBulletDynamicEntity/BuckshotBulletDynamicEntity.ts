@@ -11,7 +11,7 @@ class BuckshotBulletDynamicEntity extends BulletDynamicEntity {
     const screenPos = worldToScreen(this.position.x, this.position.y);
     ctx.save();
     ctx.translate(screenPos.x, screenPos.y);
-    const angle = Math.atan2(this.velocity.y, this.velocity.x);
+    const angle = this.getScreenRotationAngle();
     ctx.rotate(angle);
     ctx.fillStyle = 'rgba(200, 180, 50, 0.9)';
     ctx.fillRect(-BulletDynamicEntity.WIDTH / 2, -BulletDynamicEntity.HEIGHT / 4, BulletDynamicEntity.WIDTH, BulletDynamicEntity.HEIGHT / 2);
@@ -20,4 +20,3 @@ class BuckshotBulletDynamicEntity extends BulletDynamicEntity {
 }
 
 export { BuckshotBulletDynamicEntity };
-
