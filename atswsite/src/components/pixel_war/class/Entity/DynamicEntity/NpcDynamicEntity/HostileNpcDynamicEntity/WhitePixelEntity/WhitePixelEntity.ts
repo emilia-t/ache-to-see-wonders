@@ -282,10 +282,10 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
       if(debugFlags.showHealth){
         debugLines.push(`health: ${this.health.toFixed(0)}`);
       }
-      if(debugFlags.showMovementSpeed){
+      if(debugFlags.showMovementSpeed && this.ownerId === null){
         debugLines.push(`speed: ${this.speed.toFixed(2)}`);
       }
-      if(debugFlags.showMovementPassion){
+      if(debugFlags.showMovementPassion && this.ownerId === null){
         debugLines.push(`passion: ${(this.movementPassion * 100).toFixed(1)}%`);
       }
       if (debugLines.length > 0){// 按顺序渲染多行文本
@@ -317,7 +317,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
         ctx.restore();
       }
       // 运动轨迹
-      if(debugFlags.showHistoricalTrajectory){
+      if(debugFlags.showHistoricalTrajectory && this.ownerId === null){
         ctx.save();
         // 1. 绘制平滑曲线路径(计划路径)
         if (this.curvePoints && this.curvePoints.length > 1) {

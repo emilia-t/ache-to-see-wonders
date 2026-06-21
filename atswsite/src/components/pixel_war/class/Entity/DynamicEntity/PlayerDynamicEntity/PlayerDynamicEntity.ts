@@ -18,7 +18,8 @@ import { FoodItemEntity } from '../../ItemEntity/FoodItemEntity/FoodItemEntity';
 class PlayerDynamicEntity extends DynamicEntity {
   public static readonly WIDTH = 25;
   public static readonly HEIGHT = 25;
-  public static readonly MOVE_SPEED = 320;
+  public static readonly MOVE_SPEED = 410;
+  public static readonly MIN_MOVE_SPEED = 50;
   public static readonly playerMoveState = {
     playerMoveW: false,
     playerMoveA: false,
@@ -101,6 +102,19 @@ class PlayerDynamicEntity extends DynamicEntity {
     return false;
   }
 
+  /**
+   * 根据当前从者数量刷新玩家移动速度
+   * 每增加一个从者移动速度降低4
+   * 最低不低于MIN_MOVE_SPEED
+   */
+  private refreshSpeedByServantCount(): void {
+    const servantCount = this.servantMap?.size ?? 0;
+    this.speed = Math.max(
+      PlayerDynamicEntity.MIN_MOVE_SPEED,
+      PlayerDynamicEntity.MOVE_SPEED - servantCount * 5
+    );
+  }
+
   public override update(
     dt: number,
     staticEntities: StaticEntity[],
@@ -110,6 +124,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     if (this.isDead) return;
     //cd count
     this.personRule.fireCooldownNow =  Math.max(0, this.personRule.fireCooldownNow - dt);
+    this.refreshSpeedByServantCount();
 
     let dx = 0;
     let dy = 0;
@@ -468,6 +483,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     if (this.servantMap) {
       this.servantMap.clear();
     }
+    this.refreshSpeedByServantCount();
   }
   /**
    * 获取所有从者 ID 列表
@@ -506,6 +522,7 @@ class PlayerDynamicEntity extends DynamicEntity {
 
     // 更新邻居关系
     this.updateNeighborsForCell(row, col);
+    this.refreshSpeedByServantCount();
 
     return true;
   }
@@ -528,6 +545,7 @@ class PlayerDynamicEntity extends DynamicEntity {
 
           // 更新邻居关系（只更新自身及周围即可）
           this.updateNeighborsForCell(removedRow, removedCol);
+          this.refreshSpeedByServantCount();
           return {removedRow,removedCol};
         }
       }
