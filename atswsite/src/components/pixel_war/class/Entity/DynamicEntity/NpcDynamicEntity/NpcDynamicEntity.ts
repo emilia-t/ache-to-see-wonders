@@ -19,8 +19,8 @@ abstract class NpcDynamicEntity extends DynamicEntity {
   public static readonly HEIGHT = 25;
   public static GENERATE_WEIGHT = 1;//随机刷新的权重 (0,1]
 
-  public ownerId: number | null;
-  public teamId: number | null;
+  public ownerId: number | null;  // 拥有者ID，null表示无主
+  public teamId: number | null; // 拥有者ID，null表示无队伍
   public attitude: NpcAttitude; // 友好/中立/敌对
   public pickupRange: number; // 拾取范围
 

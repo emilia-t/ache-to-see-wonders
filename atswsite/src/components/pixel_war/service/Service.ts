@@ -603,8 +603,8 @@ const resolvePlayerServantDead = (npcEntity: NpcDynamicEntity): void => {
         const disconnectedIds = player.releaseDisconnectedServants(deadServant, (npcId) => {
           const npc = MAP_DATA.dynamicEntitie.npcDynamicEntitys.find(n => n.id === npcId);
           if (npc) {
-            npc.ownerId = -1;
-            npc.teamId = -1;
+            npc.ownerId = null;
+            npc.teamId = null;
           }
         });
 

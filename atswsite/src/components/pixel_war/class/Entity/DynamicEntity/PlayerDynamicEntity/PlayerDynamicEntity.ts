@@ -461,62 +461,28 @@ class PlayerDynamicEntity extends DynamicEntity {
     if (!this.servantGrid || !this.servantMap) return [];
 
     const startCell = startServant;
-    //BUG排查 next_
-    //{"row": 8,"col": 6,"exist": false,"npcId": -1,"neighbor": [719,-1,-1,-1,-1,-1,478,-1]}测试发现此值异常,看起来已经提前被删除了npcId和exist
-    /**
-     * 修复了npcId异常的问题，现在可以正确获取死亡的从者的数据了
-     * 下面排查无法建立BFS的问题
-     * {
-          "row": 7,
-          "col": 9,
-          "exist": true,
-          "npcId": 330,
-          "neighbor": [
-              -1,
-              -1,
-              -1,
-              315,
-              -1,
-              -1,
-              -1,
-              -1
-          ]
-      }
-     */
-    console.log(startCell);//
-    // 如果起始格子当前没有从者，则无需处理（但可能需检查其邻居）
     if (!startCell.exist || startCell.npcId === -1) return [];
 
-    // 收集所有可能与起始从者联通的从者（通过 BFS）
-    const connectedIds = new Set<number>();
-    const queue: number[] = [startCell.npcId];
-    connectedIds.add(startCell.npcId);
+    const deadServantId = startCell.npcId;
+    const disconnected: number[] = [deadServantId];
 
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
-      const servant = this.servantMap.get(currentId);
-      if (!servant) continue;
-      for (const neighborId of servant.neighbor) {
-        if (neighborId !== -1 && !connectedIds.has(neighborId)) {
-          connectedIds.add(neighborId);
-          queue.push(neighborId);
-        }
-      }
-    }
+    // 死亡从者自身必须先从网格移除，否则它仍会被当成桥接节点，
+    // 导致被它隔开的后续从者在连通性检查中误判为仍连接玩家。
+    this.removeServant(deadServantId);
 
-    // 只保留与玩家断连的从者（未被连通到玩家的）
-    const disconnected: number[] = [];
-    for (const id of connectedIds) {
+    const remainingIds = Array.from(this.servantMap.keys());
+    for (const id of remainingIds) {
       const servant = this.servantMap.get(id);
       if (servant && !this.isServantConnectedToPlayer(servant)) {
         disconnected.push(id);
       }
     }
 
-    // 释放这些从者
+    // 释放死亡从者以及所有已经无法连到玩家中心的从者。
     for (const id of disconnected) {
-      // 从玩家的记录中移除
-      this.removeServant(id); // 注意 removeServant 会更新邻居，这里会多次更新但性能可接受
+      if (id !== deadServantId) {
+        this.removeServant(id);
+      }
       if (onReleaseNpc) {
         onReleaseNpc(id);
       }
@@ -690,4 +656,3 @@ class PlayerDynamicEntity extends DynamicEntity {
 }
 
 export { PlayerDynamicEntity };
-
