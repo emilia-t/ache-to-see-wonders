@@ -278,6 +278,9 @@ const EFFECT_SPRITE_FRAME_COUNT = 30;
 const EFFECT_SPRITE_FPS = 30;
 const EFFECT_PATH_DYNAMIC_ENTITY_DEATH = './effects/dynamic_entity_death_default.png';
 const ENTITY_CACHE = new Map<number, Entity>();// 服务端实体快照对应的本地渲染实体缓存
+const SERVER_TICK_MS = 20; // 服务端固定 50 FPS,前端在两帧之间插值渲染
+const MIN_INTERPOLATION_DURATION_MS = 10;//最小插值持续时间（毫秒）
+const MAX_INTERPOLATION_DURATION_MS = 80;//最大插值持续时间（毫秒）
 const STAR_FIELD_STAR_COUNT = 40; // 星空背景星星数量,单位个
 const STAR_FIELD_MIN_RADIUS = 0.5; // 星星最小半径,单位px
 const STAR_FIELD_MAX_RADIUS = 1.5; // 星星最大半径,单位px
@@ -367,6 +370,17 @@ let playerFireMode = false;
 // 健康值快照Map (用于生成数值浮层)
 let prevHealthMap = new Map<number, number>();
 
+// 实体插值状态Map，key为实体ID，value为插值状态
+type EntityInterpolationState = {
+  from: Point;
+  to: Point;
+  startTime: number;
+  duration: number;
+};
+
+let entityInterpolationMap = new Map<number, EntityInterpolationState>();
+let entitySnapshotTimeMap = new Map<number, number>();
+
 ////////////////////
 //<--变量区
 ////////////////////
@@ -418,6 +432,60 @@ const H_getWorkerTickPackage = (instructs: InstructObject[]): DataPackage => {
       instructs,
     },
   };
+};
+
+// 数学辅助函数
+const H_clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+// 线性插值辅助函数
+const H_lerp = (start: number, end: number, ratio: number) => start + (end - start) * ratio;
+// 获取实体插值位置的辅助函数
+const H_getInterpolatedEntityPosition = (entity: Entity, timestamp: number): Point => {
+  const interpolation = entityInterpolationMap.get(entity.id);
+  if (!interpolation) return entity.position;
+
+  const ratio = H_clamp((timestamp - interpolation.startTime) / interpolation.duration, 0, 1);
+  if (ratio >= 1) {
+    entityInterpolationMap.delete(entity.id);
+    return interpolation.to;
+  }
+
+  return {
+    x: H_lerp(interpolation.from.x, interpolation.to.x, ratio),
+    y: H_lerp(interpolation.from.y, interpolation.to.y, ratio),
+  };
+};
+// 注册实体插值状态的辅助函数
+const H_registerEntityInterpolation = (entity: Entity, snapshot: Entity, timestamp: number): void => {
+  const lastSnapshotTime = entitySnapshotTimeMap.get(entity.id);
+  const duration = lastSnapshotTime === undefined
+    ? SERVER_TICK_MS
+    : H_clamp(
+        timestamp - lastSnapshotTime,
+        MIN_INTERPOLATION_DURATION_MS,
+        MAX_INTERPOLATION_DURATION_MS
+      );
+  const from = H_getInterpolatedEntityPosition(entity, timestamp);
+  const to = { ...snapshot.position };
+
+  entitySnapshotTimeMap.set(entity.id, timestamp);
+
+  if (Math.hypot(to.x - from.x, to.y - from.y) < 0.001) {
+    entityInterpolationMap.delete(entity.id);
+    return;
+  }
+
+  entityInterpolationMap.set(entity.id, {
+    from,
+    to,
+    startTime: timestamp,
+    duration,
+  });
+};
+// 删除实体渲染状态的辅助函数（如实体被删除时）
+const H_deleteEntityRenderState = (id: number): void => {
+  ENTITY_CACHE.delete(id);
+  entityInterpolationMap.delete(id);
+  entitySnapshotTimeMap.delete(id);
 };
 
 const H_hydrateEntitySnapshot = <T extends Entity>(entity: T, snapshot: T): T => {
@@ -542,12 +610,18 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
   return new EmptyEntity();
 };
 
+// 从服务端实体快照获取可渲染实体的辅助函数，包含缓存和插值状态管理
 const H_getRenderableEntityFromSnapshot = <T extends Entity>(snapshot: T): T => {
+  const snapshotReceivedAt = performance.now();
   const cached = ENTITY_CACHE.get(snapshot.id) as T | undefined;
-  if (cached) return H_hydrateEntitySnapshot(cached, snapshot);
+  if (cached) {
+    H_registerEntityInterpolation(cached, snapshot, snapshotReceivedAt);
+    return H_hydrateEntitySnapshot(cached, snapshot);
+  }
 
   const entity = H_hydrateEntitySnapshot(H_createEntityFromSnapshot(snapshot) as T, snapshot);
   ENTITY_CACHE.set(entity.id, entity);
+  entitySnapshotTimeMap.set(entity.id, snapshotReceivedAt);
   entity.loadTexture().then(() => {
     drawEntities();
   });
