@@ -267,11 +267,14 @@ const getPlayerDynamicEntityById = (entityId: number):PlayerDynamicEntity|null =
   return null;
 };
 
-const refreshPlayerMoveState = (moveState: Partial<typeof PlayerDynamicEntity.playerMoveState>) => {
-  PlayerDynamicEntity.playerMoveState.playerMoveW = moveState.playerMoveW === true;
-  PlayerDynamicEntity.playerMoveState.playerMoveA = moveState.playerMoveA === true;
-  PlayerDynamicEntity.playerMoveState.playerMoveS = moveState.playerMoveS === true;
-  PlayerDynamicEntity.playerMoveState.playerMoveD = moveState.playerMoveD === true;
+const refreshPlayerMoveState = (moveState: Partial<typeof PlayerDynamicEntity.playerMoveState>, playerId: number) => {
+  const player = getPlayerDynamicEntityById(playerId);
+  if (player) {
+    player.moveState.W = moveState.W === true;
+    player.moveState.A = moveState.A === true;
+    player.moveState.S = moveState.S === true;
+    player.moveState.D = moveState.D === true;
+  }
 };
 
 ////////////////////
@@ -400,13 +403,13 @@ const createTeamIdLength14 = (): number => {
   return num;
 };
 
-const spawnPlayerBullet = (targetCanvas: Point) => {
-  const playerEntity = MAP_DATA.dynamicEntitie.playerDynamicEntitys[0];
+const spawnPlayerBullet = (target: Point, playerId: number) => {
+  const playerEntity = MAP_DATA.dynamicEntitie.playerDynamicEntitys.find(player => player.id === playerId);
   if (!playerEntity || playerEntity.isDead) return;
-  if (playerEntity.personRule.fireCooldownNow > 0) return;
+  if (playerEntity.playerRule.fireCooldownNow > 0) return;
 
-  const dx = targetCanvas.x - playerEntity.position.x;
-  const dy = targetCanvas.y - playerEntity.position.y;
+  const dx = target.x - playerEntity.position.x;
+  const dy = target.y - playerEntity.position.y;
   const len = Math.hypot(dx, dy);
   if (len < 0.0001) return;
 
@@ -422,10 +425,10 @@ const spawnPlayerBullet = (targetCanvas: Point) => {
       playerEntity.id,
       playerEntity.teamId,
       '',
-      playerEntity.personRule.bulletColor
+      playerEntity.playerRule.bulletColor
     )
   );
-  playerEntity.personRule.fireCooldownNow=playerEntity.personRule.fireCooldownMax;
+  playerEntity.playerRule.fireCooldownNow=playerEntity.playerRule.fireCooldownMax;
 };
 
 const updateItemEntityLifetimes = (deltaTime: number): boolean => {
@@ -1095,13 +1098,32 @@ const handleMessage = (message: MessageEvent) => {
 const handleInstruct = (instruct: InstructObject) => {
   switch (instruct.type) {
     case 'player_move_input': {
-      refreshPlayerMoveState(instruct.data);
+      if(gamePaused){break;}
+      refreshPlayerMoveState(
+        instruct.data.moveState,
+        instruct.data.playerId
+      );
       break;
     }
+
     case 'player_fire_input': {
-      spawnPlayerBullet(instruct.data as Point);
+      if(gamePaused){break;}
+      spawnPlayerBullet(
+        instruct.data.target as Point,
+        instruct.data.playerId as number
+      );
       break;
     }
+
+    case 'player_dodge_input': {
+      if (gamePaused) break;
+      const playerEntity = getPlayerDynamicEntityById(instruct.data.playerId as number);
+      if (playerEntity && !playerEntity.isDead) {
+        playerEntity.dodge(instruct.data.direction as Point, MAP_DATA.staticEntities);
+      }
+      break;
+    }
+    
     case 'tick_pause': {
       const { paused } = instruct.data as { paused?: boolean };
       if (paused !== undefined) {
@@ -1112,6 +1134,7 @@ const handleInstruct = (instruct: InstructObject) => {
       console.log(`[Service] Game ${gamePaused ? 'paused' : 'resumed'}`);
       break;
     }
+
     default: {
       console.warn('Service received unknown instruct type:', instruct.type, instruct);
       break;

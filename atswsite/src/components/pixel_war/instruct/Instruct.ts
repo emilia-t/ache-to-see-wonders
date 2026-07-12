@@ -136,17 +136,17 @@ export class Instruct {
      * @returns
      */
     public static I_PlayerMoveInput = (moveState: {
-        playerMoveW: boolean;
-        playerMoveA: boolean;
-        playerMoveS: boolean;
-        playerMoveD: boolean;
-    }): InstructObject => {
+        W: boolean;
+        A: boolean;
+        S: boolean;
+        D: boolean;
+    },playerId: number): InstructObject => {
         return {
             type: 'player_move_input',
             class: '',
             conveyor: 'client',
             time: this.H_getFormatTime(),
-            data: moveState
+            data:{ moveState , playerId }
         };
     }
 
@@ -155,16 +155,32 @@ export class Instruct {
      * @param target
      * @returns
      */
-    public static I_PlayerFireInput = (target: Point): InstructObject => {
+    public static I_PlayerFireInput = (target: Point, playerId: number): InstructObject => {
         return {
             type: 'player_fire_input',
             class: '',
             conveyor: 'client',
             time: this.H_getFormatTime(),
-            data: target
+            data: { target, playerId }
         };
     }
 
+    
+    /**
+     * 玩家闪避指令
+     * angle: 闪避角度-单位为弧度
+     * playerId: 玩家ID
+     * @returns InstructObject
+     */
+    public static I_PlayerDodgeInput = (direction: Point, playerId: number): InstructObject => {
+        return {
+            type: 'player_dodge_input',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: { direction, playerId }
+        };
+    };
 
     /*
      *tick 暂停的指令
@@ -178,6 +194,7 @@ export class Instruct {
             data: { paused } // 携带暂停标志，若不传则服务端自行切换
         };
     };
+
 /**
  * 
  */

@@ -101,8 +101,8 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
   private determineBulletColor(context: ActionLoopContext): string {
     if (this.ownerId !== null) {
       for (const player of context.playerEntities) {
-        if (player.personRule.bulletColor !== '') {
-          return player.personRule.bulletColor;
+        if (player.playerRule.bulletColor !== '') {
+          return player.playerRule.bulletColor;
         }
       }
     }

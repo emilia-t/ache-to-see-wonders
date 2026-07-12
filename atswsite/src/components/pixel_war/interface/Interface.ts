@@ -317,8 +317,11 @@ export interface ActionLoopContext {
   spawnGrenade: (grenade: GrenadeDynamicEntity) => void;
 };
 
-export interface PersonRule {
+export interface PlayerRule {
+  bulletColor: string,
   fireCooldownNow: number,
   fireCooldownMax: number,
-  bulletColor: string
+  invincibleTimer: number,
+  dodgeCooldownNow: number,
+  dodgeCooldownMax: number,
 };

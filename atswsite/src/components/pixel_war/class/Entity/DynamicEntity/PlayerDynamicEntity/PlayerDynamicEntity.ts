@@ -5,7 +5,7 @@
   EntityDebugFlags,
   ServantGrid,
   Servant,
-  PersonRule,
+  PlayerRule,
   ServantMap,
   NeighborGrid
 } from '@/components/pixel_war/interface/Interface';
@@ -20,19 +20,21 @@ class PlayerDynamicEntity extends DynamicEntity {
   public static readonly HEIGHT = 25;
   public static readonly MOVE_SPEED = 410;
   public static readonly MIN_MOVE_SPEED = 50;
-  public static readonly playerMoveState = {
-    playerMoveW: false,
-    playerMoveA: false,
-    playerMoveS: false,
-    playerMoveD: false
-  };
-  
+  public static readonly playerMoveState = {W: false,A: false,S: false,D: false};
+  public static readonly DODGE_DISTANCE = 120;     // 闪避距离(像素)
+  public static readonly DODGE_DURATION = 0.2;     // 无敌持续时间(秒)
+
+  public moveState = {W: false,A: false,S: false,D: false};
   public teamId: number | null;
-  public readonly personRule:PersonRule = {
+  public readonly playerRule:PlayerRule = {
+    bulletColor: 'rgba(255, 255, 255, 0.9)',
     fireCooldownNow: 0,//计算数值单位秒
     fireCooldownMax: 0.12,//cd最大值单位秒,
-    bulletColor: 'rgba(255, 255, 255, 0.9)'
+    invincibleTimer: 0,//无敌计时器,
+    dodgeCooldownNow: 0,//闪避cd计时器
+    dodgeCooldownMax: 2.0,//闪避cd最大值
   };
+
   private servantGrid:ServantGrid|null = null;
   private servantMap:ServantMap|null = null;
   private isme: boolean;
@@ -122,16 +124,20 @@ class PlayerDynamicEntity extends DynamicEntity {
     gameConfig: GameConfig
   ) {
     if (this.isDead) return;
-    //cd count
-    this.personRule.fireCooldownNow =  Math.max(0, this.personRule.fireCooldownNow - dt);
+    /////cd count
+    this.playerRule.fireCooldownNow =  Math.max(0, this.playerRule.fireCooldownNow - dt);
     this.refreshSpeedByServantCount();
+
+    this.playerRule.invincibleTimer = Math.max(0, this.playerRule.invincibleTimer - dt);
+    this.playerRule.dodgeCooldownNow = Math.max(0, this.playerRule.dodgeCooldownNow - dt);
+    /////cd count
 
     let dx = 0;
     let dy = 0;
-    if (PlayerDynamicEntity.playerMoveState.playerMoveW) dy += 1;
-    if (PlayerDynamicEntity.playerMoveState.playerMoveS) dy -= 1;
-    if (PlayerDynamicEntity.playerMoveState.playerMoveA) dx -= 1;
-    if (PlayerDynamicEntity.playerMoveState.playerMoveD) dx += 1;
+    if (this.moveState.W) dy += 1;
+    if (this.moveState.S) dy -= 1;
+    if (this.moveState.A) dx -= 1;
+    if (this.moveState.D) dx += 1;
 
     const len = Math.hypot(dx, dy);
     if (len < 0.0001) {
@@ -192,6 +198,11 @@ class PlayerDynamicEntity extends DynamicEntity {
     return false;
   }
 
+  public override applyDamage(amount: number): void {
+    if (this.playerRule.invincibleTimer > 0) return;
+    super.applyDamage(amount);
+  }
+
   /**
    * 拾取物品检测
    * @param item 
@@ -221,6 +232,51 @@ class PlayerDynamicEntity extends DynamicEntity {
     if(item instanceof FoodItemEntity){
       this.health = Math.min(this.healthMax,this.health+item.currentHealthIncrease)
     }
+  } 
+
+  /**
+   * 尝试闪避
+   * @param direction 闪避方向向量
+   */
+  public tryDodge(direction: Point): boolean {
+    const len = Math.hypot(direction.x, direction.y);
+    if (len === 0) return false;
+    return true;
+  }
+
+  /**
+   * 执行闪避：向指定方向瞬移固定距离，附带短暂无敌
+   * @param direction 单位方向向量（不必归一化，内部会处理）
+   * @param staticEntities 静态实体列表，用于碰撞检测
+   */
+  public dodge(direction: Point, staticEntities: StaticEntity[]): void {
+    const len = Math.hypot(direction.x, direction.y);
+    if (len < 0.001) return;
+    if (this.playerRule.dodgeCooldownNow > 0) return; // 冷却中
+
+    const dir = { x: direction.x / len, y: direction.y / len };
+    const dist = PlayerDynamicEntity.DODGE_DISTANCE;
+    const targetPos = {
+      x: this.position.x + dir.x * dist,
+      y: this.position.y + dir.y * dist
+    };
+
+    // 检测目标位置是否与静态实体重叠
+    if (this.collidesWithStatic(targetPos, staticEntities)) {
+      return; // 碰撞则取消闪避
+    }
+
+    // 执行瞬移
+    this.position = targetPos;
+    this.updateCollisionBox();
+
+    // 设置无敌和冷却
+    this.playerRule.invincibleTimer = PlayerDynamicEntity.DODGE_DURATION;
+    this.playerRule.dodgeCooldownNow = this.playerRule.dodgeCooldownMax;
+
+    // （可选）重置停滞检测等状态
+    this.noMoveDuration = 0;
+    this.noMoveLastPos = { ...this.position };
   }
 
   /**

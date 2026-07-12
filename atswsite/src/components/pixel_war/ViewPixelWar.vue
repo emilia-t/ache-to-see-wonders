@@ -96,15 +96,9 @@ const generateFloatingNumbersFromHealthChange = (
 
 const serviceWorker = new ServiceWorker();
 
-const handleVisibilityChange = () => {
-  isPageVisible = !document.hidden;
-  if (isPageVisible) {
-    // 页面恢复可见时立即重绘一次，确保画面与最新数据同步
-    drawGraphics();
-    drawEntities();
-    effectManager?.updateAndDraw(0);
-  }
-};
+serviceWorker.addEventListener('message', (event: MessageEvent) => {
+  handleWorkerMessage(event);
+});
 
 const handleWorkerMessage = (event: MessageEvent) => {
   let dpkg = event.data as DataPackage;
@@ -146,9 +140,15 @@ const handleWorkerMessage = (event: MessageEvent) => {
   }
 };
 
-serviceWorker.addEventListener('message', (event: MessageEvent) => {
-  handleWorkerMessage(event);
-});
+const handleVisibilityChange = () => {
+  isPageVisible = !document.hidden;
+  if (isPageVisible) {
+    // 页面恢复可见时立即重绘一次，确保画面与最新数据同步
+    drawGraphics();
+    drawEntities();
+    effectManager?.updateAndDraw(0);
+  }
+};
 
 const applyMapDataSnapshot = (mapData: MapData) => {
   // 1. 保存旧的健康值快照
@@ -253,11 +253,29 @@ const sendClientInstruct = (instruct: InstructObject) => {
 
 const sendPlayerMoveInput = () => {
   sendClientInstruct(Instruct.I_PlayerMoveInput({
-    playerMoveW: PlayerDynamicEntity.playerMoveState.playerMoveW,
-    playerMoveA: PlayerDynamicEntity.playerMoveState.playerMoveA,
-    playerMoveS: PlayerDynamicEntity.playerMoveState.playerMoveS,
-    playerMoveD: PlayerDynamicEntity.playerMoveState.playerMoveD,
-  }));
+    W: PlayerDynamicEntity.playerMoveState.W,
+    A: PlayerDynamicEntity.playerMoveState.A,
+    S: PlayerDynamicEntity.playerMoveState.S,
+    D: PlayerDynamicEntity.playerMoveState.D,
+  }, playerEntity ? playerEntity.id : -1));
+};
+
+const sendPlayerFireInput = (target: Point) => {
+  sendClientInstruct(
+    Instruct.I_PlayerFireInput(
+      target,
+      playerEntity ? playerEntity.id : -1
+    )
+  );
+};
+
+const sendPlayerDodgeInput = (direction: Point) => {
+  sendClientInstruct(
+    Instruct.I_PlayerDodgeInput(
+      direction,
+      playerEntity ? playerEntity.id : -1
+    )
+  );
 };
 ////////////////////
 //<--服务器通信相关区
@@ -1873,12 +1891,12 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
       }
       return;
     }
-    if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
+    if (key === 'w' || key === 'a' || key === 's' || key === 'd') {// 移动
       e.preventDefault();
-      if (key === 'w') PlayerDynamicEntity.playerMoveState.playerMoveW = true;
-      if (key === 'a') PlayerDynamicEntity.playerMoveState.playerMoveA = true;
-      if (key === 's') PlayerDynamicEntity.playerMoveState.playerMoveS = true;
-      if (key === 'd') PlayerDynamicEntity.playerMoveState.playerMoveD = true;
+      if (key === 'w') PlayerDynamicEntity.playerMoveState.W = true;
+      if (key === 'a') PlayerDynamicEntity.playerMoveState.A = true;
+      if (key === 's') PlayerDynamicEntity.playerMoveState.S = true;
+      if (key === 'd') PlayerDynamicEntity.playerMoveState.D = true;
       if (perspectiveMode === 'first_person') {
         if (key === 'w') firstPersonMoveW = true;
         if (key === 'a') firstPersonMoveA = true;
@@ -1886,6 +1904,11 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
         if (key === 'd') firstPersonMoveD = true;
       }
       sendPlayerMoveInput();
+      return;
+    }
+    if (key === ' ') {// 闪避
+      e.preventDefault();
+      sendPlayerDodgeInput(playerEntity ? playerEntity?.facingDirection : { x: 0, y: 0 });
       return;
     }
   }
@@ -1904,10 +1927,10 @@ const onGlobalKeyUp = (e: KeyboardEvent) => {
   if (key === 'a') firstPersonMoveA = false;
   if (key === 's') firstPersonMoveS = false;
   if (key === 'd') firstPersonMoveD = false;
-  if (key === 'w') PlayerDynamicEntity.playerMoveState.playerMoveW = false;
-  if (key === 'a') PlayerDynamicEntity.playerMoveState.playerMoveA = false;
-  if (key === 's') PlayerDynamicEntity.playerMoveState.playerMoveS = false;
-  if (key === 'd') PlayerDynamicEntity.playerMoveState.playerMoveD = false;
+  if (key === 'w') PlayerDynamicEntity.playerMoveState.W = false;
+  if (key === 'a') PlayerDynamicEntity.playerMoveState.A = false;
+  if (key === 's') PlayerDynamicEntity.playerMoveState.S = false;
+  if (key === 'd') PlayerDynamicEntity.playerMoveState.D = false;
   if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
     sendPlayerMoveInput();
   }
@@ -2030,7 +2053,7 @@ const onMousedown = (e: MouseEvent) => {
 
   if (e.button === 0 && playerFireMode) {
     e.preventDefault();
-    sendClientInstruct(Instruct.I_PlayerFireInput(TOscreen2Canvas(screenX, screenY)));
+    sendPlayerFireInput(TOscreen2Canvas(screenX, screenY));
     drawUI();
     return;
   }

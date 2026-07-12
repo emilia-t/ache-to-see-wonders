@@ -90,8 +90,8 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     else{
       let bulletColor = '';
       for(const player of context.playerEntities){
-        if(player.personRule.bulletColor !== ''){
-          bulletColor = player.personRule.bulletColor;
+        if(player.playerRule.bulletColor !== ''){
+          bulletColor = player.playerRule.bulletColor;
           break;
         }
       }
