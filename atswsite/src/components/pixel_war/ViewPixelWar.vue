@@ -1183,6 +1183,7 @@ const drawDebugBoard = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEleme
 
   // 物品实体数量
   CtxUi.fillText(`Item entities: ${itemEntityList.length}`, x + 12, textY);
+  textY += lineHeight;
 
   // 鼠标屏幕坐标
   CtxUi.fillText(`Mouse screen position: (${Math.round(mouseX)}, ${Math.round(mouseY)})`, x + 12, textY);
