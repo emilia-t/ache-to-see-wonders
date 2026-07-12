@@ -1136,7 +1136,7 @@ const drawDebugBoard = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEleme
   if (!debugBoardVisible) return;
 
   const panelWidth = 320;
-  const panelHeight = 160;
+  const panelHeight = 180;
   const x = 12;
   const y = 12;
 
