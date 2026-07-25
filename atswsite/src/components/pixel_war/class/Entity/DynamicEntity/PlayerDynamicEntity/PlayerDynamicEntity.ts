@@ -15,6 +15,19 @@ import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/S
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import { FoodItemEntity } from '../../ItemEntity/FoodItemEntity/FoodItemEntity';
 
+type PlayerDodgeState = {
+  start: Point;
+  target: Point;
+  direction: Point;
+  elapsed: number;
+  duration: number;
+};
+
+type PlayerDodgeAfterimage = {
+  position: Point;
+  age: number;
+};
+
 class PlayerDynamicEntity extends DynamicEntity {
   public static readonly WIDTH = 25;
   public static readonly HEIGHT = 25;
@@ -22,10 +35,14 @@ class PlayerDynamicEntity extends DynamicEntity {
   public static readonly MIN_MOVE_SPEED = 50;
   public static readonly playerMoveState = {W: false,A: false,S: false,D: false};
   public static readonly DODGE_DISTANCE = 120;     // 闪避距离(像素)
-  public static readonly DODGE_DURATION = 0.2;     // 无敌持续时间(秒)
+  public static readonly DODGE_DURATION = 0.28;    // 无敌持续时间(秒)
+  public static readonly DODGE_SLIDE_DURATION = 0.16; // 闪避位移持续时间(秒)
+  public static readonly DODGE_TRAIL_DURATION = 0.24; // 闪避拖影持续时间(秒)
 
   public moveState = {W: false,A: false,S: false,D: false};
   public teamId: number | null;
+  public dodgeState: PlayerDodgeState | null = null;
+  public dodgeAfterimages: PlayerDodgeAfterimage[] = [];
   public readonly playerRule:PlayerRule = {
     bulletColor: 'rgba(255, 255, 255, 0.9)',
     fireCooldownNow: 0,//计算数值单位秒
@@ -130,7 +147,12 @@ class PlayerDynamicEntity extends DynamicEntity {
 
     this.playerRule.invincibleTimer = Math.max(0, this.playerRule.invincibleTimer - dt);
     this.playerRule.dodgeCooldownNow = Math.max(0, this.playerRule.dodgeCooldownNow - dt);
+    this.updateDodgeAfterimages(dt);
     /////cd count
+
+    if (this.updateDodgeMovement(dt, staticEntities)) {
+      return;
+    }
 
     let dx = 0;
     let dy = 0;
@@ -244,8 +266,86 @@ class PlayerDynamicEntity extends DynamicEntity {
     return true;
   }
 
+  private updateDodgeAfterimages(dt: number): void {
+    if (this.dodgeAfterimages.length === 0) return;
+    for (const afterimage of this.dodgeAfterimages) {
+      afterimage.age += dt;
+    }
+    this.dodgeAfterimages = this.dodgeAfterimages.filter(
+      afterimage => afterimage.age < PlayerDynamicEntity.DODGE_TRAIL_DURATION
+    );
+  }
+
+  private addDodgeAfterimage(): void {
+    this.dodgeAfterimages.unshift({
+      position: { ...this.position },
+      age: 0
+    });
+    if (this.dodgeAfterimages.length > 5) {
+      this.dodgeAfterimages.length = 5;
+    }
+  }
+
+  private easeDodgeProgress(t: number): number {
+    const ratio = Math.max(0, Math.min(1, t));
+    return 1 - Math.pow(1 - ratio, 3);
+  }
+
+  private getDodgeTarget(direction: Point, staticEntities: StaticEntity[]): Point | null {
+    const stepCount = 12;
+    for (let i = stepCount; i >= 2; i--) {
+      const distance = PlayerDynamicEntity.DODGE_DISTANCE * (i / stepCount);
+      const target = {
+        x: this.position.x + direction.x * distance,
+        y: this.position.y + direction.y * distance
+      };
+      if (!this.collidesWithStatic(target, staticEntities)) {
+        return target;
+      }
+    }
+    return null;
+  }
+
+  private updateDodgeMovement(dt: number, staticEntities: StaticEntity[]): boolean {
+    if (!this.dodgeState) return false;
+
+    const state = this.dodgeState;
+    state.elapsed = Math.min(state.duration, state.elapsed + dt);
+    const progress = this.easeDodgeProgress(state.elapsed / state.duration);
+    const nextPos = {
+      x: state.start.x + (state.target.x - state.start.x) * progress,
+      y: state.start.y + (state.target.y - state.start.y) * progress
+    };
+
+    if (!this.collidesWithStatic(nextPos, staticEntities)) {
+      this.position = nextPos;
+      this.updateCollisionBox();
+      this.addDodgeAfterimage();
+    } else {
+      this.dodgeState = null;
+      return true;
+    }
+
+    this.isMoving = true;
+    this.nextTarget = { ...this.position };
+    this.targetHistory = [{ ...this.position }];
+    this.curvePoints = [{ ...this.position }];
+    this.currentCurveIndex = 0;
+    this.noMoveDuration = 0;
+    this.noMoveLastPos = { ...this.position };
+    this.crowdStuckTimer = 0;
+    this.insideStaticBlockedTimer = 0;
+    this.facingDirection = { ...state.direction };
+    this.lastMoveDirection = { ...state.direction };
+
+    if (state.elapsed >= state.duration) {
+      this.dodgeState = null;
+    }
+    return true;
+  }
+
   /**
-   * 执行闪避：向指定方向瞬移固定距离，附带短暂无敌
+   * 执行闪避：向指定方向进行短促冲刺，附带短暂无敌
    * @param direction 单位方向向量（不必归一化，内部会处理）
    * @param staticEntities 静态实体列表，用于碰撞检测
    */
@@ -253,22 +353,22 @@ class PlayerDynamicEntity extends DynamicEntity {
     const len = Math.hypot(direction.x, direction.y);
     if (len < 0.001) return;
     if (this.playerRule.dodgeCooldownNow > 0) return; // 冷却中
+    if (this.dodgeState !== null) return;
 
     const dir = { x: direction.x / len, y: direction.y / len };
-    const dist = PlayerDynamicEntity.DODGE_DISTANCE;
-    const targetPos = {
-      x: this.position.x + dir.x * dist,
-      y: this.position.y + dir.y * dist
+    const targetPos = this.getDodgeTarget(dir, staticEntities);
+    if (targetPos === null) return;
+
+    this.dodgeState = {
+      start: { ...this.position },
+      target: targetPos,
+      direction: dir,
+      elapsed: 0,
+      duration: PlayerDynamicEntity.DODGE_SLIDE_DURATION
     };
-
-    // 检测目标位置是否与静态实体重叠
-    if (this.collidesWithStatic(targetPos, staticEntities)) {
-      return; // 碰撞则取消闪避
-    }
-
-    // 执行瞬移
-    this.position = targetPos;
-    this.updateCollisionBox();
+    this.addDodgeAfterimage();
+    this.facingDirection = { ...dir };
+    this.lastMoveDirection = { ...dir };
 
     // 设置无敌和冷却
     this.playerRule.invincibleTimer = PlayerDynamicEntity.DODGE_DURATION;
@@ -277,6 +377,29 @@ class PlayerDynamicEntity extends DynamicEntity {
     // （可选）重置停滞检测等状态
     this.noMoveDuration = 0;
     this.noMoveLastPos = { ...this.position };
+  }
+
+  private drawDodgeAfterimages(
+    ctx: CanvasRenderingContext2D,
+    worldToScreen: (x: number, y: number) => { x: number; y: number }
+  ): void {
+    if (this.dodgeAfterimages.length === 0) return;
+
+    ctx.save();
+    for (let i = this.dodgeAfterimages.length - 1; i >= 0; i--) {
+      const afterimage = this.dodgeAfterimages[i];
+      const lifeRatio = Math.max(0, 1 - afterimage.age / PlayerDynamicEntity.DODGE_TRAIL_DURATION);
+      const screenPos = worldToScreen(afterimage.position.x, afterimage.position.y);
+      const alpha = 0.16 * lifeRatio * (1 - i * 0.08);
+      const scale = 1 + (1 - lifeRatio) * 0.35;
+      const w = this.width * scale;
+      const h = this.height * scale;
+      ctx.fillStyle = `rgba(92, 220, 255, ${Math.max(0, alpha)})`;
+      ctx.fillRect(screenPos.x - w / 2, screenPos.y - h / 2, w, h);
+      ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(0, alpha * 1.4)})`;
+      ctx.strokeRect(screenPos.x - w / 2, screenPos.y - h / 2, w, h);
+    }
+    ctx.restore();
   }
 
   /**

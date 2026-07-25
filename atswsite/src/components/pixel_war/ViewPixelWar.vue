@@ -191,6 +191,7 @@ const applyMapDataSnapshot = (mapData: MapData) => {
   }
   
   refreshRenderEntityList();
+  H_ensureSelectedServantValid();
 
   for (const id of ENTITY_CACHE.keys()) {
     if (!aliveIds.has(id)) {
@@ -239,6 +240,7 @@ const applyDynamicMapDataSnapshot = (mapData: MapData) => {
   }
   
   refreshRenderEntityList();
+  H_ensureSelectedServantValid();
 
   for (const id of ENTITY_CACHE.keys()) {
     if (!aliveIds.has(id)) {
@@ -274,6 +276,24 @@ const sendPlayerDodgeInput = (direction: Point) => {
     Instruct.I_PlayerDodgeInput(
       direction,
       playerEntity ? playerEntity.id : -1
+    )
+  );
+};
+
+const sendServantEditorDelete = (npcId: number) => {
+  sendClientInstruct(
+    Instruct.I_ServantEditorDelete(
+      playerEntity ? playerEntity.id : -1,
+      npcId
+    )
+  );
+};
+
+const sendServantEditorRotate = (npcId: number) => {
+  sendClientInstruct(
+    Instruct.I_ServantEditorRotate(
+      playerEntity ? playerEntity.id : -1,
+      npcId
     )
   );
 };
@@ -384,6 +404,10 @@ let firstPersonMoveA = false;
 let firstPersonMoveS = false;
 let firstPersonMoveD = false;
 let playerFireMode = false;
+let servantGridEditorEnabled = false;
+let selectedServantNpcId: number | null = null;
+let showPlayerServantHealth = false;
+let showPlayerServantFacingDirection = false;
 
 // 健康值快照Map (用于生成数值浮层)
 let prevHealthMap = new Map<number, number>();
@@ -449,6 +473,56 @@ const H_getWorkerTickPackage = (instructs: InstructObject[]): DataPackage => {
     data: {
       instructs,
     },
+  };
+};
+
+const H_clearSelectedServant = () => {
+  selectedServantNpcId = null;
+};
+
+const H_getNpcEntityById = (npcId: number): NpcDynamicEntity | null => {
+  return npcEntityList.find(entity => entity.id === npcId) || null;
+};
+
+const H_getSelectedServantEntity = (): NpcDynamicEntity | null => {
+  if (selectedServantNpcId === null) return null;
+  const entity = H_getNpcEntityById(selectedServantNpcId);
+  if (!entity || entity.isDead) return null;
+  if (!playerEntity || entity.ownerId !== playerEntity.id) return null;
+  if (playerEntity.selectServantByID(entity.id) === null) return null;
+  return entity;
+};
+
+const H_selectServantAtWorldPoint = (worldPoint: Point): boolean => {
+  if (!playerEntity) return false;
+  const cell = playerEntity.worldPositionToRowCol(worldPoint);
+  if (cell === null) return false;
+  const servant = playerEntity.selectServantByRC(cell.row, cell.col);
+  if (!servant || !servant.exist || servant.npcId === -1) return false;
+  const npc = H_getNpcEntityById(servant.npcId);
+  if (!npc || npc.isDead || npc.ownerId !== playerEntity.id) return false;
+  selectedServantNpcId = npc.id;
+  return true;
+};
+
+const H_ensureSelectedServantValid = () => {
+  if (selectedServantNpcId !== null && H_getSelectedServantEntity() === null) {
+    H_clearSelectedServant();
+  }
+};
+
+const H_isPlayerServantNpc = (entity: NpcDynamicEntity): boolean => {
+  if (!playerEntity) return false;
+  if (entity.ownerId !== playerEntity.id) return false;
+  return playerEntity.selectServantByID(entity.id) !== null;
+};
+
+const H_getNpcDebugFlags = (entity: NpcDynamicEntity): EntityDebugFlags => {
+  if (!H_isPlayerServantNpc(entity)) return entityDebugFlags;
+  return {
+    ...entityDebugFlags,
+    showHealth: entityDebugFlags.showHealth || showPlayerServantHealth,
+    showFacingDirection: entityDebugFlags.showFacingDirection || showPlayerServantFacingDirection
   };
 };
 
@@ -1108,15 +1182,24 @@ const TOcanvas2Screen = (canvasX: number, canvasY: number) => {
 const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   if (!CtxUi || !CANVAS) return;
   const { width } = H_getCanvasCssSize(CANVAS);
-  const text = `F = Toggle fire | 3 = Toggle perspective`;
+  const editorStatus = servantGridEditorEnabled ? 'ON' : 'OFF';
+  const healthStatus = showPlayerServantHealth ? 'ON' : 'OFF';
+  const facingStatus = showPlayerServantFacingDirection ? 'ON' : 'OFF';
+  const text = `F 开火 | 3 视角 | C 从者编辑:${editorStatus} | Q 删除 | R 旋转 | T 从者血条:${healthStatus} | Y 从者朝向:${facingStatus}`;
   CtxUi.save();
   CtxUi.font = '14px "Microsoft YaHei", Arial, sans-serif';
   CtxUi.fillStyle = 'rgba(78,78,78,0.9)';
   CtxUi.textAlign = 'center';
   CtxUi.textBaseline = 'top';
-  const textWidth = CtxUi.measureText(text).width;
+  const maxTextWidth = Math.max(240, width - 24);
+  let fontSize = 14;
+  while (CtxUi.measureText(text).width > maxTextWidth && fontSize > 10) {
+    fontSize -= 1;
+    CtxUi.font = `${fontSize}px "Microsoft YaHei", Arial, sans-serif`;
+  }
+  const textWidth = Math.min(CtxUi.measureText(text).width, maxTextWidth);
   const padding = 10;
-  const boxWidth = textWidth + padding * 2;
+  const boxWidth = Math.min(width - 12, textWidth + padding * 2);
   const boxHeight = 30;
   const x = (width - boxWidth) / 2;
   const y = 0;
@@ -1125,6 +1208,7 @@ const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
   createRoundRect(CtxUi, x, y, boxWidth, boxHeight, 5);
   CtxUi.fill();
   CtxUi.fillStyle = 'rgb(78,78,78)';
+  CtxUi.font = `${fontSize}px "Microsoft YaHei", Arial, sans-serif`;
   CtxUi.fillText(text, width / 2, y + 8);
   CtxUi.restore();
 };
@@ -1358,6 +1442,37 @@ const drawGraphics = () => {
 
 };
 
+const drawSelectedServantHighlight = (
+  ctx: CanvasRenderingContext2D,
+  worldToScreen: (x: number, y: number) => { x: number; y: number }
+) => {
+  if (!servantGridEditorEnabled || !playerEntity) return;
+  const servant = H_getSelectedServantEntity();
+  if (!servant) return;
+  const cell = playerEntity.selectServantByID(servant.id);
+  if (!cell) return;
+  const center = playerEntity.rowColToWorldPosition(cell.row, cell.col);
+  if (!center) return;
+
+  const screenPos = worldToScreen(center.x, center.y);
+  const size = Math.max(servant.width, servant.height, 25) + 8;
+  const left = screenPos.x - size / 2;
+  const top = screenPos.y - size / 2;
+
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#ffd54a';
+  ctx.fillStyle = 'rgba(255, 213, 74, 0.14)';
+  ctx.setLineDash([6, 4]);
+  ctx.fillRect(left, top, size, size);
+  ctx.strokeRect(left, top, size, size);
+  ctx.setLineDash([]);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left - 2, top - 2, size + 4, size + 4);
+  ctx.restore();
+};
+
 /**
  * 绘制所有实体到 canvas-entity
  */
@@ -1385,7 +1500,7 @@ const drawEntities = () => {
   // 绘制NPC实体
   for (const entity of npcEntityList) {
     if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
-      entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
+      entity.draw(ctxEntity, worldToScreen, canvasSize, H_getNpcDebugFlags(entity));
     }
   }
   // 绘制子弹实体
@@ -1406,6 +1521,8 @@ const drawEntities = () => {
       playerEntity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
     }
   }
+
+  drawSelectedServantHighlight(ctxEntity, worldToScreen);
 };
 
 /**
@@ -1877,6 +1994,42 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
   // 单个按键
   if (!e.ctrlKey && !e.metaKey && !e.altKey) {
     const key = e.key.toLowerCase();
+    if (key === 'c' && !e.repeat) {
+      e.preventDefault();
+      servantGridEditorEnabled = !servantGridEditorEnabled;
+      if (!servantGridEditorEnabled) {
+        H_clearSelectedServant();
+      }
+      drawEntities();
+      drawUI();
+      return;
+    }
+    if (key === 't' && !e.repeat) {
+      e.preventDefault();
+      showPlayerServantHealth = !showPlayerServantHealth;
+      drawEntities();
+      drawUI();
+      return;
+    }
+    if (key === 'y' && !e.repeat) {
+      e.preventDefault();
+      showPlayerServantFacingDirection = !showPlayerServantFacingDirection;
+      drawEntities();
+      drawUI();
+      return;
+    }
+    if (key === 'q' && !e.repeat && servantGridEditorEnabled && selectedServantNpcId !== null) {
+      e.preventDefault();
+      sendServantEditorDelete(selectedServantNpcId);
+      H_clearSelectedServant();
+      drawEntities();
+      return;
+    }
+    if (key === 'r' && !e.repeat && servantGridEditorEnabled && selectedServantNpcId !== null) {
+      e.preventDefault();
+      sendServantEditorRotate(selectedServantNpcId);
+      return;
+    }
     if (key === 'f' && !e.repeat) {// 切换开火模式
       e.preventDefault();
       playerFireMode = !playerFireMode;
@@ -1950,6 +2103,18 @@ const onCanvasClick = (e: MouseEvent) => {
     if (hitArea.onClick) {
       hitArea.onClick(e, hitArea);
       drawUI();
+    }
+    e.stopPropagation();
+    return;
+  }
+
+  if (servantGridEditorEnabled) {
+    if (dragTotalX < 4 && dragTotalY < 4) {
+      const selected = H_selectServantAtWorldPoint(TOscreen2Canvas(screenX, screenY));
+      if (!selected) {
+        H_clearSelectedServant();
+      }
+      drawEntities();
     }
     e.stopPropagation();
     return;
@@ -2052,6 +2217,19 @@ const onMousedown = (e: MouseEvent) => {
 
   if (H_getHitEventArea(screenX, screenY)) return;
 
+  if (e.button === 0 && servantGridEditorEnabled) {
+    const canvasPos = TOscreen2Canvas(screenX, screenY);
+    dragStartX = canvasPos.x;
+    dragStartY = canvasPos.y;
+    lastDragX = e.clientX;
+    lastDragY = e.clientY;
+    dragTotalX = 0;
+    dragTotalY = 0;
+    isDragging = true;
+    isMoveCanvas = true;
+    return;
+  }
+
   if (e.button === 0 && playerFireMode) {
     e.preventDefault();
     sendPlayerFireInput(TOscreen2Canvas(screenX, screenY));
@@ -2089,6 +2267,8 @@ const onMouseMove = (e: MouseEvent) => {
   } else {
     if (isMoveCanvas) {
       cursorManager?.setNowCursorType('move');
+    } else if (servantGridEditorEnabled) {
+      cursorManager?.setNowCursorType('pointer');
     } else if (playerFireMode) {
       cursorManager?.setNowCursorType('crosshair');
     } else {
@@ -2115,7 +2295,7 @@ const onMouseMove = (e: MouseEvent) => {
 const onMouseUp = () => {
   isDragging = false;
   isMoveCanvas = false;
-  cursorManager?.setNowCursorType(playerFireMode ? 'crosshair' : 'default');
+  cursorManager?.setNowCursorType(servantGridEditorEnabled ? 'pointer' : (playerFireMode ? 'crosshair' : 'default'));
 };
 
 /**

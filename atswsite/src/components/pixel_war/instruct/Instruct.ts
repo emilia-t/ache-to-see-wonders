@@ -182,6 +182,26 @@ export class Instruct {
         };
     };
 
+    public static I_ServantEditorDelete = (playerId: number, npcId: number): InstructObject => {
+        return {
+            type: 'servant_editor_delete',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: { playerId, npcId }
+        };
+    };
+
+    public static I_ServantEditorRotate = (playerId: number, npcId: number): InstructObject => {
+        return {
+            type: 'servant_editor_rotate',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: { playerId, npcId }
+        };
+    };
+
     /*
      *tick 暂停的指令
      */

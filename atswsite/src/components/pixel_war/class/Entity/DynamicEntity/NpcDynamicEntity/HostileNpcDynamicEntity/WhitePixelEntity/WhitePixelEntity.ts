@@ -258,7 +258,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     }
 
     // 血条
-    if(this.ownerId === null){
+    if(this.ownerId === null || debugFlags?.showHealth){
       const healthRatio = Math.max(0, Math.min(1, this.health / this.healthMax));
       const barWidth = Math.max(36, this.width);
       const barHeight = 4;
