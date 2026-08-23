@@ -33,6 +33,8 @@ class PlayerDynamicEntity extends DynamicEntity {
   public static readonly HEIGHT = 25;
   public static readonly MOVE_SPEED = 410;
   public static readonly MIN_MOVE_SPEED = 50;
+  public static readonly PLAYER_MOTION_DAMPING = 8.5;// 玩家移动阻尼，值越大松手后减速越快
+  public static readonly PLAYER_MOTION_TURN_RESPONSE = 10.5;// 玩家转向响应，值越大移动转向越跟手
   public static readonly playerMoveState = {W: false,A: false,S: false,D: false};
   public static readonly DODGE_DISTANCE = 300;// 单次的闪避距离(像素)
   public static readonly DODGE_DURATION = 0.3;// 无敌持续时间(秒)
@@ -69,6 +71,8 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.minMoveSpeed = PlayerDynamicEntity.MOVE_SPEED;
     this.maxMoveSpeed = PlayerDynamicEntity.MOVE_SPEED;
     this.speed = PlayerDynamicEntity.MOVE_SPEED;
+    this.motionAirDrag = PlayerDynamicEntity.PLAYER_MOTION_DAMPING;
+    this.motionTurnResponsiveness = PlayerDynamicEntity.PLAYER_MOTION_TURN_RESPONSE;
     this.wanderRange = 0;
     this.perceptionRange = 0;
     this.health = 300;
@@ -163,6 +167,13 @@ class PlayerDynamicEntity extends DynamicEntity {
 
     const len = Math.hypot(dx, dy);
     if (len < 0.0001) {
+      this.updateMotionVelocity(null, this.speed, dt);
+    } else {
+      this.updateMotionVelocity({ x: dx / len, y: dy / len }, this.speed, dt);
+    }
+
+    const displacement = this.getMotionDisplacement(dt);
+    if (Math.hypot(displacement.x, displacement.y) < 0.0001) {
       this.isMoving = false;
       this.nextTarget = { ...this.position };
       this.targetHistory = [{ ...this.position }];
@@ -171,24 +182,25 @@ class PlayerDynamicEntity extends DynamicEntity {
       return;
     }
 
-    const velocity = this.speed * dt;
-    const moveX = (dx / len) * velocity;
-    const moveY = (dy / len) * velocity;
-    const nextPosX = { x: this.position.x + moveX, y: this.position.y };
-    const nextPosY = { x: this.position.x, y: this.position.y + moveY };
+    const nextPosX = { x: this.position.x + displacement.x, y: this.position.y };
+    const nextPosY = { x: this.position.x, y: this.position.y + displacement.y };
     let moved = false;
 
     if (!this.collidesWithStatic(nextPosX, staticEntities)) {
       this.position.x = nextPosX.x;
       moved = true;
+    } else {
+      this.motionVelocity.x = 0;
     }
     if (!this.collidesWithStatic(nextPosY, staticEntities)) {
       this.position.y = nextPosY.y;
       moved = true;
+    } else {
+      this.motionVelocity.y = 0;
     }
 
     this.updateCollisionBox();
-    this.isMoving = moved;
+    this.isMoving = moved || this.hasMotionVelocity();
     this.nextTarget = { ...this.position };
     this.targetHistory = [{ ...this.position }];
     this.curvePoints = [{ ...this.position }];
@@ -199,10 +211,10 @@ class PlayerDynamicEntity extends DynamicEntity {
       this.noMoveLastPos = { ...this.position };
       this.crowdStuckTimer = 0;
       this.insideStaticBlockedTimer = 0;
-      this.facingDirection = {
-        x: dx / len,
-        y: dy / len,
-      };
+      const faceLen = len > 0.0001 ? len : Math.hypot(displacement.x, displacement.y);
+      this.facingDirection = len > 0.0001
+        ? { x: dx / faceLen, y: dy / faceLen }
+        : { x: displacement.x / faceLen, y: displacement.y / faceLen };
       this.lastMoveDirection = { ...this.facingDirection };
     }
 

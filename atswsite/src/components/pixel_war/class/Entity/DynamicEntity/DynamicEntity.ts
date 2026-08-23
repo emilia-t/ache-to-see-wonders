@@ -9,6 +9,7 @@ abstract class DynamicEntity extends Entity {
   public healthMax: number;            // 最大生命值
   public health: number;               // 生命值
   public speed: number;                // 当前有效移动速度-单位/秒
+  public motionVelocity: Point;        // 物理运动速度向量-单位/秒
   public wanderRange: number;          // 随机游走半径(固定属性)
   public perceptionRange: number;      // 感知范围(固定属性)
   public minMoveSpeed: number;         // 最小运动速度(固定属性，10~200)
@@ -34,6 +35,10 @@ abstract class DynamicEntity extends Entity {
   public isDead: boolean;                    // 是否已死亡
   public deathEffectTimer: number;           // 死亡特效剩余时长(秒)
   public deathEffectDuration: number;        // 死亡特效总时长(秒)
+  protected motionAccelerationRate: number;  // 加速倍率，越大起步越快
+  protected motionAirDrag: number;           // 空气阻力倍率，越大滑行距离越短
+  protected motionStopSpeed: number;         // 低于该速度时视为静止
+  protected motionTurnResponsiveness: number;// 转向响应倍率，越大转向越跟手
 
   public static staticEntitySpatialGrid: { getEntitiesInRect: (x: number, y: number, w: number, h: number) => StaticEntity[] } | null = null;
 
@@ -56,6 +61,7 @@ abstract class DynamicEntity extends Entity {
     this.health = 100;
     this.healthMax = 100;
     this.speed = this.minMoveSpeed;
+    this.motionVelocity = { x: 0, y: 0 };
     this.wanderRange = 30 * ((this.width / 2) + (this.height / 2));
     this.perceptionRange = 8 * ((this.width / 2) + (this.height / 2));
     this.refreshMoveSpeedForNewTarget();
@@ -80,6 +86,10 @@ abstract class DynamicEntity extends Entity {
     this.isDead = false;
     this.deathEffectDuration = 0.8;
     this.deathEffectTimer = 0;
+    this.motionAccelerationRate = 7.2;
+    this.motionAirDrag = 7.6;
+    this.motionStopSpeed = 8;
+    this.motionTurnResponsiveness = 1.8;
   }
 
   public applyDamage(amount: number) {
@@ -131,6 +141,7 @@ abstract class DynamicEntity extends Entity {
     this.targetHistory = [{ ...this.position }];
     this.currentCurveIndex = 0;
     this.nextTarget = { ...this.position };
+    this.clearMotionVelocity();
     this.deathEffectTimer = this.deathEffectDuration;
   }
 
@@ -198,6 +209,89 @@ abstract class DynamicEntity extends Entity {
     this.movementPassion = 0.8 + Math.random() * 0.4; // 80%~120%
     const baseSpeed = this.minMoveSpeed + Math.random() * (this.maxMoveSpeed - this.minMoveSpeed);
     this.speed = baseSpeed * this.movementPassion;
+  }
+
+  protected clearMotionVelocity(): void {
+    this.motionVelocity = { x: 0, y: 0 };
+  }
+
+  protected hasMotionVelocity(): boolean {
+    return Math.hypot(this.motionVelocity.x, this.motionVelocity.y) > this.motionStopSpeed;
+  }
+
+  protected easeMotionRatio(ratio: number): number {
+    const t = Math.max(0, Math.min(1, ratio));
+    return t * t * (3 - 2 * t);
+  }
+
+  protected updateMotionVelocity(direction: Point | null, maxSpeed: number, dt: number): void {
+    const safeDt = Math.max(0, Math.min(0.05, dt));
+    const safeMaxSpeed = Math.max(0, maxSpeed);
+    if (safeDt <= 0 || safeMaxSpeed <= 0) {
+      this.clearMotionVelocity();
+      return;
+    }
+
+    const dirLen = direction ? Math.hypot(direction.x, direction.y) : 0;
+    if (!direction || dirLen < 0.0001) {
+      this.applyAirResistance(safeDt);
+      return;
+    }
+
+    const dir = {
+      x: direction.x / dirLen,
+      y: direction.y / dirLen,
+    };
+    const targetVelocity = {
+      x: dir.x * safeMaxSpeed,
+      y: dir.y * safeMaxSpeed,
+    };
+    const currentSpeed = Math.hypot(this.motionVelocity.x, this.motionVelocity.y);
+    const speedRatio = Math.max(0, Math.min(1, currentSpeed / safeMaxSpeed));
+    const accelerationCurve = 1 - this.easeMotionRatio(speedRatio);
+    const acceleration = safeMaxSpeed * this.motionAccelerationRate * Math.max(0.16, accelerationCurve);
+    const currentDir = currentSpeed > 0.0001
+      ? {
+          x: this.motionVelocity.x / currentSpeed,
+          y: this.motionVelocity.y / currentSpeed,
+        }
+      : dir;
+    const directionDot = Math.max(-1, Math.min(1, currentDir.x * dir.x + currentDir.y * dir.y));
+    const turnBoost = 1 + (1 - directionDot) * this.motionTurnResponsiveness;
+    const maxDelta = acceleration * safeDt * turnBoost;
+    const diff = {
+      x: targetVelocity.x - this.motionVelocity.x,
+      y: targetVelocity.y - this.motionVelocity.y,
+    };
+    const diffLen = Math.hypot(diff.x, diff.y);
+
+    if (diffLen <= maxDelta) {
+      this.motionVelocity = targetVelocity;
+      return;
+    }
+
+    this.motionVelocity = {
+      x: this.motionVelocity.x + diff.x / diffLen * maxDelta,
+      y: this.motionVelocity.y + diff.y / diffLen * maxDelta,
+    };
+  }
+
+  protected applyAirResistance(dt: number): void {
+    const damping = Math.exp(-this.motionAirDrag * Math.max(0, Math.min(0.05, dt)));
+    this.motionVelocity = {
+      x: this.motionVelocity.x * damping,
+      y: this.motionVelocity.y * damping,
+    };
+    if (!this.hasMotionVelocity()) {
+      this.clearMotionVelocity();
+    }
+  }
+
+  protected getMotionDisplacement(dt: number): Point {
+    return {
+      x: this.motionVelocity.x * dt,
+      y: this.motionVelocity.y * dt,
+    };
   }
 
   /**
@@ -690,7 +784,14 @@ abstract class DynamicEntity extends Entity {
 
   // 到点后随机驻足 0~5 秒
   private enterStayStateAfterArrival() {
-    this.stop();
+    this.isMoving = false;
+    this.nextTarget = { ...this.position };
+    this.targetHistory = [{ ...this.position }];
+    this.curvePoints = [{ ...this.position }];
+    this.currentCurveIndex = 0;
+    this.insideStaticBlockedTimer = 0;
+    this.crowdStuckTimer = 0;
+    this.noMoveLastPos = { ...this.position };
     this.stayDurationRemaining = Math.random() * 5;
   }
 
@@ -782,6 +883,7 @@ abstract class DynamicEntity extends Entity {
     this.insideStaticBlockedTimer = 0;
     this.crowdStuckTimer = 0;
     this.noMoveLastPos = { ...this.position };
+    this.clearMotionVelocity();
   }
 
   /**
@@ -799,21 +901,33 @@ abstract class DynamicEntity extends Entity {
     gameConfig: GameConfig
   ) {
     if (this.isDead) return;
-    if (!this.isMoving) return;
-    if (this.curvePoints.length === 0) return;
+    const hasPathIntent = this.isMoving && this.curvePoints.length > 0;
+    if (!hasPathIntent && !this.hasMotionVelocity()) return;
     const oldPos = { ...this.position };
-
-    // 若已到达曲线终点
-    if (this.currentCurveIndex >= this.curvePoints.length - 1) {
-      this.enterStayStateAfterArrival();
-      return;
-    }
-
-    const step = this.speed * dt;
-    let remaining = step;
     let newPos = { ...this.position };
 
-    while (remaining > 0 && this.currentCurveIndex < this.curvePoints.length - 1) {
+    if (hasPathIntent && this.currentCurveIndex >= this.curvePoints.length - 1) {
+      this.enterStayStateAfterArrival();
+    }
+
+    if (this.isMoving && this.currentCurveIndex < this.curvePoints.length - 1) {
+      const end = this.curvePoints[this.currentCurveIndex + 1];
+      const dx = end.x - newPos.x;
+      const dy = end.y - newPos.y;
+      const distanceToEnd = Math.hypot(dx, dy);
+
+      if (distanceToEnd > 0.0001) {
+        this.updateMotionVelocity({ x: dx / distanceToEnd, y: dy / distanceToEnd }, this.speed, dt);
+      } else {
+        this.currentCurveIndex++;
+      }
+    } else {
+      this.updateMotionVelocity(null, this.speed, dt);
+    }
+
+    let remaining = Math.hypot(this.motionVelocity.x, this.motionVelocity.y) * dt;
+
+    while (remaining > 0 && this.isMoving && this.currentCurveIndex < this.curvePoints.length - 1) {
       const end = this.curvePoints[this.currentCurveIndex + 1];
       const dx = end.x - newPos.x;
       const dy = end.y - newPos.y;
@@ -833,6 +947,18 @@ abstract class DynamicEntity extends Entity {
         };
         remaining = 0;
       }
+    }
+
+    if (!this.isMoving && this.hasMotionVelocity()) {
+      const displacement = this.getMotionDisplacement(dt);
+      newPos = {
+        x: newPos.x + displacement.x,
+        y: newPos.y + displacement.y
+      };
+    }
+
+    if (Math.hypot(newPos.x - oldPos.x, newPos.y - oldPos.y) <= 0.0001) {
+      return;
     }
 
     // 碰撞检测:如果当前已挤在静态实体内，允许"减少重叠"的位移，以便脱困
@@ -857,7 +983,7 @@ abstract class DynamicEntity extends Entity {
       }
 
       // 本帧抵达终点后进入驻足状态
-      if (this.currentCurveIndex >= this.curvePoints.length - 1) {
+      if (this.isMoving && this.currentCurveIndex >= this.curvePoints.length - 1) {
         this.enterStayStateAfterArrival();
       }
     } else {

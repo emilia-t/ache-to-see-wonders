@@ -135,7 +135,9 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
     if (this.isDead) return;
     
     // 水平移动：速度 × 方向 × 时间差
-    const dx = this.speed * this.moveDirectionX * dt;
+    this.updateMotionVelocity({ x: this.moveDirectionX, y: 0 }, this.speed, dt);
+    const displacement = this.getMotionDisplacement(dt);
+    const dx = displacement.x;
     let newX = this.position.x + dx;
     let newY = this.position.y;
     
@@ -150,6 +152,9 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
     
     // 解决与静态实体的碰撞（水平方向推离）
     this.resolveStaticCollisionHorizontal(staticEntities, oldX);
+    if (Math.abs(this.position.x - oldX) < 0.0001 && Math.abs(dx) > 0.0001) {
+      this.motionVelocity.x = 0;
+    }
     
     // 更新碰撞箱和朝向
     this.updateCollisionBox();
