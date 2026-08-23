@@ -20,6 +20,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     this.healthMax = 100;
     this.isActionLoopRunning = false;
     this.actionCooldownRemaining = 0;
+    this.kill_score = 1; // 击杀该NPC获得的分数
   }
 
   public tryPickupItem(_item: ItemEntity): boolean {

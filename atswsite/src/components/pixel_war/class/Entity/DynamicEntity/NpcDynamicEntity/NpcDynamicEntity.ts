@@ -23,6 +23,7 @@ abstract class NpcDynamicEntity extends DynamicEntity {
   public teamId: number | null; // 拥有者ID，null表示无队伍
   public attitude: NpcAttitude; // 友好/中立/敌对
   public pickupRange: number; // 拾取范围
+  public kill_score: number; // NPC被击杀时获得的分数
 
   constructor(
     position: Point,
@@ -39,6 +40,7 @@ abstract class NpcDynamicEntity extends DynamicEntity {
     this.pickupRange = pickupRange;
     this.ownerId = ownerId;
     this.teamId = teamId;
+    this.kill_score = 1;
   }
 
   public abstract tryPickupItem(item: ItemEntity): boolean;

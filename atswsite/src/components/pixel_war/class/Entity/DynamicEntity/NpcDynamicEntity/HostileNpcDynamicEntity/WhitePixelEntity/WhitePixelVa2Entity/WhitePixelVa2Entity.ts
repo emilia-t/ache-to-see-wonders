@@ -25,6 +25,7 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
     this.stayDurationRemaining = 0;
     // 强制移动标志为 true
     this.isMoving = true;
+    this.kill_score = 2; // 击杀该NPC获得的分数
   }
 
   /**

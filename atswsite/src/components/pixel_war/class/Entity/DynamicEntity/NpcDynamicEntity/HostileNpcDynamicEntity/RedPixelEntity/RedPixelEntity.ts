@@ -13,12 +13,12 @@ import type { EntityDebugFlags, DynamicEntitieList, ActionLoopContext} from '@/c
  * - 若被其他方式击杀（如玩家子弹），死亡时也会生成炸弹
  */
 class RedPixelEntity extends HostileNpcDynamicEntity {
+  private static readonly EXPLODE_RANGE = 60;   // 进入此距离直接爆炸
+  private static readonly WARN_RANGE = 140;     // 进入此距离开始闪烁警告
+
   public static GENERATE_WEIGHT = 0.1;
 
   private playerPosition: Point | null = null;
-
-  private static readonly EXPLODE_RANGE = 60;   // 进入此距离直接爆炸
-  private static readonly WARN_RANGE = 140;     // 进入此距离开始闪烁警告
 
   // 用于闪烁的计时器
   private flashAccumulator: number = 0;
@@ -37,6 +37,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     this.strokeColor = '#444444';
     this.health = 60;
     this.healthMax = 60;
+    this.kill_score = 3;
   }
 
   public tryPickupItem(_item: ItemEntity): boolean {
