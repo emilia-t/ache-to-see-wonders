@@ -49,6 +49,25 @@ import {
   GrenadeDynamicEntity
 } from '@/components/pixel_war/class';
 
+// 底部状态栏技能信息类型
+type BottomStatusSkill = {
+  key: string;
+  title: string;
+  subtitle: string;
+  color: string;
+  cooldownNow: number;
+  cooldownMax: number;
+  active?: boolean;
+};
+
+// 实体插值状态Map，key为实体ID，value为插值状态
+type EntityInterpolationState = {
+  from: Point;
+  to: Point;
+  startTime: number;
+  duration: number;
+};
+
 import ServiceWorker from '@/components/pixel_war/service/Service?worker';
 
 ////////////////////
@@ -373,6 +392,14 @@ let grenadeEntityList: GrenadeDynamicEntity[] = [];
 let itemEntityList: ItemEntity[] = [];                      // 物品实体列表
 let playerEntity: PlayerDynamicEntity | null = null;
 
+// 底部状态栏动画状态
+let bottomStatusHealthRatio = 1;
+let bottomStatusDamageRatio = 1;
+let bottomStatusLastHealthRatio = 1;
+let bottomStatusDamageFlash = 0;
+let bottomStatusLastFrameTime = 0;
+let bottomStatusHealthColor: RGB = { r: 40, g: 255, b: 143 };
+
 let entityDebugFlags: EntityDebugFlags = {
   //属性相关
   showHealth: false,
@@ -411,15 +438,6 @@ let showPlayerServantFacingDirection = false;
 
 // 健康值快照Map (用于生成数值浮层)
 let prevHealthMap = new Map<number, number>();
-
-// 实体插值状态Map，key为实体ID，value为插值状态
-type EntityInterpolationState = {
-  from: Point;
-  to: Point;
-  startTime: number;
-  duration: number;
-};
-
 let entityInterpolationMap = new Map<number, EntityInterpolationState>();
 let entitySnapshotTimeMap = new Map<number, number>();
 
@@ -530,6 +548,22 @@ const H_getNpcDebugFlags = (entity: NpcDynamicEntity): EntityDebugFlags => {
 const H_clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 // 线性插值辅助函数
 const H_lerp = (start: number, end: number, ratio: number) => start + (end - start) * ratio;
+const H_lerpRgb = (start: RGB, end: RGB, ratio: number): RGB => ({
+  r: H_lerp(start.r, end.r, ratio),
+  g: H_lerp(start.g, end.g, ratio),
+  b: H_lerp(start.b, end.b, ratio),
+});
+
+const H_rgbToCss = (color: RGB, alpha = 1) => {
+  return `rgba(${Math.round(color.r)}, ${Math.round(color.g)}, ${Math.round(color.b)}, ${alpha})`;
+};
+
+const H_getBottomStatusHealthColor = (healthRatio: number): RGB => {
+  if (healthRatio > 0.5) return { r: 40, g: 255, b: 143 };
+  if (healthRatio > 0.2) return { r: 255, g: 159, b: 51 };
+  return { r: 140, g: 24, b: 38 };
+};
+
 // 获取实体插值位置的辅助函数
 const H_getInterpolatedEntityPosition = (entity: Entity, timestamp: number): Point => {
   const interpolation = entityInterpolationMap.get(entity.id);
@@ -1418,6 +1452,267 @@ const drawUIRuler = (CtxUi: CanvasRenderingContext2D,CANVAS: HTMLCanvasElement) 
 };
 
 /**
+ * 绘制底部状态栏(UI层)
+ */
+const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
+  const { width, height } = H_getCanvasCssSize(CANVAS);
+  const now = performance.now();
+  const dt = bottomStatusLastFrameTime ? Math.min(0.05, (now - bottomStatusLastFrameTime) / 1000) : 0;
+  bottomStatusLastFrameTime = now;
+
+  const isCompact = width < 640;
+  const panelWidth = isCompact ? Math.max(320, width - 16) : H_clamp(width - 24, 420, 720);
+  const panelHeight = isCompact ? 150 : 128;
+  const x = (width - panelWidth) / 2;
+  const y = height - panelHeight - 14;
+  const time = now / 1000;
+
+  const playerDead = !playerEntity || playerEntity.isDead || playerEntity.health <= 0;
+  const healthMax = Math.max(1, playerEntity?.healthMax ?? 100);
+  const currentHealth = playerDead ? 0 : Math.max(0, playerEntity?.health ?? 0);
+  const targetHealthRatio = playerEntity && !playerDead
+    ? H_clamp(playerEntity.health / healthMax, 0, 1)
+    : 0;
+  const targetHealthColor = H_getBottomStatusHealthColor(targetHealthRatio);
+
+  if (targetHealthRatio < bottomStatusLastHealthRatio - 0.001) {
+    bottomStatusDamageFlash = 1;
+  }
+  if (targetHealthRatio > bottomStatusDamageRatio) {
+    bottomStatusDamageRatio = targetHealthRatio;
+  }
+  bottomStatusLastHealthRatio = targetHealthRatio;
+  bottomStatusHealthRatio = H_lerp(bottomStatusHealthRatio, targetHealthRatio, 1 - Math.pow(0.0008, dt));
+  bottomStatusDamageRatio = targetHealthRatio < bottomStatusDamageRatio
+    ? H_lerp(bottomStatusDamageRatio, targetHealthRatio, 1 - Math.pow(0.08, dt))
+    : H_lerp(bottomStatusDamageRatio, targetHealthRatio, 1 - Math.pow(0.0008, dt));
+  bottomStatusHealthColor = H_lerpRgb(bottomStatusHealthColor, targetHealthColor, 1 - Math.pow(0.002, dt));
+  bottomStatusDamageFlash = Math.max(0, bottomStatusDamageFlash - dt * 2.8);
+
+  CtxUi.save();
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.34)';
+  CtxUi.shadowBlur = 18;
+  const panelGradient = CtxUi.createLinearGradient(x, y, x, y + panelHeight);
+  panelGradient.addColorStop(0, 'rgba(13, 25, 35, 0.82)');
+  panelGradient.addColorStop(0.54, 'rgba(8, 13, 22, 0.9)');
+  panelGradient.addColorStop(1, 'rgba(6, 9, 14, 0.82)');
+  CtxUi.fillStyle = panelGradient;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, x, y, panelWidth, panelHeight, 8);
+  CtxUi.fill();
+  CtxUi.shadowBlur = 0;
+  CtxUi.strokeStyle = 'rgba(91, 221, 255, 0.55)';
+  CtxUi.lineWidth = 1.5;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, x + 0.5, y + 0.5, panelWidth - 1, panelHeight - 1, 8);
+  CtxUi.stroke();
+
+  CtxUi.strokeStyle = `rgba(97, 236, 255, ${0.24 + Math.sin(time * 2.4) * 0.08})`;
+  CtxUi.beginPath();
+  CtxUi.moveTo(x + 18, y + 12);
+  CtxUi.lineTo(x + panelWidth * 0.34, y + 12);
+  CtxUi.moveTo(x + panelWidth * 0.66, y + 12);
+  CtxUi.lineTo(x + panelWidth - 18, y + 12);
+  CtxUi.stroke();
+
+  const avatarSize = isCompact ? 50 : 72;
+  const avatarX = x + 18;
+  const avatarY = isCompact ? y + 22 : y + 24;
+  const avatarGlow = 0.55 + Math.sin(time * 3) * 0.12;
+  CtxUi.fillStyle = 'rgba(13, 26, 34, 0.95)';
+  CtxUi.strokeStyle = `rgba(93, 230, 255, ${avatarGlow})`;
+  CtxUi.lineWidth = 2;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, avatarX, avatarY, avatarSize, avatarSize, 8);
+  CtxUi.fill();
+  CtxUi.stroke();
+  CtxUi.fillStyle = playerDead ? 'rgba(255, 76, 96, 0.75)' : 'rgba(61, 148, 255, 0.9)';
+  CtxUi.fillRect(avatarX + avatarSize * 0.32, avatarY + avatarSize * 0.22, avatarSize * 0.36, avatarSize * 0.56);
+  CtxUi.fillStyle = 'rgba(135, 242, 255, 0.85)';
+  CtxUi.fillRect(avatarX + avatarSize * 0.22, avatarY + avatarSize * 0.38, avatarSize * 0.56, avatarSize * 0.22);
+
+  const infoX = avatarX + avatarSize + 14;
+  const infoTop = isCompact ? y + 23 : y + 25;
+  const hpBarWidth = isCompact
+    ? Math.max(140, panelWidth - (infoX - x) - 18)
+    : Math.max(150, Math.min(250, panelWidth * 0.36));
+  const hpBarHeight = 16;
+  CtxUi.font = 'bold 13px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.textAlign = 'left';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.fillStyle = 'rgba(222, 248, 255, 0.96)';
+  CtxUi.fillText(playerEntity?.name || 'Player', infoX, infoTop);
+  CtxUi.font = '11px Consolas, "Courier New", monospace';
+  CtxUi.fillStyle = playerDead ? '#ff6b78' : '#66f1ff';
+  CtxUi.fillText(playerDead ? 'OFFLINE' : 'ONLINE', infoX, infoTop + 18);
+
+  const hpX = infoX;
+  const hpY = infoTop + 34;
+  CtxUi.fillStyle = 'rgba(9, 14, 20, 0.95)';
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, hpX, hpY, hpBarWidth, hpBarHeight, 4);
+  CtxUi.fill();
+  CtxUi.fillStyle = 'rgba(255, 75, 88, 0.5)';
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, hpX, hpY, hpBarWidth * H_clamp(bottomStatusDamageRatio, 0, 1), hpBarHeight, 4);
+  CtxUi.fill();
+  CtxUi.fillStyle = H_rgbToCss(bottomStatusHealthColor, 0.96);
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, hpX, hpY, hpBarWidth * H_clamp(bottomStatusHealthRatio, 0, 1), hpBarHeight, 4);
+  CtxUi.fill();
+  if (bottomStatusDamageFlash > 0) {
+    CtxUi.fillStyle = `rgba(255, 255, 255, ${bottomStatusDamageFlash * 0.18})`;
+    CtxUi.beginPath();
+    createRoundRect(CtxUi, hpX - 2, hpY - 2, hpBarWidth + 4, hpBarHeight + 4, 5);
+    CtxUi.fill();
+  }
+  CtxUi.strokeStyle = 'rgba(166, 242, 255, 0.52)';
+  CtxUi.strokeRect(hpX + 0.5, hpY + 0.5, hpBarWidth - 1, hpBarHeight - 1);
+  CtxUi.textAlign = 'center';
+  CtxUi.font = '11px Consolas, "Courier New", monospace';
+  CtxUi.lineWidth = 3;
+  CtxUi.strokeStyle = 'rgba(0, 0, 0, 0.82)';
+  CtxUi.fillStyle = 'rgba(242, 255, 255, 0.96)';
+  const healthText = `${Math.ceil(currentHealth)} / ${Math.ceil(healthMax)}`;
+  CtxUi.strokeText(healthText, hpX + hpBarWidth / 2, hpY + hpBarHeight / 2 + 0.5);
+  CtxUi.fillText(healthText, hpX + hpBarWidth / 2, hpY + hpBarHeight / 2 + 0.5);
+
+  const skills: BottomStatusSkill[] = [
+    {
+      key: 'F',
+      title: 'FIRE',
+      subtitle: playerFireMode ? 'ARMED' : 'AIM',
+      color: playerFireMode ? '#ffcf5a' : '#58d9ff',
+      cooldownNow: playerEntity?.playerRule.fireCooldownNow ?? 0,
+      cooldownMax: playerEntity?.playerRule.fireCooldownMax ?? 1,
+      active: playerFireMode
+    },
+    {
+      key: 'SP',
+      title: 'DASH',
+      subtitle: 'DODGE',
+      color: '#b381ff',
+      cooldownNow: playerEntity?.playerRule.dodgeCooldownNow ?? 0,
+      cooldownMax: playerEntity?.playerRule.dodgeCooldownMax ?? 1
+    },
+    {
+      key: 'C',
+      title: 'GRID',
+      subtitle: servantGridEditorEnabled ? 'EDIT' : 'SERV',
+      color: servantGridEditorEnabled ? '#64ff9d' : '#7ce8ff',
+      cooldownNow: 0,
+      cooldownMax: 1,
+      active: servantGridEditorEnabled
+    },
+    {
+      key: '3',
+      title: 'VIEW',
+      subtitle: perspectiveMode === 'first_person' ? '1P' : '3P',
+      color: '#63f2ff',
+      cooldownNow: 0,
+      cooldownMax: 1,
+      active: perspectiveMode === 'first_person'
+    }
+  ];
+
+  const gap = isCompact ? 8 : 12;
+  const slotSize = isCompact
+    ? H_clamp((panelWidth - 36 - gap * (skills.length - 1)) / skills.length, 44, 58)
+    : H_clamp((x + panelWidth - 18 - (infoX + hpBarWidth + 22) - gap * (skills.length - 1)) / skills.length, 48, 66);
+  const skillsWidth = slotSize * skills.length + gap * (skills.length - 1);
+  const skillsX = isCompact ? x + (panelWidth - skillsWidth) / 2 : x + panelWidth - 18 - skillsWidth;
+  const skillsY = isCompact ? y + 86 : y + (panelHeight - slotSize) / 2 + 6;
+
+  skills.forEach((skill, index) => {
+    drawBottomStatusSkill(CtxUi, skill, skillsX + index * (slotSize + gap), skillsY, slotSize, time);
+  });
+
+  CtxUi.restore();
+};
+
+/**
+ * 绘制底部状态栏技能槽(UI层)
+ */
+const drawBottomStatusSkill = (
+  CtxUi: CanvasRenderingContext2D,
+  skill: BottomStatusSkill,
+  x: number,
+  y: number,
+  size: number,
+  time: number
+) => {
+  const cooldownMax = Math.max(0.001, skill.cooldownMax);
+  const cooldownRatio = H_clamp(skill.cooldownNow / cooldownMax, 0, 1);
+  const ready = cooldownRatio <= 0;
+  const pulse = ready ? 0.52 + Math.sin(time * 5.5) * 0.16 : 0.22;
+
+  CtxUi.save();
+  CtxUi.shadowColor = skill.color;
+  CtxUi.shadowBlur = ready || skill.active ? 14 : 4;
+  CtxUi.fillStyle = 'rgba(7, 13, 21, 0.94)';
+  CtxUi.strokeStyle = ready || skill.active ? skill.color : 'rgba(118, 165, 184, 0.55)';
+  CtxUi.lineWidth = ready || skill.active ? 2 : 1;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, x, y, size, size, 7);
+  CtxUi.fill();
+  CtxUi.stroke();
+  CtxUi.shadowBlur = 0;
+
+  const inner = size * 0.68;
+  const centerX = x + size / 2;
+  const centerY = y + size * 0.43;
+  CtxUi.fillStyle = `${skill.color}${ready ? 'cc' : '88'}`;
+  CtxUi.beginPath();
+  if (skill.key === 'F') {
+    CtxUi.moveTo(centerX - inner * 0.28, centerY + inner * 0.28);
+    CtxUi.lineTo(centerX + inner * 0.3, centerY);
+    CtxUi.lineTo(centerX - inner * 0.28, centerY - inner * 0.28);
+    CtxUi.closePath();
+  } else if (skill.key === 'SP') {
+    CtxUi.moveTo(centerX - inner * 0.28, centerY + inner * 0.26);
+    CtxUi.lineTo(centerX + inner * 0.2, centerY);
+    CtxUi.lineTo(centerX - inner * 0.28, centerY - inner * 0.26);
+    CtxUi.lineTo(centerX - inner * 0.08, centerY);
+    CtxUi.closePath();
+  } else if (skill.key === 'C') {
+    CtxUi.rect(centerX - inner * 0.25, centerY - inner * 0.25, inner * 0.5, inner * 0.5);
+  } else {
+    CtxUi.arc(centerX, centerY, inner * 0.25, 0, Math.PI * 2);
+  }
+  CtxUi.fill();
+
+  if (cooldownRatio > 0) {
+    CtxUi.fillStyle = 'rgba(2, 5, 10, 0.72)';
+    CtxUi.beginPath();
+    CtxUi.moveTo(centerX, centerY);
+    CtxUi.arc(centerX, centerY, size * 0.72, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * cooldownRatio, false);
+    CtxUi.closePath();
+    CtxUi.fill();
+    CtxUi.fillStyle = 'rgba(238, 250, 255, 0.96)';
+    CtxUi.font = `bold ${Math.max(12, size * 0.24)}px Consolas, "Courier New", monospace`;
+    CtxUi.textAlign = 'center';
+    CtxUi.textBaseline = 'middle';
+    CtxUi.fillText(skill.cooldownNow.toFixed(1), centerX, centerY);
+  } else {
+    CtxUi.strokeStyle = `rgba(255, 255, 255, ${pulse})`;
+    CtxUi.lineWidth = 1;
+    CtxUi.beginPath();
+    createRoundRect(CtxUi, x + 4, y + 4, size - 8, size - 8, 5);
+    CtxUi.stroke();
+  }
+
+  CtxUi.fillStyle = 'rgba(224, 249, 255, 0.92)';
+  CtxUi.font = `bold ${Math.max(10, size * 0.17)}px Consolas, "Courier New", monospace`;
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.fillText(skill.key, centerX, y + size - 10);
+  CtxUi.fillStyle = skill.active ? skill.color : 'rgba(150, 205, 220, 0.78)';
+  CtxUi.font = `${Math.max(8, size * 0.13)}px Consolas, "Courier New", monospace`;
+  CtxUi.fillText(skill.subtitle, centerX, y + size + 12);
+  CtxUi.restore();
+};
+
+/**
  * 绘制图形层(网格、轴、元素、临时预览)
  */
 const drawGraphics = () => {
@@ -1534,6 +1829,7 @@ const drawUI = () => {
   ctxUi.clearRect(0, 0, width, height);
   //drawUIRuler(ctxUi, UI_CANVAS.value);
   drawInstructions(ctxUi, UI_CANVAS.value);
+  drawBottomStatusBar(ctxUi, UI_CANVAS.value);
   drawDebugBoard(ctxUi, UI_CANVAS.value);
   drawDebugTerminal(ctxUi, UI_CANVAS.value);
 };
@@ -1594,15 +1890,7 @@ const animateEntities = (timestamp: number) => {
       numericalManager.draw();
     }
 
-    if(debugBoardVisible){
-      if (!ctxUi || !UI_CANVAS.value) return;
-      drawDebugBoard(ctxUi, UI_CANVAS.value);
-    }// 渲染调试面板
-
-    // 不再频繁渲染UI层,只在状态变化时渲染,以提升性能
-    // if(ctxUi && UI_CANVAS.value){
-    //   drawUI();
-    // }
+    drawUI();
 
   }
   lastTimestamp = timestamp;

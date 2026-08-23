@@ -34,10 +34,10 @@ class PlayerDynamicEntity extends DynamicEntity {
   public static readonly MOVE_SPEED = 410;
   public static readonly MIN_MOVE_SPEED = 50;
   public static readonly playerMoveState = {W: false,A: false,S: false,D: false};
-  public static readonly DODGE_DISTANCE = 120;     // 闪避距离(像素)
-  public static readonly DODGE_DURATION = 0.28;    // 无敌持续时间(秒)
-  public static readonly DODGE_SLIDE_DURATION = 0.16; // 闪避位移持续时间(秒)
-  public static readonly DODGE_TRAIL_DURATION = 0.24; // 闪避拖影持续时间(秒)
+  public static readonly DODGE_DISTANCE = 300;// 单次的闪避距离(像素)
+  public static readonly DODGE_DURATION = 0.3;// 无敌持续时间(秒)
+  public static readonly DODGE_SLIDE_DURATION = 0.2;// 闪避位移持续时间(秒)
+  public static readonly DODGE_TRAIL_DURATION = 0.3;// 闪避拖影持续时间(秒)
 
   public moveState = {W: false,A: false,S: false,D: false};
   public teamId: number | null;
@@ -45,11 +45,11 @@ class PlayerDynamicEntity extends DynamicEntity {
   public dodgeAfterimages: PlayerDodgeAfterimage[] = [];
   public readonly playerRule:PlayerRule = {
     bulletColor: 'rgba(255, 255, 255, 0.9)',
-    fireCooldownNow: 0,//计算数值单位秒
-    fireCooldownMax: 0.12,//cd最大值单位秒,
-    invincibleTimer: 0,//无敌计时器,
-    dodgeCooldownNow: 0,//闪避cd计时器
-    dodgeCooldownMax: 2.0,//闪避cd最大值
+    invincibleTimer: 0,//无敌状态计时器
+    fireCooldownNow: 0,//下一次开火还需要等待的时长(秒)
+    fireCooldownMax: 0.5,//开火CD(秒)
+    dodgeCooldownNow: 0,//下一次闪避还需要等待的时长(秒)
+    dodgeCooldownMax: 2.0,//闪避CD(秒)
   };
 
   private servantGrid:ServantGrid|null = null;
@@ -71,10 +71,10 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.speed = PlayerDynamicEntity.MOVE_SPEED;
     this.wanderRange = 0;
     this.perceptionRange = 0;
-    //this.health = 100;
-    //this.healthMax = 100;
-    this.health = 100000;
-    this.healthMax = 100000;
+    this.health = 300;
+    this.healthMax = 300;
+    // this.health = 100000;
+    // this.healthMax = 100000;
     this.movementPassion = 1;
     this.teamId = teamId;
     /**
