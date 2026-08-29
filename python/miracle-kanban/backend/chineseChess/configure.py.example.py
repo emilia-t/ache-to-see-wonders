@@ -21,6 +21,7 @@ _config_privatekey_                 = RSAKEYPAIR._PRIVATEKEY_   # 私钥
 _config_ssl_cert_file_              = ''        # SSL证书文件路径
 _config_ssl_key_file_               = ''        # SSL私钥文件路径
 _config_use_ssl_                    = False     # 是否启用SSL，根据证书文件存在性自动设置
+_api_account_server_skip_certificate_verify_ = False# 是否跳过账号服务器证书验证（仅限于此服务和账号服务运行在同一个物理设备上时使用）
 
 # 根据环境变量调整配置
 if _config_environment_ == 'development':

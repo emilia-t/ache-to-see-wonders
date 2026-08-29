@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # The relative position of this file: /backend/chineseChess/chinese_chess_main.py
 
+import ssl
 import asyncio
 import websockets
 import json
@@ -184,20 +185,42 @@ class HTTPClient:
             headers = {
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
+
+            # 跳过 SSL 验证（仅限于此服务和账号服务运行在同一个物理设备上时使用）
+            if configure._api_account_server_skip_certificate_verify_:
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            else:
+                ssl_context = None
             
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, data=form_data, headers=headers) as response:
-                    response_text = await response.text()
-                    
-                    if response.status == 200:
-                        try:
-                            result = await response.json()
-                            return result
-                        except:
+                if ssl_context:
+                    async with session.post(url, data=form_data, headers=headers, ssl=ssl_context) as response:
+                        response_text = await response.text()
+                        
+                        if response.status == 200:
+                            try:
+                                result = await response.json()
+                                return result
+                            except:
+                                return None
+                        else:
+                            log_message(f"HTTP请求失败: {response.status} - {response_text}")
                             return None
-                    else:
-                        log_message(f"HTTP请求失败: {response.status} - {response_text}")
-                        return None
+                else:
+                    async with session.post(url, data=form_data, headers=headers) as response:
+                        response_text = await response.text()
+                        
+                        if response.status == 200:
+                            try:
+                                result = await response.json()
+                                return result
+                            except:
+                                return None
+                        else:
+                            log_message(f"HTTP请求失败: {response.status} - {response_text}")
+                            return None
         except Exception as e:
             log_message(f"HTTP请求异常: {e}")
             return None
