@@ -43,6 +43,7 @@ class PlayerDynamicEntity extends DynamicEntity {
 
   public moveState = {W: false,A: false,S: false,D: false};
   public teamId: number | null;
+  public player_score: number;
   public dodgeState: PlayerDodgeState | null = null;
   public dodgeAfterimages: PlayerDodgeAfterimage[] = [];
   public readonly playerRule:PlayerRule = {
@@ -81,6 +82,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.healthMax = 100000;
     this.movementPassion = 1;
     this.teamId = teamId;
+    this.player_score = 0;
     /**
      * 初始化从者网格start
      */
@@ -266,7 +268,31 @@ class PlayerDynamicEntity extends DynamicEntity {
     if(item instanceof FoodItemEntity){
       this.health = Math.min(this.healthMax,this.health+item.currentHealthIncrease)
     }
-  } 
+  }
+
+  /**
+   * 重生玩家并重置临时战斗状态
+   */
+  public respawn(position: Point): void {
+    this.position = { ...position };
+    this.nextTarget = { ...position };
+    this.targetHistory = [{ ...position }];
+    this.curvePoints = [{ ...position }];
+    this.currentCurveIndex = 0;
+    this.health = this.healthMax;
+    this.isDead = false;
+    this.deathEffectTimer = 0;
+    this.damageFlashTimer = 0;
+    this.isMoving = false;
+    this.dodgeState = null;
+    this.dodgeAfterimages = [];
+    this.playerRule.invincibleTimer = 1.5;
+    this.playerRule.fireCooldownNow = 0;
+    this.playerRule.dodgeCooldownNow = 0;
+    this.resetServantGrid();
+    this.stop();
+    this.updateCollisionBox();
+  }
 
   /**
    * 尝试闪避

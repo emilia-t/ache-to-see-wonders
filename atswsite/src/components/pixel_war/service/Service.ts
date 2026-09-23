@@ -319,6 +319,12 @@ const rotateServantByEditor = (playerId: number, npcId: number): void => {
   };
 };
 
+const respawnPlayer = (playerId: number): void => {
+  const player = getPlayerDynamicEntityById(playerId);
+  if (!player) return;
+  player.respawn({ x: 0, y: 0 });
+};
+
 ////////////////////
 // <-- 其他函数
 ////////////////////
@@ -572,8 +578,26 @@ const updateBulletEntities = (deltaTime: number): boolean => {
       );
       const hitRadius = entity.width * 0.45 + bullet.width * 0.5;
 
-      if (hitDistance <= hitRadius) {
+      if (hitDistance <= hitRadius) {// 受击
+        const wasAlive = !entity.isDead;
         entity.applyDamage(bullet.damage);
+        if (wasAlive && entity.isDead && entity instanceof NpcDynamicEntity && bullet.ownerId !== null) {
+          const owner = getPlayerDynamicEntityById(bullet.ownerId);
+          
+          if (owner) {
+            owner.player_score += entity.kill_score;
+          }
+
+          if(bullet.teamId!==null){// 玩家的从者NPC击杀的其他NPC也计入玩家的击杀分数中
+            const npc = getNpcDynamicEntityById(bullet.ownerId);
+            if(npc && npc.ownerId !== null){
+              const player = getPlayerDynamicEntityById(npc.ownerId);
+              if(player){
+                player.player_score += entity.kill_score;
+              }
+            }
+          }
+        }
         bullet.shouldRemove = true;
         changed = true;
         break;
@@ -1163,6 +1187,11 @@ const handleInstruct = (instruct: InstructObject) => {
       if (playerEntity && !playerEntity.isDead) {
         playerEntity.dodge(instruct.data.direction as Point, MAP_DATA.staticEntities);
       }
+      break;
+    }
+
+    case 'player_respawn': {
+      respawnPlayer(instruct.data.playerId as number);
       break;
     }
 

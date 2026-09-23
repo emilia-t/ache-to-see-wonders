@@ -202,6 +202,16 @@ export class Instruct {
         };
     };
 
+    public static I_PlayerRespawn = (playerId: number): InstructObject => {
+        return {
+            type: 'player_respawn',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: { playerId }
+        };
+    };
+
     /*
      *tick 暂停的指令
      */

@@ -316,6 +316,10 @@ const sendServantEditorRotate = (npcId: number) => {
     )
   );
 };
+
+const sendPlayerRespawn = () => {
+  sendClientInstruct(Instruct.I_PlayerRespawn(playerEntity ? playerEntity.id : -1));
+};
 ////////////////////
 //<--服务器通信相关区
 ////////////////////
@@ -1559,6 +1563,10 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   CtxUi.font = '11px Consolas, "Courier New", monospace';
   CtxUi.fillStyle = playerDead ? '#ff6b78' : '#66f1ff';
   CtxUi.fillText(playerDead ? 'OFFLINE' : 'ONLINE', infoX, infoTop + 18);
+  CtxUi.fillStyle = 'rgba(255, 220, 106, 0.95)';
+  CtxUi.textAlign = 'right';
+  CtxUi.fillText(`SCORE ${Math.floor(playerEntity?.player_score ?? 0)}`, infoX + hpBarWidth, infoTop + 18);
+  CtxUi.textAlign = 'left';
 
   const hpX = infoX;
   const hpY = infoTop + 34;
