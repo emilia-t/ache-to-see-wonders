@@ -1335,8 +1335,8 @@ const drawDebugTerminal = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEl
   const x = 12;
   const y = height - terminalHeight - 12;
 
+  // 终端未打开时直接返回，不要执行 clearRect，否则会擦除先前绘制的底部状态栏
   if (!debugTerminalVisible){
-    CtxUi.clearRect(x, y, terminalWidth, terminalHeight);
     return;
   }
 
@@ -1461,10 +1461,15 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   bottomStatusLastFrameTime = now;
 
   const isCompact = width < 640;
-  const panelWidth = isCompact ? Math.max(320, width - 16) : H_clamp(width - 24, 420, 720);
-  const panelHeight = isCompact ? 150 : 128;
+  const compactMargin = width < 360 ? 6 : 8;
+  const bottomMargin = height < 520 ? 8 : 14;
+  const panelWidth = isCompact ? Math.max(1, width - compactMargin * 2) : H_clamp(width - 24, 420, 720);
+  // 竖屏下适当增加面板高度，保证垂直堆叠的元素不拥挤
+  const panelHeight = isCompact 
+    ? Math.max(170, Math.min(height * 0.28, 200)) 
+    : 128;
   const x = (width - panelWidth) / 2;
-  const y = height - panelHeight - 14;
+  const y = Math.max(4, height - panelHeight - bottomMargin);
   const time = now / 1000;
 
   const playerDead = !playerEntity || playerEntity.isDead || playerEntity.health <= 0;
@@ -1515,9 +1520,13 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   CtxUi.lineTo(x + panelWidth - 18, y + 12);
   CtxUi.stroke();
 
-  const avatarSize = isCompact ? 50 : 72;
-  const avatarX = x + 18;
-  const avatarY = isCompact ? y + 22 : y + 24;
+
+  const sidePadding = isCompact ? 12 : 18;
+  
+  // 1. 玩家信息区域（竖屏下为上半部分）
+  const avatarSize = isCompact ? 42 : 72;
+  const avatarX = x + sidePadding;
+  const avatarY = isCompact ? y + 14 : y + 24;
   const avatarGlow = 0.55 + Math.sin(time * 3) * 0.12;
   CtxUi.fillStyle = 'rgba(13, 26, 34, 0.95)';
   CtxUi.strokeStyle = `rgba(93, 230, 255, ${avatarGlow})`;
@@ -1531,12 +1540,17 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   CtxUi.fillStyle = 'rgba(135, 242, 255, 0.85)';
   CtxUi.fillRect(avatarX + avatarSize * 0.22, avatarY + avatarSize * 0.38, avatarSize * 0.56, avatarSize * 0.22);
 
-  const infoX = avatarX + avatarSize + 14;
-  const infoTop = isCompact ? y + 23 : y + 25;
+  const infoGap = isCompact ? 12 : 14;
+  const infoX = avatarX + avatarSize + infoGap;
+  const infoTop = isCompact ? avatarY + 2 : y + 25;
+  
+  // 限制血条最大宽度，防止在极小屏幕上向右溢出
+  const maxHpBarWidth = panelWidth - (infoX - x) - sidePadding;
   const hpBarWidth = isCompact
-    ? Math.max(140, panelWidth - (infoX - x) - 18)
+    ? Math.max(60, maxHpBarWidth)
     : Math.max(150, Math.min(250, panelWidth * 0.36));
-  const hpBarHeight = 16;
+  const hpBarHeight = isCompact ? 14 : 16;
+
   CtxUi.font = 'bold 13px "Microsoft YaHei", Arial, sans-serif';
   CtxUi.textAlign = 'left';
   CtxUi.textBaseline = 'middle';
@@ -1615,13 +1629,30 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
     }
   ];
 
+  // 2. 技能槽区域（竖屏下强制换行，置于下半部分并水平居中）
   const gap = isCompact ? 8 : 12;
-  const slotSize = isCompact
-    ? H_clamp((panelWidth - 36 - gap * (skills.length - 1)) / skills.length, 44, 58)
-    : H_clamp((x + panelWidth - 18 - (infoX + hpBarWidth + 22) - gap * (skills.length - 1)) / skills.length, 48, 66);
-  const skillsWidth = slotSize * skills.length + gap * (skills.length - 1);
-  const skillsX = isCompact ? x + (panelWidth - skillsWidth) / 2 : x + panelWidth - 18 - skillsWidth;
-  const skillsY = isCompact ? y + 86 : y + (panelHeight - slotSize) / 2 + 6;
+  let slotSize = 48;
+  let skillsX = 0;
+  let skillsY = 0;
+
+  if (isCompact) {
+    // 竖屏模式：计算技能槽可用宽度，限制最大尺寸，保证在狭小空间内也能居中显示
+    const availableSkillWidth = panelWidth - sidePadding * 2;
+    const computedSize = (availableSkillWidth - gap * (skills.length - 1)) / skills.length;
+    slotSize = Math.min(Math.max(computedSize, 36), 52); // 最小36px，最大52px
+
+    const totalSkillsWidth = slotSize * skills.length + gap * (skills.length - 1);
+    skillsX = x + (panelWidth - totalSkillsWidth) / 2; // 水平居中
+    // 放置在面板下半部分，底部预留24px空间给技能槽下方的文字（如 DODGE）
+    skillsY = y + panelHeight - slotSize - 24; 
+  } else {
+    // 横屏/PC模式：保持原有右侧水平排布逻辑
+    slotSize = H_clamp((x + panelWidth - 18 - (infoX + hpBarWidth + 22) - gap * (skills.length - 1)) / skills.length, 48, 66);
+    const totalSkillsWidth = slotSize * skills.length + gap * (skills.length - 1);
+    skillsX = x + panelWidth - 18 - totalSkillsWidth;
+    skillsY = y + (panelHeight - slotSize) / 2 + 6;
+  }
+  // ==================== 修复结束 ====================
 
   skills.forEach((skill, index) => {
     drawBottomStatusSkill(CtxUi, skill, skillsX + index * (slotSize + gap), skillsY, slotSize, time);
@@ -2675,7 +2706,7 @@ onUnmounted(() => {
   </div>
 </template>
 <style scoped>
-.view-pixel-war-container{position:fixed;top:0;left:0;width:100vw;height:100vh;overflow:hidden;cursor:none;}
+.view-pixel-war-container{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;overflow:hidden;cursor:none;}
 #canvas-graphics{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
 #canvas-entity{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
 #canvas-effects{position:absolute;top:0;left:0;width:100%;height:100%;display:block;pointer-events:none;cursor:none;}
