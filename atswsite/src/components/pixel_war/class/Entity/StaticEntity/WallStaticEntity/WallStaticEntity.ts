@@ -19,6 +19,7 @@ class WallStaticEntity extends StaticEntity {
       name,
       tag
     );
+    this.mapColor = '#8eaff0'; // 地图上的颜色表示
   }
 }
 

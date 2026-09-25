@@ -2,6 +2,7 @@
 // The relative position of this file: src/components/pixel_war/ViewPixelWar.vue
 // Warning! Please use an editor that supports UTF-8 to read the code!
 import { ref, onMounted, onUnmounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { Instruct } from '@/components/pixel_war/instruct/Instruct';
 import type { EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 
@@ -69,6 +70,8 @@ type EntityInterpolationState = {
 };
 
 import ServiceWorker from '@/components/pixel_war/service/Service?worker';
+
+const router = useRouter();
 
 ////////////////////
 // 数值管理器相关函数 -->
@@ -347,6 +350,13 @@ const STAR_FIELD_MIN_RADIUS = 0.5; // 星星最小半径,单位px
 const STAR_FIELD_MAX_RADIUS = 1.5; // 星星最大半径,单位px
 const STAR_FIELD_MAX_OPACITY_INCREMENT = 0.03; // 星星单帧基础透明度变化量,单位透明度比例
 const STAR_FIELD_TWINKLE_SPEED = 0.125; // 星星闪烁速度倍率,越小闪烁越慢
+const EDGE_SCROLL_ZONE = 150;   // 开火模式下相机边缘滚动的触发区域宽度,单位px
+const EDGE_SCROLL_SPEED = 1200; // 开火模式下相机边缘滚动速度,单位px/秒
+const DEATH_OVERLAY_EVENT_PREFIX = 'death_overlay_'; // 重生界面按钮事件区域id前缀
+const MINIMAP_SIZE = 160;          // 小地图边长,单位px
+const MINIMAP_MARGIN = 12;         // 小地图距离左上角的边距,单位px
+const MINIMAP_WORLD_HALF = 10050;  // 小地图映射的世界坐标半宽(略大于服务端世界边界,以容纳边界墙)
+const MINIMAP_DEFAULT_COLOR = '#ffffff'; // 小地图实体未设置mapColor时的默认显示颜色
 ////////////////////
 //<--常量区
 ////////////////////
@@ -386,6 +396,8 @@ let cdtLastMouseX = 0;//光标绘制节流Cursor drawing throttling
 let cdtLastMouseY = 0;
 
 let isPageVisible = true;
+let mouseInsideCanvas = true; // 鼠标是否位于画布内
+
 let animationFrameId: number | null = null;                 // 动画帧ID
 let lastTimestamp: number = 0;                              // 上一帧时间戳
 let renderEntityList: Array<Entity> = [];                   // 要渲染的实体列表
@@ -1252,6 +1264,83 @@ const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
 };
 
 /**
+ * 绘制小地图(左上角正方形地图,渲染在 canvas-ui 层)
+ * - 圆点表示 NPC
+ * - 等边三角形表示玩家(顶点指向玩家朝向)
+ * - 正方形表示静态实体
+ * - 颜色依据实体的 mapColor 属性,undefined 时使用白色
+ */
+const drawMiniMap = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
+  if (!CtxUi || !CANVAS) return;
+
+  const mapSize = MINIMAP_SIZE;
+  const mapX = MINIMAP_MARGIN;
+  const mapY = MINIMAP_MARGIN;
+  const worldRange = MINIMAP_WORLD_HALF * 2;
+
+  // 世界坐标 -> 小地图坐标(世界 y 轴向上,小地图 y 轴向下,需翻转)
+  const worldToMap = (wx: number, wy: number): { x: number; y: number } => ({
+    x: mapX + ((wx + MINIMAP_WORLD_HALF) / worldRange) * mapSize,
+    y: mapY + ((MINIMAP_WORLD_HALF - wy) / worldRange) * mapSize,
+  });
+
+  const isInsideMap = (p: { x: number; y: number }): boolean =>
+    p.x >= mapX && p.x <= mapX + mapSize && p.y >= mapY && p.y <= mapY + mapSize;
+
+  CtxUi.save();
+
+  // 背景
+  CtxUi.fillStyle = 'rgba(8, 12, 22, 0.78)';
+  CtxUi.fillRect(mapX, mapY, mapSize, mapSize);
+
+  // 边框
+  CtxUi.strokeStyle = 'rgba(91, 221, 255, 0.6)';
+  CtxUi.lineWidth = 1.5;
+  CtxUi.strokeRect(mapX + 0.75, mapY + 0.75, mapSize - 1.5, mapSize - 1.5);
+
+  // 绘制静态实体(正方形)
+  const staticSize = 3;
+  for (const entity of staticEntityList) {
+    const p = worldToMap(entity.position.x, entity.position.y);
+    if (!isInsideMap(p)) continue;
+    CtxUi.fillStyle = entity.mapColor ?? MINIMAP_DEFAULT_COLOR;
+    CtxUi.fillRect(p.x - staticSize / 2, p.y - staticSize / 2, staticSize, staticSize);
+  }
+
+  // 绘制 NPC(圆点)
+  const npcRadius = 2.5;
+  for (const entity of npcEntityList) {
+    const p = worldToMap(entity.position.x, entity.position.y);
+    if (!isInsideMap(p)) continue;
+    CtxUi.fillStyle = entity.mapColor ?? MINIMAP_DEFAULT_COLOR;
+    CtxUi.beginPath();
+    CtxUi.arc(p.x, p.y, npcRadius, 0, Math.PI * 2);
+    CtxUi.fill();
+  }
+
+  // 绘制玩家(等边三角形,顶点指向玩家朝向)
+  // 注意:玩家死亡后服务端仍保留该实体快照以便重生,因此需跳过已死亡的玩家,避免其图标残留在小地图上
+  if (playerEntity && !playerEntity.isDead && playerEntity.health > 0) {
+    const p = worldToMap(playerEntity.position.x, playerEntity.position.y);
+    const r = 4.5; // 三角形外接圆半径
+    const angle = Math.atan2(playerEntity.facingDirection.x, playerEntity.facingDirection.y);
+    CtxUi.save();
+    CtxUi.translate(p.x, p.y);
+    CtxUi.rotate(angle);
+    CtxUi.fillStyle = playerEntity.mapColor ?? MINIMAP_DEFAULT_COLOR;
+    CtxUi.beginPath();
+    CtxUi.moveTo(0, -r);
+    CtxUi.lineTo(-r * 0.866, r * 0.5);
+    CtxUi.lineTo(r * 0.866, r * 0.5);
+    CtxUi.closePath();
+    CtxUi.fill();
+    CtxUi.restore();
+  }
+
+  CtxUi.restore();
+};
+
+/**
  * 绘制调试面板(UI层)
  */
 const drawDebugBoard = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
@@ -1860,6 +1949,153 @@ const drawEntities = () => {
 };
 
 /**
+ * 绘制重生界面按钮
+ */
+const drawDeathOverlayButton = (
+  CtxUi: CanvasRenderingContext2D,
+  rect: { x: number; y: number; width: number; height: number },
+  label: string,
+  hovered: boolean,
+  primary: boolean
+) => {
+  CtxUi.save();
+  if (primary) {
+    CtxUi.fillStyle = hovered
+      ? 'rgba(89, 227, 255, 0.95)'
+      : 'rgba(47, 168, 255, 0.92)';
+    CtxUi.shadowColor = 'rgba(47, 168, 255, 0.5)';
+    CtxUi.shadowBlur = hovered ? 26 : 14;
+  } else {
+    CtxUi.fillStyle = hovered ? 'rgba(255, 90, 104, 0.24)' : 'rgba(255, 255, 255, 0.08)';
+    CtxUi.shadowBlur = 0;
+    CtxUi.strokeStyle = 'rgba(255, 120, 130, 0.6)';
+    CtxUi.lineWidth = 1;
+  }
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, rect.x, rect.y, rect.width, rect.height, 8);
+  CtxUi.fill();
+  if (!primary) {
+    CtxUi.stroke();
+  }
+  CtxUi.shadowBlur = 0;
+
+  CtxUi.font = 'bold 16px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.fillStyle = primary ? '#03141a' : '#e8f6ff';
+  CtxUi.fillText(label, rect.x + rect.width / 2, rect.y + rect.height / 2);
+  CtxUi.restore();
+};
+
+/**
+ * 绘制重生界面(死亡界面,渲染在 canvas-ui 层)
+ * 同时负责注册/移除重生界面按钮的事件区域
+ */
+const drawDeathOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
+  const { width, height } = H_getCanvasCssSize(CANVAS);
+
+  // 先移除旧的重生界面按钮区域,避免重复注册
+  eventArea = eventArea.filter(area => !area.id.startsWith(DEATH_OVERLAY_EVENT_PREFIX));
+
+  const playerDead = !playerEntity || playerEntity.isDead || playerEntity.health <= 0;
+  if (!playerDead) return;
+
+  CtxUi.save();
+
+  // 全屏半透明遮罩
+  CtxUi.fillStyle = 'rgba(2, 4, 10, 0.62)';
+  CtxUi.fillRect(0, 0, width, height);
+
+  // 面板布局
+  const panelWidth = Math.min(340, Math.max(280, width - 48));
+  const panelHeight = 310;
+  const panelX = (width - panelWidth) / 2;
+  const panelY = (height - panelHeight) / 2;
+
+  // 面板背景与描边
+  const panelGradient = CtxUi.createLinearGradient(panelX, panelY, panelX, panelY + panelHeight);
+  panelGradient.addColorStop(0, 'rgba(16, 28, 40, 0.96)');
+  panelGradient.addColorStop(1, 'rgba(8, 13, 22, 0.96)');
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.22)';
+  CtxUi.shadowBlur = 42;
+  CtxUi.fillStyle = panelGradient;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, panelX, panelY, panelWidth, panelHeight, 14);
+  CtxUi.fill();
+  CtxUi.shadowBlur = 0;
+  CtxUi.strokeStyle = 'rgba(91, 221, 255, 0.45)';
+  CtxUi.lineWidth = 1;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, panelX + 0.5, panelY + 0.5, panelWidth - 1, panelHeight - 1, 14);
+  CtxUi.stroke();
+
+  // 死亡标题
+  CtxUi.font = 'bold 34px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.shadowColor = 'rgba(255, 90, 104, 0.55)';
+  CtxUi.shadowBlur = 18;
+  CtxUi.fillStyle = '#ff5a68';
+  CtxUi.fillText('你已阵亡', panelX + panelWidth / 2, panelY + 58);
+  CtxUi.shadowBlur = 0;
+
+  // 游戏积分
+  CtxUi.font = '14px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.fillStyle = 'rgba(190, 220, 235, 0.8)';
+  CtxUi.fillText('游戏积分', panelX + panelWidth / 2, panelY + 112);
+  CtxUi.font = 'bold 40px Consolas, "Courier New", monospace';
+  CtxUi.shadowColor = 'rgba(255, 217, 106, 0.5)';
+  CtxUi.shadowBlur = 16;
+  CtxUi.fillStyle = '#ffd96a';
+  CtxUi.fillText(`${Math.floor(playerEntity?.player_score ?? 0)}`, panelX + panelWidth / 2, panelY + 154);
+  CtxUi.shadowBlur = 0;
+
+  // 按钮布局
+  const buttonGap = 16;
+  const buttonWidth = Math.min(130, (panelWidth - 48 - buttonGap) / 2);
+  const buttonHeight = 44;
+  const buttonsY = panelY + 210;
+  const totalButtonsWidth = buttonWidth * 2 + buttonGap;
+  const buttonsX = panelX + (panelWidth - totalButtonsWidth) / 2;
+
+  const respawnRect = { x: buttonsX, y: buttonsY, width: buttonWidth, height: buttonHeight };
+  const exitRect = { x: buttonsX + buttonWidth + buttonGap, y: buttonsY, width: buttonWidth, height: buttonHeight };
+
+  drawDeathOverlayButton(
+    CtxUi,
+    respawnRect,
+    '重生',
+    hoveredArea?.id === `${DEATH_OVERLAY_EVENT_PREFIX}respawn`,
+    true
+  );
+  drawDeathOverlayButton(
+    CtxUi,
+    exitRect,
+    '退出游戏',
+    hoveredArea?.id === `${DEATH_OVERLAY_EVENT_PREFIX}exit`,
+    false
+  );
+
+  CtxUi.restore();
+
+  // 注册按钮事件区域
+  eventArea.push({
+    id: `${DEATH_OVERLAY_EVENT_PREFIX}respawn`,
+    rect: respawnRect,
+    type: 'button',
+    cursor: 'pointer',
+    onClick: () => { sendPlayerRespawn(); }
+  });
+  eventArea.push({
+    id: `${DEATH_OVERLAY_EVENT_PREFIX}exit`,
+    rect: exitRect,
+    type: 'button',
+    cursor: 'pointer',
+    onClick: () => { router.push('/home'); }
+  });
+};
+
+/**
  * 绘制UI层
  */
 const drawUI = () => {
@@ -1868,9 +2104,11 @@ const drawUI = () => {
   ctxUi.clearRect(0, 0, width, height);
   //drawUIRuler(ctxUi, UI_CANVAS.value);
   drawInstructions(ctxUi, UI_CANVAS.value);
+  drawMiniMap(ctxUi, UI_CANVAS.value);
   drawBottomStatusBar(ctxUi, UI_CANVAS.value);
   drawDebugBoard(ctxUi, UI_CANVAS.value);
   drawDebugTerminal(ctxUi, UI_CANVAS.value);
+  drawDeathOverlay(ctxUi, UI_CANVAS.value);
 };
 
 /**
@@ -1897,6 +2135,33 @@ const applyFirstPersonCameraMovement = (_deltaTime: number) => {
 };
 
 /**
+ * 开火模式下,鼠标触碰游戏界面四边界时移动相机视角
+ * 例如鼠标移动到顶部边界,相机视角向上移动
+ * @param deltaTime 帧间隔(秒)
+ */
+const applyFireModeEdgeScroll = (deltaTime: number) => {
+  if (!playerFireMode) return;                      // 仅在开火模式下生效
+  if (perspectiveMode === 'first_person') return;   // 第一人称视角由玩家位置控制
+  if (!playerEntity || playerEntity.isDead) return; // 玩家死亡时不滚动
+  if (!mouseInsideCanvas) return;                   // 鼠标不在画布内时不滚动
+  if (!GRAPHICS_CANVAS.value) return;
+
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
+
+  let dirX = 0;
+  let dirY = 0;
+  if (mouseX <= EDGE_SCROLL_ZONE) dirX = 1;                   // 左边界:相机向左移动
+  else if (mouseX >= width - EDGE_SCROLL_ZONE) dirX = -1;     // 右边界:相机向右移动
+  if (mouseY <= EDGE_SCROLL_ZONE) dirY = 1;                   // 顶边界:相机向上移动
+  else if (mouseY >= height - EDGE_SCROLL_ZONE) dirY = -1;    // 底边界:相机向下移动
+
+  if (dirX === 0 && dirY === 0) return;
+
+  offsetXX += dirX * EDGE_SCROLL_SPEED * deltaTime;
+  offsetYY += dirY * EDGE_SCROLL_SPEED * deltaTime;
+};
+
+/**
  * 动画循环
  * 更新动态实体位置并重绘实体层
  * @param timestamp 当前时间戳
@@ -1917,6 +2182,7 @@ const animateEntities = (timestamp: number) => {
   const deltaTime = Math.min(0.033, (timestamp - lastTimestamp) / 1000); // 当前时间减去上一帧的时间等于此帧的时间-并且限制最大33ms
   if (deltaTime > 0) {
     applyFirstPersonCameraMovement(deltaTime);  // 移动第一人称视角(背景)
+    applyFireModeEdgeScroll(deltaTime);         // 开火模式下鼠标边界滚动相机
     drawGraphics();                             // 重绘星空和网格层
     drawEntities();                             // 重绘实体层
     effectManager?.updateAndDraw(deltaTime);    // 渲染特效层
@@ -2579,6 +2845,7 @@ const onMousedown = (e: MouseEvent) => {
 const onMouseMove = (e: MouseEvent) => {
   mouseX = e.offsetX;
   mouseY = e.offsetY;
+  mouseInsideCanvas = true;
   // 更新鼠标世界坐标,用于调试面板
   const worldCoord = TOscreen2Canvas(mouseX, mouseY);
   mouseWorldX = worldCoord.x;
@@ -2642,6 +2909,7 @@ const onWindowMouseMove = (e: MouseEvent) => {
  * 窗口鼠标离开(隐藏光标)
  */
 const onWindowMouseLeave = () => {
+  mouseInsideCanvas = false;
   cursorManager?.setFocused(false);
 };
 
@@ -2649,6 +2917,7 @@ const onWindowMouseLeave = () => {
  * 窗口鼠标进入(显示光标)
  */
 const onWindowMouseEnter = () => {
+  mouseInsideCanvas = true;
   cursorManager?.setFocused(true);
 };
 

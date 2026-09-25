@@ -521,13 +521,9 @@ const spawnGrenadeDynamicEntity = (grenade: GrenadeDynamicEntity) => {
 
 const removeFinishedDeadDynamicEntities = (): boolean => {
   const oldNpcLength = MAP_DATA.dynamicEntitie.npcDynamicEntitys.length;
-  const oldPlayerLength = MAP_DATA.dynamicEntitie.playerDynamicEntitys.length;
   MAP_DATA.dynamicEntitie.npcDynamicEntitys = MAP_DATA.dynamicEntitie.npcDynamicEntitys.filter(entity => !entity.isDeathEffectFinished());
-  MAP_DATA.dynamicEntitie.playerDynamicEntitys = MAP_DATA.dynamicEntitie.playerDynamicEntitys.filter(entity => !entity.isDeathEffectFinished());
-  return (
-    oldNpcLength !== MAP_DATA.dynamicEntitie.npcDynamicEntitys.length ||
-    oldPlayerLength !== MAP_DATA.dynamicEntitie.playerDynamicEntitys.length
-  );
+  // 注意：不移除死亡玩家实体，保留其快照以便玩家重生（respawnPlayer 需要按 ID 找回玩家）
+  return oldNpcLength !== MAP_DATA.dynamicEntitie.npcDynamicEntitys.length;
 };
 
 const updateBulletEntities = (deltaTime: number): boolean => {

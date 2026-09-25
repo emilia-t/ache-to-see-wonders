@@ -38,6 +38,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     this.health = 60;
     this.healthMax = 60;
     this.kill_score = 3;
+    this.mapColor = '#ff1313'; // 地图上的颜色表示
   }
 
   public tryPickupItem(_item: ItemEntity): boolean {

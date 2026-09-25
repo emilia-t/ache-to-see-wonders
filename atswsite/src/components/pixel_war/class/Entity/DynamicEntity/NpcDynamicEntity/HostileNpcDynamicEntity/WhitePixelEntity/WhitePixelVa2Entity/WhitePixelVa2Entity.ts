@@ -26,6 +26,7 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
     // 强制移动标志为 true
     this.isMoving = true;
     this.kill_score = 2; // 击杀该NPC获得的分数
+    this.mapColor = '#dfdfdf'; // 地图上的颜色表示
   }
 
   /**

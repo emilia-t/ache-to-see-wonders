@@ -19,6 +19,7 @@ class BoxStaticEntity extends StaticEntity {
       name,
       tag
     );
+    this.mapColor = '#8B4513'; // 地图上的颜色表示
   }
 }
 

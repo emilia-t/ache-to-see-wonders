@@ -19,6 +19,7 @@ class CurbStaticEntity extends StaticEntity {
       name,
       tag
     );
+    this.mapColor = '#A9A9A9'; // 地图上的颜色表示
   }
   
 }

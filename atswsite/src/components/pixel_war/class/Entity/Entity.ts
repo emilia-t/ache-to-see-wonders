@@ -14,6 +14,7 @@ abstract class Entity {
   public fillColor?: string;    // 填充颜色
   public strokeColor?: string;  // 描边颜色
   public tag: string;              // 属性标签，如 "箱子", "猫"
+  public mapColor?: string; // 地图上的颜色表示
 
   constructor(
     type: 'static' | 'dynamic' | 'item' | 'empty',
