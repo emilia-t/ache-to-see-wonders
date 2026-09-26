@@ -673,15 +673,41 @@ const spawnExpOrbs = (position: Point, totalValue: number): void => {
 };
 
 /**
+ * 玩家死亡时,其所有从者跟随死亡
+ * @param player 已死亡的玩家
+ */
+const killPlayerServantsOnPlayerDeath = (player: PlayerDynamicEntity): void => {
+  const servantIds = player.getAllServantIds();
+  for (const npcId of servantIds) {
+    // 从玩家网格中移除该从者(更新邻居关系与移动速度)
+    player.removeServant(npcId);
+    const npc = getNpcDynamicEntityById(npcId);
+    if (npc && !npc.isDead) {
+      // 释放归属并令从者跟随玩家死亡
+      npc.ownerId = null;
+      npc.teamId = null;
+      npc.health = 0;
+      npc.triggerDeath();
+    }
+  }
+};
+
+/**
  * 结算死亡实体的经验掉落
  * NPC 或玩家死亡后:60% 经验掉落为经验球(向上取整),其余 40% 作为死亡惩罚扣除。
  * 即:掉落经验 = ceil(game_exp × 60%),实际扣除经验 = game_exp - 掉落经验(经验清零)。
+ * 同时,玩家死亡时其所有从者跟随死亡。
  */
 const handleEntityDeathExpOrbs = (): void => {
   for (const entity of getNpcPlayerDynamicEntityList()) {
     if (!entity.isDead) continue;
     if (entity.deathExpProcessed) continue;
     entity.deathExpProcessed = true;
+
+    // 玩家死亡时,其所有从者跟随死亡
+    if (entity instanceof PlayerDynamicEntity) {
+      killPlayerServantsOnPlayerDeath(entity);
+    }
 
     // 掉落经验 = ceil(game_exp × 60%)
     const dropExp = Math.ceil(entity.game_exp * 0.6);

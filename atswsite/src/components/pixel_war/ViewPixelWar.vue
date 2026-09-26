@@ -2025,8 +2025,8 @@ const drawEntities = () => {
       entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
     }
   }
-  // 绘制玩家实体
-  if (playerEntity) {
+  // 绘制玩家实体(死亡后不渲染,等待重生)
+  if (playerEntity && !playerEntity.isDead) {
     if (playerEntity.isInViewport(worldToScreen, canvasSize, margin)) {
       playerEntity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
     }

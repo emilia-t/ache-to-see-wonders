@@ -105,10 +105,8 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.motionTurnResponsiveness = PlayerDynamicEntity.PLAYER_MOTION_TURN_RESPONSE;
     this.wanderRange = 0;
     this.perceptionRange = 0;
-    this.health = 300;
-    this.healthMax = 300;
-    this.health = 300;
-    this.healthMax = 300;
+    this.health = 100;
+    this.healthMax = 100;
     this.movementPassion = 1;
     this.teamId = teamId;
     this.player_score = 0;
