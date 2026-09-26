@@ -357,8 +357,8 @@ const STAR_FIELD_TWINKLE_SPEED = 0.125; // 星星闪烁速度倍率,越小闪烁
 const EDGE_SCROLL_ZONE = 150;   // 开火模式下相机边缘滚动的触发区域宽度,单位px
 const EDGE_SCROLL_SPEED = 1200; // 开火模式下相机边缘滚动速度,单位px/秒
 const DEATH_OVERLAY_EVENT_PREFIX = 'death_overlay_'; // 重生界面按钮事件区域id前缀
-const MINIMAP_SIZE = 160;          // 小地图边长,单位px
-const MINIMAP_MARGIN = 12;         // 小地图距离左上角的边距,单位px
+const MINIMAP_SIZE = 240;          // 小地图边长,单位px(参考设计稿)
+const MINIMAP_MARGIN = 20;         // 小地图距离左上角的边距,单位px(参考设计稿)
 const MINIMAP_WORLD_HALF = 10050;  // 小地图映射的世界坐标半宽(略大于服务端世界边界,以容纳边界墙)
 const MINIMAP_DEFAULT_COLOR = '#ffffff'; // 小地图实体未设置mapColor时的默认显示颜色
 ////////////////////
@@ -1301,8 +1301,8 @@ const drawMiniMap = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement)
   CtxUi.fillStyle = 'rgba(8, 12, 22, 0.78)';
   CtxUi.fillRect(mapX, mapY, mapSize, mapSize);
 
-  // 边框
-  CtxUi.strokeStyle = 'rgba(91, 221, 255, 0.6)';
+  // 边框(参考设计稿:灰色边框)
+  CtxUi.strokeStyle = 'rgba(76, 76, 76, 1)';
   CtxUi.lineWidth = 1.5;
   CtxUi.strokeRect(mapX + 0.75, mapY + 0.75, mapSize - 1.5, mapSize - 1.5);
 
@@ -1561,16 +1561,11 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   const dt = bottomStatusLastFrameTime ? Math.min(0.05, (now - bottomStatusLastFrameTime) / 1000) : 0;
   bottomStatusLastFrameTime = now;
 
-  const isCompact = width < 640;
-  const compactMargin = width < 360 ? 6 : 8;
-  const bottomMargin = height < 520 ? 8 : 14;
-  const panelWidth = isCompact ? Math.max(1, width - compactMargin * 2) : H_clamp(width - 24, 420, 720);
-  // 竖屏下适当增加面板高度，保证垂直堆叠的元素不拥挤
-  const panelHeight = isCompact 
-    ? Math.max(170, Math.min(height * 0.28, 200)) 
-    : 128;
+  // 面板尺寸:参考 1920x1080 设计稿(800x180 居中贴底),按屏幕宽度等比缩放
+  const panelWidth = H_clamp(width * 0.42, 320, 800);
+  const panelHeight = panelWidth * 0.225;
   const x = (width - panelWidth) / 2;
-  const y = Math.max(4, height - panelHeight - bottomMargin);
+  const y = height - panelHeight;
   const time = now / 1000;
 
   const playerDead = !playerEntity || playerEntity.isDead || playerEntity.health <= 0;
@@ -1595,143 +1590,152 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   bottomStatusHealthColor = H_lerpRgb(bottomStatusHealthColor, targetHealthColor, 1 - Math.pow(0.002, dt));
   bottomStatusDamageFlash = Math.max(0, bottomStatusDamageFlash - dt * 2.8);
 
+  // 行高(设计稿自上而下: 30/30/40/80,共 180)
+  const levelRowH = panelHeight / 6;
+  const expRowH = panelHeight / 6;
+  const barRowH = panelHeight * 2 / 9;
+  const skillRowH = panelHeight * 4 / 9;
+  const padding = Math.max(8, panelWidth * 0.02);
+
   CtxUi.save();
-  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.34)';
-  CtxUi.shadowBlur = 18;
-  const panelGradient = CtxUi.createLinearGradient(x, y, x, y + panelHeight);
-  panelGradient.addColorStop(0, 'rgba(13, 25, 35, 0.82)');
-  panelGradient.addColorStop(0.54, 'rgba(8, 13, 22, 0.9)');
-  panelGradient.addColorStop(1, 'rgba(6, 9, 14, 0.82)');
-  CtxUi.fillStyle = panelGradient;
+
+  // 面板背景(浅色主题)
+  CtxUi.fillStyle = 'rgba(255, 255, 255, 0.92)';
   CtxUi.beginPath();
-  createRoundRect(CtxUi, x, y, panelWidth, panelHeight, 8);
+  createRoundRect(CtxUi, x, y, panelWidth, panelHeight, 6);
   CtxUi.fill();
-  CtxUi.shadowBlur = 0;
-  CtxUi.strokeStyle = 'rgba(91, 221, 255, 0.55)';
+  CtxUi.strokeStyle = 'rgba(147, 210, 243, 1)'; // 浅蓝边框
   CtxUi.lineWidth = 1.5;
   CtxUi.beginPath();
-  createRoundRect(CtxUi, x + 0.5, y + 0.5, panelWidth - 1, panelHeight - 1, 8);
+  createRoundRect(CtxUi, x + 0.75, y + 0.75, panelWidth - 1.5, panelHeight - 1.5, 6);
   CtxUi.stroke();
 
-  CtxUi.strokeStyle = `rgba(97, 236, 255, ${0.24 + Math.sin(time * 2.4) * 0.08})`;
-  CtxUi.beginPath();
-  CtxUi.moveTo(x + 18, y + 12);
-  CtxUi.lineTo(x + panelWidth * 0.34, y + 12);
-  CtxUi.moveTo(x + panelWidth * 0.66, y + 12);
-  CtxUi.lineTo(x + panelWidth - 18, y + 12);
-  CtxUi.stroke();
+  // ---- 第1行: 玩家名称 + 分数(左) / 等级(右) ----
+  const levelBoxW = Math.max(46, panelWidth * 0.19);
+  const levelBoxH = levelRowH * 0.72;
+  const levelBoxX = x + panelWidth - padding - levelBoxW;
+  const levelBoxY = y + (levelRowH - levelBoxH) / 2;
 
-
-  const sidePadding = isCompact ? 12 : 18;
-  
-  // 1. 玩家信息区域（竖屏下为上半部分）
-  const avatarSize = isCompact ? 42 : 72;
-  const avatarX = x + sidePadding;
-  const avatarY = isCompact ? y + 14 : y + 24;
-  const avatarGlow = 0.55 + Math.sin(time * 3) * 0.12;
-  CtxUi.fillStyle = 'rgba(13, 26, 34, 0.95)';
-  CtxUi.strokeStyle = `rgba(93, 230, 255, ${avatarGlow})`;
-  CtxUi.lineWidth = 2;
+  CtxUi.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  CtxUi.strokeStyle = 'rgba(129, 179, 55, 1)'; // 橄榄绿边框
+  CtxUi.lineWidth = 1.5;
   CtxUi.beginPath();
-  createRoundRect(CtxUi, avatarX, avatarY, avatarSize, avatarSize, 8);
+  createRoundRect(CtxUi, levelBoxX, levelBoxY, levelBoxW, levelBoxH, 4);
   CtxUi.fill();
   CtxUi.stroke();
-  CtxUi.fillStyle = playerDead ? 'rgba(255, 76, 96, 0.75)' : 'rgba(61, 148, 255, 0.9)';
-  CtxUi.fillRect(avatarX + avatarSize * 0.32, avatarY + avatarSize * 0.22, avatarSize * 0.36, avatarSize * 0.56);
-  CtxUi.fillStyle = 'rgba(135, 242, 255, 0.85)';
-  CtxUi.fillRect(avatarX + avatarSize * 0.22, avatarY + avatarSize * 0.38, avatarSize * 0.56, avatarSize * 0.22);
+  CtxUi.fillStyle = '#3f5a1c';
+  CtxUi.font = `bold ${Math.max(12, levelBoxH * 0.55)}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.fillText(`LV ${playerEntity?.game_level ?? 0}`, levelBoxX + levelBoxW / 2, levelBoxY + levelBoxH / 2 + 0.5);
 
-  const infoGap = isCompact ? 12 : 14;
-  const infoX = avatarX + avatarSize + infoGap;
-  const infoTop = isCompact ? avatarY + 2 : y + 25;
-  
-  // 限制血条最大宽度，防止在极小屏幕上向右溢出
-  const maxHpBarWidth = panelWidth - (infoX - x) - sidePadding;
-  const hpBarWidth = isCompact
-    ? Math.max(60, maxHpBarWidth)
-    : Math.max(150, Math.min(250, panelWidth * 0.36));
-  const hpBarHeight = isCompact ? 14 : 16;
-
-  CtxUi.font = 'bold 13px "Microsoft YaHei", Arial, sans-serif';
+  // 名称与分数
+  const nameX = x + padding;
+  const nameY = y + levelRowH / 2;
   CtxUi.textAlign = 'left';
   CtxUi.textBaseline = 'middle';
-  CtxUi.fillStyle = 'rgba(222, 248, 255, 0.96)';
-  CtxUi.fillText(playerEntity?.name || 'Player', infoX, infoTop);
-  CtxUi.font = '11px Consolas, "Courier New", monospace';
-  CtxUi.fillStyle = playerDead ? '#ff6b78' : '#66f1ff';
-  CtxUi.fillText(playerDead ? 'OFFLINE' : 'ONLINE', infoX, infoTop + 18);
-  CtxUi.fillStyle = 'rgba(255, 220, 106, 0.95)';
-  CtxUi.textAlign = 'right';
-  CtxUi.fillText(`SCORE ${Math.floor(playerEntity?.player_score ?? 0)}`, infoX + hpBarWidth, infoTop + 18);
-  CtxUi.textAlign = 'left';
+  CtxUi.font = `bold ${Math.max(12, levelRowH * 0.5)}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.fillStyle = '#2b3a47';
+  const nameText = playerEntity?.name || 'Player';
+  CtxUi.fillText(nameText, nameX, nameY);
+  const nameW = CtxUi.measureText(nameText).width;
+  CtxUi.font = `${Math.max(10, levelRowH * 0.38)}px Consolas, "Courier New", monospace`;
+  CtxUi.fillStyle = '#7a8a96';
+  CtxUi.fillText(`SCORE ${Math.floor(playerEntity?.player_score ?? 0)}`, nameX + nameW + 10, nameY);
 
-  const hpX = infoX;
-  const hpY = infoTop + 34;
-  CtxUi.fillStyle = 'rgba(9, 14, 20, 0.95)';
+  // ---- 第2行: 绿色经验条(当前等级到下一等级的升级进度) ----
+  const expBarX = x + padding;
+  const expBarW = panelWidth - padding * 2;
+  const expBarH = Math.min(expRowH * 0.7, 14);
+  const expBarY = y + levelRowH + (expRowH - expBarH) / 2;
+
+  const gameLevel = playerEntity?.game_level ?? 0;
+  const gameExp = playerEntity?.game_exp ?? 0;
+  const expNeed = PlayerDynamicEntity.getExpToNextLevel(gameLevel);
+  const expRatio = H_clamp(gameExp / expNeed, 0, 1);
+
+  CtxUi.fillStyle = 'rgba(245, 250, 240, 0.95)';
   CtxUi.beginPath();
-  createRoundRect(CtxUi, hpX, hpY, hpBarWidth, hpBarHeight, 4);
+  createRoundRect(CtxUi, expBarX, expBarY, expBarW, expBarH, 4);
+  CtxUi.fill();
+  CtxUi.fillStyle = 'rgba(162, 239, 77, 0.9)';
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, expBarX, expBarY, expBarW * expRatio, expBarH, 4);
+  CtxUi.fill();
+  CtxUi.strokeStyle = 'rgba(162, 239, 77, 1)'; // 绿色边框
+  CtxUi.lineWidth = 1;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, expBarX + 0.5, expBarY + 0.5, expBarW - 1, expBarH - 1, 4);
+  CtxUi.stroke();
+  CtxUi.fillStyle = '#4a5f26';
+  CtxUi.font = `${Math.max(9, expBarH * 0.8)}px Consolas, "Courier New", monospace`;
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.fillText(`EXP ${Math.floor(gameExp)} / ${Math.floor(expNeed)}`, expBarX + expBarW / 2, expBarY + expBarH / 2 + 0.5);
+
+  // ---- 第3行: 血条(左,青色边框) + 体力条(右,琥珀色边框) ----
+  const barY = y + levelRowH + expRowH;
+  const barH = barRowH * 0.62;
+  const barYCenter = barY + (barRowH - barH) / 2;
+  const barGap = Math.max(6, panelWidth * 0.015);
+  const halfBarW = (panelWidth - padding * 2 - barGap) / 2;
+
+  // 血条
+  const hpX = x + padding;
+  CtxUi.fillStyle = 'rgba(240, 247, 250, 0.95)';
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, hpX, barYCenter, halfBarW, barH, 4);
   CtxUi.fill();
   CtxUi.fillStyle = 'rgba(255, 75, 88, 0.5)';
   CtxUi.beginPath();
-  createRoundRect(CtxUi, hpX, hpY, hpBarWidth * H_clamp(bottomStatusDamageRatio, 0, 1), hpBarHeight, 4);
+  createRoundRect(CtxUi, hpX, barYCenter, halfBarW * H_clamp(bottomStatusDamageRatio, 0, 1), barH, 4);
   CtxUi.fill();
-  CtxUi.fillStyle = H_rgbToCss(bottomStatusHealthColor, 0.96);
+  CtxUi.fillStyle = H_rgbToCss(bottomStatusHealthColor, 0.95);
   CtxUi.beginPath();
-  createRoundRect(CtxUi, hpX, hpY, hpBarWidth * H_clamp(bottomStatusHealthRatio, 0, 1), hpBarHeight, 4);
+  createRoundRect(CtxUi, hpX, barYCenter, halfBarW * H_clamp(bottomStatusHealthRatio, 0, 1), barH, 4);
   CtxUi.fill();
   if (bottomStatusDamageFlash > 0) {
-    CtxUi.fillStyle = `rgba(255, 255, 255, ${bottomStatusDamageFlash * 0.18})`;
+    CtxUi.fillStyle = `rgba(255, 255, 255, ${bottomStatusDamageFlash * 0.35})`;
     CtxUi.beginPath();
-    createRoundRect(CtxUi, hpX - 2, hpY - 2, hpBarWidth + 4, hpBarHeight + 4, 5);
+    createRoundRect(CtxUi, hpX - 1, barYCenter - 1, halfBarW + 2, barH + 2, 5);
     CtxUi.fill();
   }
-  CtxUi.strokeStyle = 'rgba(166, 242, 255, 0.52)';
-  CtxUi.strokeRect(hpX + 0.5, hpY + 0.5, hpBarWidth - 1, hpBarHeight - 1);
+  CtxUi.strokeStyle = 'rgba(25, 204, 228, 1)'; // 青色边框(血条)
+  CtxUi.lineWidth = 1.5;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, hpX + 0.75, barYCenter + 0.75, halfBarW - 1.5, barH - 1.5, 4);
+  CtxUi.stroke();
+  CtxUi.fillStyle = '#0f5c6b';
+  CtxUi.font = `bold ${Math.max(9, barH * 0.6)}px Consolas, "Courier New", monospace`;
   CtxUi.textAlign = 'center';
-  CtxUi.font = '11px Consolas, "Courier New", monospace';
-  CtxUi.lineWidth = 3;
-  CtxUi.strokeStyle = 'rgba(0, 0, 0, 0.82)';
-  CtxUi.fillStyle = 'rgba(242, 255, 255, 0.96)';
-  const healthText = `${Math.ceil(currentHealth)} / ${Math.ceil(healthMax)}`;
-  CtxUi.strokeText(healthText, hpX + hpBarWidth / 2, hpY + hpBarHeight / 2 + 0.5);
-  CtxUi.fillText(healthText, hpX + hpBarWidth / 2, hpY + hpBarHeight / 2 + 0.5);
+  CtxUi.textBaseline = 'middle';
+  CtxUi.fillText(`HP ${Math.ceil(currentHealth)} / ${Math.ceil(healthMax)}`, hpX + halfBarW / 2, barYCenter + barH / 2 + 0.5);
 
-  // 体力条(疾跑期间消耗,非疾跑期间缓慢恢复)
+  // 体力条
   const staminaMax = Math.max(1, playerEntity?.staminaMax ?? 100);
   const currentStamina = playerDead ? 0 : Math.max(0, playerEntity?.stamina ?? 0);
   const staminaRatio = playerDead ? 0 : H_clamp(currentStamina / staminaMax, 0, 1);
-  const staminaBarWidth = hpBarWidth;
-  const staminaBarHeight = isCompact ? 10 : 12;
-  const staminaX = infoX;
-  const staminaY = hpY + hpBarHeight + 5;
-
-  CtxUi.fillStyle = 'rgba(9, 14, 20, 0.95)';
+  const staminaX = hpX + halfBarW + barGap;
+  CtxUi.fillStyle = 'rgba(252, 248, 235, 0.95)';
   CtxUi.beginPath();
-  createRoundRect(CtxUi, staminaX, staminaY, staminaBarWidth, staminaBarHeight, 3);
+  createRoundRect(CtxUi, staminaX, barYCenter, halfBarW, barH, 4);
   CtxUi.fill();
-
-  // 疾跑中呈金色,否则呈青蓝色
-  CtxUi.fillStyle = playerEntity?.isSprinting
-    ? 'rgba(255, 207, 90, 0.96)'
-    : 'rgba(124, 232, 255, 0.9)';
+  CtxUi.fillStyle = playerEntity?.isSprinting ? 'rgba(255, 190, 60, 0.95)' : 'rgba(248, 198, 69, 0.85)';
   CtxUi.beginPath();
-  createRoundRect(CtxUi, staminaX, staminaY, staminaBarWidth * staminaRatio, staminaBarHeight, 3);
+  createRoundRect(CtxUi, staminaX, barYCenter, halfBarW * staminaRatio, barH, 4);
   CtxUi.fill();
-
-  CtxUi.strokeStyle = 'rgba(166, 242, 255, 0.4)';
-  CtxUi.lineWidth = 1;
-  CtxUi.strokeRect(staminaX + 0.5, staminaY + 0.5, staminaBarWidth - 1, staminaBarHeight - 1);
-
+  CtxUi.strokeStyle = 'rgba(248, 198, 69, 1)'; // 琥珀色边框(体力条)
+  CtxUi.lineWidth = 1.5;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, staminaX + 0.75, barYCenter + 0.75, halfBarW - 1.5, barH - 1.5, 4);
+  CtxUi.stroke();
+  CtxUi.fillStyle = '#7a5a1a';
+  CtxUi.font = `bold ${Math.max(9, barH * 0.6)}px Consolas, "Courier New", monospace`;
   CtxUi.textAlign = 'center';
   CtxUi.textBaseline = 'middle';
-  CtxUi.font = isCompact ? '9px Consolas, "Courier New", monospace' : '10px Consolas, "Courier New", monospace';
-  CtxUi.lineWidth = 3;
-  CtxUi.strokeStyle = 'rgba(0, 0, 0, 0.82)';
-  CtxUi.fillStyle = 'rgba(242, 255, 255, 0.96)';
-  const staminaText = `STA ${Math.ceil(currentStamina)}`;
-  CtxUi.strokeText(staminaText, staminaX + staminaBarWidth / 2, staminaY + staminaBarHeight / 2 + 0.5);
-  CtxUi.fillText(staminaText, staminaX + staminaBarWidth / 2, staminaY + staminaBarHeight / 2 + 0.5);
+  CtxUi.fillText(`SP ${Math.ceil(currentStamina)} / ${Math.ceil(staminaMax)}`, staminaX + halfBarW / 2, barYCenter + barH / 2 + 0.5);
 
+  // ---- 第4行: 技能槽(10个,参考设计稿;空槽留空) ----
   const skills: BottomStatusSkill[] = [
     {
       key: 'F',
@@ -1741,6 +1745,15 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
       cooldownNow: playerEntity?.playerRule.fireCooldownNow ?? 0,
       cooldownMax: playerEntity?.playerRule.fireCooldownMax ?? 1,
       active: playerFireMode
+    },
+    {
+      key: 'SHIFT',
+      title: 'SPRINT',
+      subtitle: playerEntity?.isSprinting ? 'RUN' : 'WALK',
+      color: '#ffa94d',
+      cooldownNow: 0,
+      cooldownMax: 1,
+      active: playerEntity?.isSprinting ?? false
     },
     {
       key: 'SP',
@@ -1770,35 +1783,43 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
     }
   ];
 
-  // 2. 技能槽区域（竖屏下强制换行，置于下半部分并水平居中）
-  const gap = isCompact ? 8 : 12;
-  let slotSize = 48;
-  let skillsX = 0;
-  let skillsY = 0;
+  const skillCount = 10;
+  const skillGap = Math.max(2, panelWidth * 0.004);
+  const skillAreaX = x + padding;
+  const skillAreaW = panelWidth - padding * 2;
+  const slotSize = Math.max(24, Math.floor((skillAreaW - skillGap * (skillCount - 1)) / skillCount));
+  const slotY = y + levelRowH + expRowH + barRowH + (skillRowH - slotSize) / 2;
 
-  if (isCompact) {
-    // 竖屏模式：计算技能槽可用宽度，限制最大尺寸，保证在狭小空间内也能居中显示
-    const availableSkillWidth = panelWidth - sidePadding * 2;
-    const computedSize = (availableSkillWidth - gap * (skills.length - 1)) / skills.length;
-    slotSize = Math.min(Math.max(computedSize, 36), 52); // 最小36px，最大52px
-
-    const totalSkillsWidth = slotSize * skills.length + gap * (skills.length - 1);
-    skillsX = x + (panelWidth - totalSkillsWidth) / 2; // 水平居中
-    // 放置在面板下半部分，底部预留24px空间给技能槽下方的文字（如 DODGE）
-    skillsY = y + panelHeight - slotSize - 24; 
-  } else {
-    // 横屏/PC模式：保持原有右侧水平排布逻辑
-    slotSize = H_clamp((x + panelWidth - 18 - (infoX + hpBarWidth + 22) - gap * (skills.length - 1)) / skills.length, 48, 66);
-    const totalSkillsWidth = slotSize * skills.length + gap * (skills.length - 1);
-    skillsX = x + panelWidth - 18 - totalSkillsWidth;
-    skillsY = y + (panelHeight - slotSize) / 2 + 6;
+  for (let i = 0; i < skillCount; i++) {
+    const slotX = skillAreaX + i * (slotSize + skillGap);
+    const skill = skills[i];
+    if (skill) {
+      drawBottomStatusSkill(CtxUi, skill, slotX, slotY, slotSize, time);
+    } else {
+      drawEmptyBottomStatusSkill(CtxUi, slotX, slotY, slotSize);
+    }
   }
-  // ==================== 修复结束 ====================
 
-  skills.forEach((skill, index) => {
-    drawBottomStatusSkill(CtxUi, skill, skillsX + index * (slotSize + gap), skillsY, slotSize, time);
-  });
+  CtxUi.restore();
+};
 
+/**
+ * 绘制空的技能槽(参考设计稿,空槽留空)
+ */
+const drawEmptyBottomStatusSkill = (
+  CtxUi: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number
+) => {
+  CtxUi.save();
+  CtxUi.fillStyle = 'rgba(248, 250, 252, 0.85)';
+  CtxUi.strokeStyle = 'rgba(190, 190, 190, 1)';
+  CtxUi.lineWidth = 1;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, x, y, size, size, 4);
+  CtxUi.fill();
+  CtxUi.stroke();
   CtxUi.restore();
 };
 
@@ -1816,69 +1837,85 @@ const drawBottomStatusSkill = (
   const cooldownMax = Math.max(0.001, skill.cooldownMax);
   const cooldownRatio = H_clamp(skill.cooldownNow / cooldownMax, 0, 1);
   const ready = cooldownRatio <= 0;
-  const pulse = ready ? 0.52 + Math.sin(time * 5.5) * 0.16 : 0.22;
+  const pulse = ready ? 0.55 + Math.sin(time * 5.5) * 0.2 : 0.2;
 
   CtxUi.save();
-  CtxUi.shadowColor = skill.color;
-  CtxUi.shadowBlur = ready || skill.active ? 14 : 4;
-  CtxUi.fillStyle = 'rgba(7, 13, 21, 0.94)';
-  CtxUi.strokeStyle = ready || skill.active ? skill.color : 'rgba(118, 165, 184, 0.55)';
+  CtxUi.fillStyle = 'rgba(255, 255, 255, 0.92)';
+  CtxUi.strokeStyle = ready || skill.active ? skill.color : 'rgba(190, 190, 190, 1)';
   CtxUi.lineWidth = ready || skill.active ? 2 : 1;
   CtxUi.beginPath();
-  createRoundRect(CtxUi, x, y, size, size, 7);
+  createRoundRect(CtxUi, x, y, size, size, 4);
   CtxUi.fill();
   CtxUi.stroke();
-  CtxUi.shadowBlur = 0;
 
-  const inner = size * 0.68;
+  const inner = size * 0.6;
   const centerX = x + size / 2;
-  const centerY = y + size * 0.43;
-  CtxUi.fillStyle = `${skill.color}${ready ? 'cc' : '88'}`;
+  const centerY = y + size * 0.42;
+  CtxUi.fillStyle = `${skill.color}${ready ? 'cc' : '99'}`;
   CtxUi.beginPath();
   if (skill.key === 'F') {
+    // 开火:三角形
     CtxUi.moveTo(centerX - inner * 0.28, centerY + inner * 0.28);
     CtxUi.lineTo(centerX + inner * 0.3, centerY);
     CtxUi.lineTo(centerX - inner * 0.28, centerY - inner * 0.28);
     CtxUi.closePath();
+  } else if (skill.key === 'SHIFT') {
+    // 疾跑:两个向右的三角形(快进)
+    const triW = inner * 0.24;
+    const triH = inner * 0.3;
+    const gapX = inner * 0.1;
+    for (let k = 0; k < 2; k++) {
+      const bx = centerX - (triW + gapX) / 2 + k * (triW + gapX);
+      CtxUi.moveTo(bx, centerY - triH);
+      CtxUi.lineTo(bx, centerY + triH);
+      CtxUi.lineTo(bx + triW, centerY);
+      CtxUi.closePath();
+    }
   } else if (skill.key === 'SP') {
+    // 闪避:闪电
     CtxUi.moveTo(centerX - inner * 0.28, centerY + inner * 0.26);
     CtxUi.lineTo(centerX + inner * 0.2, centerY);
     CtxUi.lineTo(centerX - inner * 0.28, centerY - inner * 0.26);
     CtxUi.lineTo(centerX - inner * 0.08, centerY);
     CtxUi.closePath();
   } else if (skill.key === 'C') {
+    // 从者网格:方形
     CtxUi.rect(centerX - inner * 0.25, centerY - inner * 0.25, inner * 0.5, inner * 0.5);
   } else {
+    // 视角:圆形
     CtxUi.arc(centerX, centerY, inner * 0.25, 0, Math.PI * 2);
   }
   CtxUi.fill();
 
   if (cooldownRatio > 0) {
-    CtxUi.fillStyle = 'rgba(2, 5, 10, 0.72)';
+    CtxUi.fillStyle = 'rgba(40, 60, 70, 0.62)';
     CtxUi.beginPath();
     CtxUi.moveTo(centerX, centerY);
     CtxUi.arc(centerX, centerY, size * 0.72, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * cooldownRatio, false);
     CtxUi.closePath();
     CtxUi.fill();
-    CtxUi.fillStyle = 'rgba(238, 250, 255, 0.96)';
+    CtxUi.fillStyle = 'rgba(255, 255, 255, 0.96)';
     CtxUi.font = `bold ${Math.max(12, size * 0.24)}px Consolas, "Courier New", monospace`;
     CtxUi.textAlign = 'center';
     CtxUi.textBaseline = 'middle';
     CtxUi.fillText(skill.cooldownNow.toFixed(1), centerX, centerY);
   } else {
-    CtxUi.strokeStyle = `rgba(255, 255, 255, ${pulse})`;
+    CtxUi.save();
+    CtxUi.strokeStyle = skill.color;
+    CtxUi.globalAlpha = Math.max(0.2, pulse);
     CtxUi.lineWidth = 1;
     CtxUi.beginPath();
-    createRoundRect(CtxUi, x + 4, y + 4, size - 8, size - 8, 5);
+    createRoundRect(CtxUi, x + 4, y + 4, size - 8, size - 8, 4);
     CtxUi.stroke();
+    CtxUi.restore();
   }
 
-  CtxUi.fillStyle = 'rgba(224, 249, 255, 0.92)';
+  CtxUi.fillStyle = '#5a6b78';
   CtxUi.font = `bold ${Math.max(10, size * 0.17)}px Consolas, "Courier New", monospace`;
   CtxUi.textAlign = 'center';
   CtxUi.textBaseline = 'middle';
   CtxUi.fillText(skill.key, centerX, y + size - 10);
-  CtxUi.fillStyle = skill.active ? skill.color : 'rgba(150, 205, 220, 0.78)';
+  CtxUi.fillStyle = skill.active ? skill.color : 'rgba(122, 140, 152, 0.85)';
   CtxUi.font = `${Math.max(8, size * 0.13)}px Consolas, "Courier New", monospace`;
   CtxUi.fillText(skill.subtitle, centerX, y + size + 12);
   CtxUi.restore();
@@ -2153,7 +2190,7 @@ const drawUI = () => {
   const { width, height } = H_getCanvasCssSize(UI_CANVAS.value);
   ctxUi.clearRect(0, 0, width, height);
   //drawUIRuler(ctxUi, UI_CANVAS.value);
-  drawInstructions(ctxUi, UI_CANVAS.value);
+  //drawInstructions(ctxUi, UI_CANVAS.value);
   drawMiniMap(ctxUi, UI_CANVAS.value);
   drawBottomStatusBar(ctxUi, UI_CANVAS.value);
   drawDebugBoard(ctxUi, UI_CANVAS.value);
