@@ -35,6 +35,8 @@ abstract class DynamicEntity extends Entity {
   public isDead: boolean;                    // 是否已死亡
   public deathEffectTimer: number;           // 死亡特效剩余时长(秒)
   public deathEffectDuration: number;        // 死亡特效总时长(秒)
+  public game_exp: number;                   // 游戏经验值(死亡时按比例掉落为经验球)
+  public deathExpProcessed: boolean;         // 死亡经验是否已结算(防止重复掉落经验球)
   protected motionAccelerationRate: number;  // 加速倍率，越大起步越快
   protected motionAirDrag: number;           // 空气阻力倍率，越大滑行距离越短
   protected motionStopSpeed: number;         // 低于该速度时视为静止
@@ -86,6 +88,8 @@ abstract class DynamicEntity extends Entity {
     this.isDead = false;
     this.deathEffectDuration = 0.8;
     this.deathEffectTimer = 0;
+    this.game_exp = 0;
+    this.deathExpProcessed = false;
     this.motionAccelerationRate = 7.2;
     this.motionAirDrag = 7.6;
     this.motionStopSpeed = 8;
@@ -143,6 +147,8 @@ abstract class DynamicEntity extends Entity {
     this.nextTarget = { ...this.position };
     this.clearMotionVelocity();
     this.deathEffectTimer = this.deathEffectDuration;
+    // 标记本次死亡的经验尚未结算，等待服务端掉落经验球
+    this.deathExpProcessed = false;
   }
 
   // 检测群体拥挤导致的停滞，必要时打断当前运动以触发重新寻路

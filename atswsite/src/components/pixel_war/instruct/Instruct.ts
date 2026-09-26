@@ -140,6 +140,7 @@ export class Instruct {
         A: boolean;
         S: boolean;
         D: boolean;
+        Shift: boolean;
     },playerId: number): InstructObject => {
         return {
             type: 'player_move_input',

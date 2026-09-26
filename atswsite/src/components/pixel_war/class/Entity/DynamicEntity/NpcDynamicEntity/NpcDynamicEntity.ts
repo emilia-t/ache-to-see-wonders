@@ -41,6 +41,7 @@ abstract class NpcDynamicEntity extends DynamicEntity {
     this.ownerId = ownerId;
     this.teamId = teamId;
     this.kill_score = 1;
+    this.game_exp = 2;// NPC 默认携带的游戏经验值
   }
 
   public abstract tryPickupItem(item: ItemEntity): boolean;

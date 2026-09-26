@@ -35,15 +35,44 @@ class PlayerDynamicEntity extends DynamicEntity {
   public static readonly MIN_MOVE_SPEED = 50;
   public static readonly PLAYER_MOTION_DAMPING = 8.5;// 玩家移动阻尼，值越大松手后减速越快
   public static readonly PLAYER_MOTION_TURN_RESPONSE = 10.5;// 玩家转向响应，值越大移动转向越跟手
-  public static readonly playerMoveState = {W: false,A: false,S: false,D: false};
+  public static readonly playerMoveState = {W: false,A: false,S: false,D: false,Shift: false};
   public static readonly DODGE_DISTANCE = 300;// 单次的闪避距离(像素)
   public static readonly DODGE_DURATION = 0.3;// 无敌持续时间(秒)
   public static readonly DODGE_SLIDE_DURATION = 0.2;// 闪避位移持续时间(秒)
   public static readonly DODGE_TRAIL_DURATION = 0.3;// 闪避拖影持续时间(秒)
+  // 疾跑与体力相关配置
+  public static readonly SPRINT_SPEED_MULTIPLIER = 1.6;// 疾跑速度倍率(相对基础移动速度)
+  public static readonly SPRINT_STAMINA_DRAIN_PER_SECOND = 30;// 疾跑过程中体力消耗速率(点/秒)
+  public static readonly STAMINA_RECOVER_PER_SECOND = 15;// 非疾跑过程中体力恢复速率(点/秒)
+  public static readonly SPRINT_LOW_STAMINA_THRESHOLD = 20;// 体力低于该值时疾跑开始逐渐减速
+  public static readonly SPRINT_START_MIN_STAMINA = 20;// 体力高于该值时才能(重新)开始疾跑
+  public static readonly STAMINA_EXHAUST_RECOVERY_DELAY = 5;// 体力完全耗尽后的恢复延迟(秒)，体力亏空惩罚
 
-  public moveState = {W: false,A: false,S: false,D: false};
+  /**
+   * 获取从当前等级升到下一等级所需的游戏经验
+   * 阶段规则:
+   * - 0~20级:   2 × 当前等级 + 6
+   * - 21~40级:  3 × 当前等级 + 6
+   * - 41~60级:  5 × 当前等级 + 6
+   * - 61级及以上:7 × 当前等级 + 6
+   * @param level 当前游戏等级
+   */
+  public static getExpToNextLevel(level: number): number {
+    if (level <= 20) return 2 * level + 6;
+    if (level <= 40) return 3 * level + 6;
+    if (level <= 60) return 5 * level + 6;
+    return 7 * level + 6;
+  }
+
+  public moveState = {W: false,A: false,S: false,D: false,Shift: false};
   public teamId: number | null;
   public player_score: number;
+  public game_level: number;// 游戏等级
+  public stamina: number;// 当前体力值(0-100)
+  public staminaMax: number;// 体力值上限(100)
+  public isSprinting: boolean = false;// 是否处于疾跑状态
+  private baseMoveSpeed: number;// 未疾跑时的基础移动速度(由从者数量决定)
+  private staminaRecoveryDelayRemaining: number;// 体力亏空后等待恢复的剩余时间(秒)
   public dodgeState: PlayerDodgeState | null = null;
   public dodgeAfterimages: PlayerDodgeAfterimage[] = [];
   public readonly playerRule:PlayerRule = {
@@ -52,7 +81,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     fireCooldownNow: 0,//下一次开火还需要等待的时长(秒)
     fireCooldownMax: 0.5,//开火CD(秒)
     dodgeCooldownNow: 0,//下一次闪避还需要等待的时长(秒)
-    dodgeCooldownMax: 2.0,//闪避CD(秒)
+    dodgeCooldownMax: 5.0,//闪避CD(秒)
   };
 
   private servantGrid:ServantGrid|null = null;
@@ -83,6 +112,13 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.movementPassion = 1;
     this.teamId = teamId;
     this.player_score = 0;
+    this.game_level = 0;
+    this.game_exp = 0;
+    this.staminaMax = 100;
+    this.stamina = this.staminaMax;
+    this.isSprinting = false;
+    this.baseMoveSpeed = PlayerDynamicEntity.MOVE_SPEED;
+    this.staminaRecoveryDelayRemaining = 0;
     /**
      * 初始化从者网格start
      */
@@ -134,10 +170,79 @@ class PlayerDynamicEntity extends DynamicEntity {
    */
   private refreshSpeedByServantCount(): void {
     const servantCount = this.servantMap?.size ?? 0;
-    this.speed = Math.max(
+    this.baseMoveSpeed = Math.max(
       PlayerDynamicEntity.MIN_MOVE_SPEED,
       PlayerDynamicEntity.MOVE_SPEED - servantCount * 4
     );
+    this.speed = this.baseMoveSpeed;
+  }
+
+  /**
+   * 更新疾跑状态与体力值
+   * 疾跑必须满足：按住左Shift 且 处于移动过程中。
+   * 疾跑期间体力不断消耗，非疾跑期间体力缓慢恢复；
+   * 当体力低于阈值时疾跑会逐渐减速，体力耗尽后自动结束疾跑。
+   * @param dt 帧间隔(秒)
+   * @param isMoving 当前是否存在移动输入
+   */
+  private updateSprintState(dt: number, isMoving: boolean): void {
+    // 疾跑触发条件：按住左Shift + 正在移动
+    const wantSprint = this.moveState.Shift && isMoving;
+
+    // 松开Shift或停止移动时，立即结束疾跑
+    if (this.isSprinting && !wantSprint) {
+      this.isSprinting = false;
+    }
+
+    // 体力高于阈值时才允许(重新)开始疾跑
+    if (!this.isSprinting && wantSprint && this.stamina > PlayerDynamicEntity.SPRINT_START_MIN_STAMINA) {
+      this.isSprinting = true;
+    }
+
+    if (this.isSprinting) {
+      // 疾跑过程中不断消耗体力
+      this.stamina = Math.max(
+        0,
+        this.stamina - PlayerDynamicEntity.SPRINT_STAMINA_DRAIN_PER_SECOND * dt
+      );
+      if (this.stamina <= 0) {
+        // 体力耗尽，自动结束疾跑
+        this.stamina = 0;
+        this.isSprinting = false;
+        // 体力完全耗尽后触发亏空惩罚：需等待延迟时间后才能开始恢复
+        this.staminaRecoveryDelayRemaining = PlayerDynamicEntity.STAMINA_EXHAUST_RECOVERY_DELAY;
+      }
+    } else {
+      // 非疾跑过程中恢复体力，但体力亏空惩罚期间暂停恢复
+      if (this.staminaRecoveryDelayRemaining > 0) {
+        // 惩罚倒计时，期间不恢复体力
+        this.staminaRecoveryDelayRemaining = Math.max(
+          0,
+          this.staminaRecoveryDelayRemaining - dt
+        );
+      } else {
+        // 惩罚结束后开始缓慢恢复体力
+        this.stamina = Math.min(
+          this.staminaMax,
+          this.stamina + PlayerDynamicEntity.STAMINA_RECOVER_PER_SECOND * dt
+        );
+      }
+    }
+
+    // 根据疾跑状态与剩余体力计算当前速度倍率
+    let speedMultiplier = 1;
+    if (this.isSprinting) {
+      const lowThreshold = PlayerDynamicEntity.SPRINT_LOW_STAMINA_THRESHOLD;
+      if (this.stamina >= lowThreshold) {
+        // 体力充足时保持满疾跑速度
+        speedMultiplier = PlayerDynamicEntity.SPRINT_SPEED_MULTIPLIER;
+      } else {
+        // 体力不足时逐渐减速，直到体力归零自动结束疾跑
+        const ratio = Math.max(0, this.stamina / lowThreshold);
+        speedMultiplier = 1 + (PlayerDynamicEntity.SPRINT_SPEED_MULTIPLIER - 1) * ratio;
+      }
+    }
+    this.speed = this.baseMoveSpeed * speedMultiplier;
   }
 
   public override update(
@@ -168,6 +273,10 @@ class PlayerDynamicEntity extends DynamicEntity {
     if (this.moveState.D) dx += 1;
 
     const len = Math.hypot(dx, dy);
+
+    // 更新疾跑状态与体力值，并据此刷新当前速度
+    this.updateSprintState(dt, len > 0.0001);
+
     if (len < 0.0001) {
       this.updateMotionVelocity(null, this.speed, dt);
     } else {
@@ -240,6 +349,20 @@ class PlayerDynamicEntity extends DynamicEntity {
   }
 
   /**
+   * 增加游戏经验，经验足够时自动提升游戏等级
+   * @param amount 增加的经验值
+   */
+  public gainExp(amount: number): void {
+    if (amount <= 0 || this.isDead) return;
+    this.game_exp += amount;
+    // 经验足够时连续升级
+    while (this.game_exp >= PlayerDynamicEntity.getExpToNextLevel(this.game_level)) {
+      this.game_exp -= PlayerDynamicEntity.getExpToNextLevel(this.game_level);
+      this.game_level += 1;
+    }
+  }
+
+  /**
    * 拾取物品检测
    * @param item 
    * @returns 
@@ -284,6 +407,9 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.deathEffectTimer = 0;
     this.damageFlashTimer = 0;
     this.isMoving = false;
+    this.stamina = this.staminaMax;
+    this.isSprinting = false;
+    this.staminaRecoveryDelayRemaining = 0;
     this.dodgeState = null;
     this.dodgeAfterimages = [];
     this.playerRule.invincibleTimer = 1.5;

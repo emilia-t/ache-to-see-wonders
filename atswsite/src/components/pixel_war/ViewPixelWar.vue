@@ -47,7 +47,8 @@ import {
   SniperBulletDynamicEntity,
   LaserBulletDynamicEntity,
   OrdinaryBulletDynamicEntity,
-  GrenadeDynamicEntity
+  GrenadeDynamicEntity,
+  ExpOrbDynamicEntity
 } from '@/components/pixel_war/class';
 
 // 底部状态栏技能信息类型
@@ -193,6 +194,7 @@ const applyMapDataSnapshot = (mapData: MapData) => {
   playerEntity = playerEntityList[0] || null;
   grenadeEntityList = hydrateList(mapData.dynamicEntitie.grenadeDynamicEntitys) as GrenadeDynamicEntity[];
   bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
+  expOrbEntityList = hydrateList(mapData.dynamicEntitie.expOrbDynamicEntitys) as ExpOrbDynamicEntity[];
 
   // 2. 生成数值浮层 (NPC + 玩家)
   generateFloatingNumbersFromHealthChange(npcEntityList, oldHealthMap);
@@ -242,6 +244,7 @@ const applyDynamicMapDataSnapshot = (mapData: MapData) => {
   playerEntity = playerEntityList[0] || null;
   grenadeEntityList = hydrateList(mapData.dynamicEntitie.grenadeDynamicEntitys) as GrenadeDynamicEntity[];
   bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
+  expOrbEntityList = hydrateList(mapData.dynamicEntitie.expOrbDynamicEntitys) as ExpOrbDynamicEntity[];
 
   // 2. 生成数值浮层 (NPC + 玩家)
   generateFloatingNumbersFromHealthChange(npcEntityList, oldHealthMap);
@@ -281,6 +284,7 @@ const sendPlayerMoveInput = () => {
     A: PlayerDynamicEntity.playerMoveState.A,
     S: PlayerDynamicEntity.playerMoveState.S,
     D: PlayerDynamicEntity.playerMoveState.D,
+    Shift: PlayerDynamicEntity.playerMoveState.Shift,
   }, playerEntity ? playerEntity.id : -1));
 };
 
@@ -406,6 +410,7 @@ let npcEntityList: NpcDynamicEntity[] = [];                 // NPC实体列表
 let bulletEntityList: BulletDynamicEntity[] = [];           // 子弹动态实体列表
 let grenadeEntityList: GrenadeDynamicEntity[] = [];
 let itemEntityList: ItemEntity[] = [];                      // 物品实体列表
+let expOrbEntityList: ExpOrbDynamicEntity[] = [];           // 经验球实体列表
 let playerEntity: PlayerDynamicEntity | null = null;
 
 // 底部状态栏动画状态
@@ -736,6 +741,9 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.name
         );
     }
+  }
+  else if(kind === 'exp_orb'){
+    return new ExpOrbDynamicEntity(snapshot.position, snapshot.value);
   }
   else{//grenade
     const grenadeTag = snapshot.tag;
@@ -1688,6 +1696,42 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   CtxUi.strokeText(healthText, hpX + hpBarWidth / 2, hpY + hpBarHeight / 2 + 0.5);
   CtxUi.fillText(healthText, hpX + hpBarWidth / 2, hpY + hpBarHeight / 2 + 0.5);
 
+  // 体力条(疾跑期间消耗,非疾跑期间缓慢恢复)
+  const staminaMax = Math.max(1, playerEntity?.staminaMax ?? 100);
+  const currentStamina = playerDead ? 0 : Math.max(0, playerEntity?.stamina ?? 0);
+  const staminaRatio = playerDead ? 0 : H_clamp(currentStamina / staminaMax, 0, 1);
+  const staminaBarWidth = hpBarWidth;
+  const staminaBarHeight = isCompact ? 10 : 12;
+  const staminaX = infoX;
+  const staminaY = hpY + hpBarHeight + 5;
+
+  CtxUi.fillStyle = 'rgba(9, 14, 20, 0.95)';
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, staminaX, staminaY, staminaBarWidth, staminaBarHeight, 3);
+  CtxUi.fill();
+
+  // 疾跑中呈金色,否则呈青蓝色
+  CtxUi.fillStyle = playerEntity?.isSprinting
+    ? 'rgba(255, 207, 90, 0.96)'
+    : 'rgba(124, 232, 255, 0.9)';
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, staminaX, staminaY, staminaBarWidth * staminaRatio, staminaBarHeight, 3);
+  CtxUi.fill();
+
+  CtxUi.strokeStyle = 'rgba(166, 242, 255, 0.4)';
+  CtxUi.lineWidth = 1;
+  CtxUi.strokeRect(staminaX + 0.5, staminaY + 0.5, staminaBarWidth - 1, staminaBarHeight - 1);
+
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.font = isCompact ? '9px Consolas, "Courier New", monospace' : '10px Consolas, "Courier New", monospace';
+  CtxUi.lineWidth = 3;
+  CtxUi.strokeStyle = 'rgba(0, 0, 0, 0.82)';
+  CtxUi.fillStyle = 'rgba(242, 255, 255, 0.96)';
+  const staminaText = `STA ${Math.ceil(currentStamina)}`;
+  CtxUi.strokeText(staminaText, staminaX + staminaBarWidth / 2, staminaY + staminaBarHeight / 2 + 0.5);
+  CtxUi.fillText(staminaText, staminaX + staminaBarWidth / 2, staminaY + staminaBarHeight / 2 + 0.5);
+
   const skills: BottomStatusSkill[] = [
     {
       key: 'F',
@@ -1938,6 +1982,12 @@ const drawEntities = () => {
       entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
     }
   }
+  // 绘制经验球
+  for (const entity of expOrbEntityList) {
+    if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
+      entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
+    }
+  }
   // 绘制玩家实体
   if (playerEntity) {
     if (playerEntity.isInViewport(worldToScreen, canvasSize, margin)) {
@@ -2115,13 +2165,13 @@ const drawUI = () => {
  * 加载所有实体的纹理
  */
 const loadEntityTextures = async () => {
-  const allEntities = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList];
+  const allEntities = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList, ...expOrbEntityList];
   await Promise.all(allEntities.map(e => e.loadTexture()));
   drawEntities(); // 加载完成后重绘
 };
 
 const refreshRenderEntityList = () => {
-  renderEntityList = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList];
+  renderEntityList = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList, ...expOrbEntityList];
 };
 
 
@@ -2638,6 +2688,14 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
       }
       return;
     }
+    if (key === 'shift') {// 疾跑(按住左Shift,须在移动过程中生效)
+      e.preventDefault();
+      if (!PlayerDynamicEntity.playerMoveState.Shift) {
+        PlayerDynamicEntity.playerMoveState.Shift = true;
+        sendPlayerMoveInput();
+      }
+      return;
+    }
     if (key === 'w' || key === 'a' || key === 's' || key === 'd') {// 移动
       e.preventDefault();
       if (key === 'w') PlayerDynamicEntity.playerMoveState.W = true;
@@ -2678,6 +2736,10 @@ const onGlobalKeyUp = (e: KeyboardEvent) => {
   if (key === 'a') PlayerDynamicEntity.playerMoveState.A = false;
   if (key === 's') PlayerDynamicEntity.playerMoveState.S = false;
   if (key === 'd') PlayerDynamicEntity.playerMoveState.D = false;
+  if (key === 'shift') {
+    PlayerDynamicEntity.playerMoveState.Shift = false;
+    sendPlayerMoveInput();
+  }
   if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
     sendPlayerMoveInput();
   }

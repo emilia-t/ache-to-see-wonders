@@ -24,7 +24,8 @@ import {
   WhitePixelVa2Entity,
   RedPixelEntity,
   HealingGemItemEntity,
-  GrenadeDynamicEntity
+  GrenadeDynamicEntity,
+  ExpOrbDynamicEntity
 } from '@/components/pixel_war/class';
 
 ////////////////////
@@ -83,7 +84,8 @@ const MAP_DATA: MapData = {
     bulletDynamicEntitys: [],
     grenadeDynamicEntitys: [],
     npcDynamicEntitys: [],
-    playerDynamicEntitys: []
+    playerDynamicEntitys: [],
+    expOrbDynamicEntitys: []
   },
   staticEntities: [],
   itemEntities: []
@@ -281,6 +283,7 @@ const refreshPlayerMoveState = (moveState: Partial<typeof PlayerDynamicEntity.pl
     player.moveState.A = moveState.A === true;
     player.moveState.S = moveState.S === true;
     player.moveState.D = moveState.D === true;
+    player.moveState.Shift = moveState.Shift === true;
   }
 };
 
@@ -620,6 +623,89 @@ const updateGrenadeEntities = (deltaTime: number): boolean => {
   return changed || oldLength !== MAP_DATA.dynamicEntitie.grenadeDynamicEntitys.length;
 };
 
+/**
+ * 将总经验值拆分为若干经验球(按11档位贪心拆分,与《我的世界》一致)
+ * @param totalValue 总经验值
+ */
+const splitExpValueIntoOrbs = (totalValue: number): number[] => {
+  const values: number[] = [];
+  let remaining = totalValue;
+  while (remaining > 0) {
+    let split = false;
+    for (const tier of ExpOrbDynamicEntity.VALUE_TIERS) {
+      if (remaining >= tier) {
+        values.push(tier);
+        remaining -= tier;
+        split = true;
+        break;
+      }
+    }
+    if (!split) break;// 防御:理论上不会发生
+  }
+  return values;
+};
+
+/**
+ * 在指定位置随机爆出总经验值为 totalValue 的经验球
+ * @param position 死亡位置
+ * @param totalValue 掉落的总经验值
+ */
+const spawnExpOrbs = (position: Point, totalValue: number): void => {
+  if (totalValue <= 0) return;
+  const values = splitExpValueIntoOrbs(totalValue);
+  for (const value of values) {
+    // 在死亡位置周围随机偏移爆出
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.random() * 36;
+    const orb = new ExpOrbDynamicEntity({
+      x: position.x + Math.cos(angle) * dist,
+      y: position.y + Math.sin(angle) * dist,
+    }, value);
+    // 给一个随机的初始冲量(方向随机,速度 60~160)
+    const burstAngle = Math.random() * Math.PI * 2;
+    const burstSpeed = 60 + Math.random() * 100;
+    orb.motionVelocity = {
+      x: Math.cos(burstAngle) * burstSpeed,
+      y: Math.sin(burstAngle) * burstSpeed,
+    };
+    MAP_DATA.dynamicEntitie.expOrbDynamicEntitys.push(orb);
+  }
+};
+
+/**
+ * 结算死亡实体的经验掉落
+ * NPC 或玩家死亡后:60% 经验掉落为经验球(向上取整),其余 40% 作为死亡惩罚扣除。
+ * 即:掉落经验 = ceil(game_exp × 60%),实际扣除经验 = game_exp - 掉落经验(经验清零)。
+ */
+const handleEntityDeathExpOrbs = (): void => {
+  for (const entity of getNpcPlayerDynamicEntityList()) {
+    if (!entity.isDead) continue;
+    if (entity.deathExpProcessed) continue;
+    entity.deathExpProcessed = true;
+
+    // 掉落经验 = ceil(game_exp × 60%)
+    const dropExp = Math.ceil(entity.game_exp * 0.6);
+    // 死亡惩罚:经验清零(60%掉落为经验球 + 40%扣除)
+    entity.game_exp = 0;
+    if (dropExp > 0) {
+      spawnExpOrbs(entity.position, dropExp);
+    }
+  }
+};
+
+/**
+ * 更新经验球实体(移动、吸引、拾取)
+ */
+const updateExpOrbDynamicEntities = (deltaTime: number): boolean => {
+  if (MAP_DATA.dynamicEntitie.expOrbDynamicEntitys.length === 0) return false;
+  for (const orb of MAP_DATA.dynamicEntitie.expOrbDynamicEntitys) {
+    orb.update(deltaTime, MAP_DATA.staticEntities, MAP_DATA.dynamicEntitie, GCFG);
+  }
+  const oldLength = MAP_DATA.dynamicEntitie.expOrbDynamicEntitys.length;
+  MAP_DATA.dynamicEntitie.expOrbDynamicEntitys = MAP_DATA.dynamicEntitie.expOrbDynamicEntitys.filter(orb => !orb.isPickedUp);
+  return oldLength !== MAP_DATA.dynamicEntitie.expOrbDynamicEntitys.length;
+};
+
 
 const setRandomTargetForNpc = (entity: NpcDynamicEntity): boolean => {
 
@@ -844,6 +930,8 @@ const updateDynamicEntities = (deltaTime: number) => {
     }
   }
 
+  // 先结算本帧死亡实体的经验掉落(部分实体如红像素自爆会立即完成死亡特效并可能被清理)
+  handleEntityDeathExpOrbs();
   removeFinishedDeadDynamicEntities();
   resolveDynamicEntityCollisions();
 
@@ -1138,6 +1226,8 @@ const updateGame = (deltaTime: number) => {
   updateDynamicEntityItemPickups();
   updateBulletEntities(deltaTime);
   updateGrenadeEntities(deltaTime);
+  handleEntityDeathExpOrbs();            // 结算死亡掉落经验球(须在清理死亡实体之前)
+  updateExpOrbDynamicEntities(deltaTime); // 更新经验球(移动/吸引/拾取)
   generateNpcAroundPlayerSingle(deltaTime);
   generateItemAroundPlayerSingle(deltaTime);
   removeFinishedDeadDynamicEntities();

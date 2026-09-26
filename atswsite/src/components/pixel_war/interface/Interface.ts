@@ -6,6 +6,7 @@ import type { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/Dy
 import type { GrenadeDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/GrenadeDynamicEntity/GrenadeDynamicEntity';
 import type { NpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 import type { PlayerDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
+import type { ExpOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/ExpOrbDynamicEntity/ExpOrbDynamicEntity';
 import type { DynamicEntity } from '../class';
 
 export interface Resolution { width: number; height: number }
@@ -202,6 +203,7 @@ export interface DynamicEntitieList {
   grenadeDynamicEntitys: Array<GrenadeDynamicEntity>;
   npcDynamicEntitys: Array<NpcDynamicEntity>;
   playerDynamicEntitys: Array<PlayerDynamicEntity>;
+  expOrbDynamicEntitys: Array<ExpOrbDynamicEntity>;
 }
 
 export interface MapData {
