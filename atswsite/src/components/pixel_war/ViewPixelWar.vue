@@ -42,6 +42,7 @@ import {
   WhitePixelEntity,
   WhitePixelVa2Entity,
   RedPixelEntity,
+  SkyBluePixelEntity,
   BulletDynamicEntity,
   BuckshotBulletDynamicEntity,
   SniperBulletDynamicEntity,
@@ -397,8 +398,12 @@ const STAR_FIELD_TWINKLE_SPEED = 0.125; // 星星闪烁速度倍率,越小闪烁
 const EDGE_SCROLL_ZONE = 150;   // 开火模式下相机边缘滚动的触发区域宽度,单位px
 const EDGE_SCROLL_SPEED = 1200; // 开火模式下相机边缘滚动速度,单位px/秒
 const DEATH_OVERLAY_EVENT_PREFIX = 'death_overlay_'; // 重生界面按钮事件区域id前缀
-const MINIMAP_SIZE = 240;          // 小地图边长,单位px(参考设计稿)
-const MINIMAP_MARGIN = 20;         // 小地图距离左上角的边距,单位px(参考设计稿)
+const MINIMAP_DESIGN_SIZE = 240;      // 设计稿(1920x1080)下的小地图边长,单位px
+const MINIMAP_DESIGN_MIN_EDGE = 1080; // 设计稿的短边尺寸,作为等比缩放的基准,单位px
+const MINIMAP_SIZE_MIN = 120;         // 小地图等比缩放后的最小边长,单位px
+const MINIMAP_SIZE_MAX = 300;         // 小地图等比缩放后的最大边长,单位px
+const MINIMAP_MARGIN_RATIO = 20 / 240;// 设计稿中小地图边距与边长的比例
+const MINIMAP_MARGIN_MIN = 8;         // 小地图边距最小值,单位px
 const MINIMAP_WORLD_HALF = 10050;  // 小地图映射的世界坐标半宽(略大于服务端世界边界,以容纳边界墙)
 const MINIMAP_DEFAULT_COLOR = '#ffffff'; // 小地图实体未设置mapColor时的默认显示颜色
 ////////////////////
@@ -511,6 +516,20 @@ let entitySnapshotTimeMap = new Map<number, number>();
 ////////////////////
 //辅助函数区-->
 ////////////////////
+
+/**
+ * 计算小地图的尺寸、边距与内部元素缩放比例
+ * 以设计稿短边(1080px)为基准,按画布短边等比缩放,并限制在 [MIN, MAX] 之间,
+ * 保证在超宽屏/小窗口/竖屏等场景下小地图依旧可用。
+ */
+const H_getMiniMapMetrics = (canvasWidth: number, canvasHeight: number) => {
+  const minEdge = Math.min(canvasWidth, canvasHeight);
+  const ratio = minEdge / MINIMAP_DESIGN_MIN_EDGE;
+  const size = H_clamp(MINIMAP_DESIGN_SIZE * ratio, MINIMAP_SIZE_MIN, MINIMAP_SIZE_MAX);
+  const margin = Math.max(MINIMAP_MARGIN_MIN, size * MINIMAP_MARGIN_RATIO);
+  const scale = size / MINIMAP_DESIGN_SIZE; // 内部图形元素的缩放比例
+  return { size, margin, scale };
+};
 
 const H_getCanvasCssSize = (canvas: HTMLCanvasElement) => {
   const width = canvas.clientWidth || window.innerWidth;
@@ -737,6 +756,12 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
         );
       case 'red_pixel':
         return new RedPixelEntity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'sky_blue_pixel':
+        return new SkyBluePixelEntity(
           snapshot.position,
           snapshot.ownerId,
           snapshot.teamId
@@ -1315,6 +1340,7 @@ const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
 
 /**
  * 绘制小地图(左上角正方形地图,渲染在 canvas-ui 层)
+ * - 尺寸随页面尺寸动态等比缩放(以设计稿短边为基准)
  * - 圆点表示 NPC
  * - 等边三角形表示玩家(顶点指向玩家朝向)
  * - 正方形表示静态实体
@@ -1323,9 +1349,10 @@ const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
 const drawMiniMap = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   if (!CtxUi || !CANVAS) return;
 
-  const mapSize = MINIMAP_SIZE;
-  const mapX = MINIMAP_MARGIN;
-  const mapY = MINIMAP_MARGIN;
+  const { width: canvasWidth, height: canvasHeight } = H_getCanvasCssSize(CANVAS);
+  const { size: mapSize, margin: mapMargin, scale: mapScale } = H_getMiniMapMetrics(canvasWidth, canvasHeight);
+  const mapX = mapMargin;
+  const mapY = mapMargin;
   const worldRange = MINIMAP_WORLD_HALF * 2;
 
   // 世界坐标 -> 小地图坐标(世界 y 轴向上,小地图 y 轴向下,需翻转)
@@ -1345,11 +1372,11 @@ const drawMiniMap = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement)
 
   // 边框(参考设计稿:灰色边框)
   CtxUi.strokeStyle = 'rgba(76, 76, 76, 1)';
-  CtxUi.lineWidth = 1.5;
+  CtxUi.lineWidth = Math.max(1, 1.5 * mapScale);
   CtxUi.strokeRect(mapX + 0.75, mapY + 0.75, mapSize - 1.5, mapSize - 1.5);
 
   // 绘制静态实体(正方形)
-  const staticSize = 3;
+  const staticSize = Math.max(2, 3 * mapScale);
   for (const entity of staticEntityList) {
     const p = worldToMap(entity.position.x, entity.position.y);
     if (!isInsideMap(p)) continue;
@@ -1358,7 +1385,7 @@ const drawMiniMap = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement)
   }
 
   // 绘制 NPC(圆点)
-  const npcRadius = 2.5;
+  const npcRadius = Math.max(1.5, 2.5 * mapScale);
   for (const entity of npcEntityList) {
     const p = worldToMap(entity.position.x, entity.position.y);
     if (!isInsideMap(p)) continue;
@@ -1372,12 +1399,15 @@ const drawMiniMap = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement)
   // 注意:玩家死亡后服务端仍保留该实体快照以便重生,因此需跳过已死亡的玩家,避免其图标残留在小地图上
   if (playerEntity && !playerEntity.isDead && playerEntity.health > 0) {
     const p = worldToMap(playerEntity.position.x, playerEntity.position.y);
-    const r = 4.5; // 三角形外接圆半径
+    const r = Math.max(3, 4.5 * mapScale); // 三角形外接圆半径
     const angle = Math.atan2(playerEntity.facingDirection.x, playerEntity.facingDirection.y);
     CtxUi.save();
     CtxUi.translate(p.x, p.y);
     CtxUi.rotate(angle);
     CtxUi.fillStyle = playerEntity.mapColor ?? MINIMAP_DEFAULT_COLOR;
+    if(playerEntity.getIsme() && playerEntity.mapColor === undefined){
+      CtxUi.fillStyle = 'rgba(0, 255, 255, 0.9)'; // 玩家本人显示青色
+    }
     CtxUi.beginPath();
     CtxUi.moveTo(0, -r);
     CtxUi.lineTo(-r * 0.866, r * 0.5);

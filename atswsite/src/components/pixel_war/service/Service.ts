@@ -23,6 +23,7 @@ import {
   WhitePixelEntity,
   WhitePixelVa2Entity,
   RedPixelEntity,
+  SkyBluePixelEntity,
   HealingGemItemEntity,
   GrenadeDynamicEntity,
   ExpOrbDynamicEntity
@@ -95,7 +96,8 @@ const MAP_DATA: MapData = {
 const SPAWNABLE_NPC_CLASSES = [
   RedPixelEntity,
   WhitePixelEntity,
-  WhitePixelVa2Entity
+  WhitePixelVa2Entity,
+  SkyBluePixelEntity
   // more
 ] as const;
 

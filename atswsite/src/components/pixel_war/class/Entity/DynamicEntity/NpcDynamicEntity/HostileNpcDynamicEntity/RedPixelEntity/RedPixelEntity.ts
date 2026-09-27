@@ -178,16 +178,6 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
       ctx.restore();
     }
 
-    // 血条
-    const healthRatio = Math.max(0, Math.min(1, this.health / this.healthMax));
-    const barWidth = Math.max(36, this.width);
-    const barHeight = 4;
-    const barX = screenPos.x - barWidth / 2;
-    const topY = screenPos.y - halfH - 16;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(barX, topY, barWidth, barHeight);
-    ctx.fillStyle = '#e74c3c';
-    ctx.fillRect(barX, topY, barWidth * healthRatio, barHeight);
 
     // 调试信息
     if (debugFlags) {

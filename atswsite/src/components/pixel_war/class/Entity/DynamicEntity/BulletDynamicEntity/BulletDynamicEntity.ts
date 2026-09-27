@@ -6,9 +6,9 @@ import type { Point } from '@/components/pixel_war/interface/Interface';
 abstract class BulletDynamicEntity extends DynamicEntity {
   public static readonly WIDTH = 8;
   public static readonly HEIGHT = 8;
-  public static readonly MOVE_SPEED = 720;
+  public static readonly MOVE_SPEED = 780;// 子弹速度
   public static readonly DEFAULT_DAMAGE = 1;
-  public static readonly MAX_LIFETIME = 1.2;
+  public static readonly MAX_LIFETIME = 1.8;// 最大存在时间,单位秒
 
   private lifetimeRemaining: number;
 
