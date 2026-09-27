@@ -9,7 +9,7 @@ class LaserBulletDynamicEntity extends BulletDynamicEntity {
     teamId: number | null,
     name: string = ''
   ) {
-    super(position, direction, ownerId, teamId, 'long', name, 30, 'laser_bullet');
+    super(position, direction, ownerId, teamId, 'long', name, 1, 'laser_bullet');
     //
   }
 

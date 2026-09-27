@@ -35,10 +35,11 @@ import {
 const SERVICE: DedicatedWorkerGlobalScope = self;
 
 const GCFG:GameConfig = {
-  npcSpawnNoSpawnRadius:200,// 玩家周围 0-200px 半径内为禁刷怪区,单位px
-  npcSpawnHighRadius:400,// 玩家周围 200-400px 半径内为高频刷怪区外边界,单位px
-  npcSpawnMediumRadius:800,// 玩家周围 400-800px 半径内为中频刷怪区外边界,单位px
-  npcSpawnLowRadius:1600,// 玩家周围 800-1600px 半径内为低频刷怪区外边界,单位px
+  npcSpawnNoSpawnRadius:300,// 玩家周围 0-300px 半径内为禁刷怪区,单位px
+  npcSpawnHighRadius:600,// 玩家周围 300-600px 半径内为高频刷怪区外边界,单位px
+  npcSpawnMediumRadius:1000,// 玩家周围 600-1000px 半径内为中频刷怪区外边界,单位px
+  npcSpawnLowRadius:2000,// 玩家周围 1000-2000px 半径内为低频刷怪区外边界,单位px
+  npcDespawnDistance:3600,// 玩家周围 3600px 半径外的 NPC 将被强制移除,单位px
   npcSpawnHighInterval:4,// 高频刷怪区生成间隔,单位秒
   npcSpawnMediumInterval:8,// 中频刷怪区生成间隔,单位秒
   npcSpawnLowInterval:16,// 低频刷怪区生成间隔,单位秒
@@ -46,10 +47,10 @@ const GCFG:GameConfig = {
   npcSpawnMaxAttempts:30,// 每次刷怪在目标环形区域内寻找可用生成点的最大尝试次数,单位次
   npcSpawnPadding:12,// 新 NPC 与已有动态实体之间额外保留的安全距离,单位px
   
-  itemSpawnNoSpawnRadius:200,// 玩家周围 0-200px 
-  itemSpawnHighRadius:400,// 玩家周围 200-400px 
-  itemSpawnMediumRadius:800,// 玩家周围 400-800px 
-  itemSpawnLowRadius:1600,// 玩家周围 800-1600px 
+  itemSpawnNoSpawnRadius:300,// 玩家周围 0-300px 
+  itemSpawnHighRadius:600,// 玩家周围 300-600px 
+  itemSpawnMediumRadius:1000,// 玩家周围 600-1000px 
+  itemSpawnLowRadius:2000,// 玩家周围 1000-2000px 
   itemSpawnHighInterval:4,// 高频生成间隔,单位秒
   itemSpawnMediumInterval:8,// 中频生成间隔,单位秒
   itemSpawnLowInterval:16,// 低频生成间隔,单位秒
@@ -322,10 +323,38 @@ const rotateServantByEditor = (playerId: number, npcId: number): void => {
   };
 };
 
+/**
+ * 在地图范围内随机生成一个重生点(世界坐标)
+ * 地图边界由 GCFG 的 worldSize/worldMinX/worldMaxX/worldMinY/worldMaxY 确定，
+ * 并保留安全边距避免出生点落入边界围墙内部。
+ */
+const getRandomRespawnPoint = (): Point => {
+  // 安全边距：玩家半尺寸 + 围墙厚度，保证出生点不压到边界围墙
+  const margin = Math.max(PlayerDynamicEntity.WIDTH, PlayerDynamicEntity.HEIGHT) + 25;
+  const minX = GCFG.worldMinX + margin;
+  const maxX = GCFG.worldMaxX - margin;
+  const minY = GCFG.worldMinY + margin;
+  const maxY = GCFG.worldMaxY - margin;
+
+  for (let i = 0; i < 30; i++) {
+    const point: Point = {
+      x: minX + Math.random() * (maxX - minX),
+      y: minY + Math.random() * (maxY - minY),
+    };
+    // 空间索引尚未建立(初始化阶段)时直接返回；否则避免与静态实体重叠
+    if (!staticEntitySpatialGrid || !staticEntitySpatialGrid.isPointColliding(point.x, point.y)) {
+      return point;
+    }
+  }
+
+  // 兜底：返回地图中心
+  return { x: 0, y: 0 };
+};
+
 const respawnPlayer = (playerId: number): void => {
   const player = getPlayerDynamicEntityById(playerId);
   if (!player) return;
-  player.respawn({ x: 0, y: 0 });
+  player.respawn(getRandomRespawnPoint());
 };
 
 ////////////////////
@@ -410,14 +439,14 @@ const initMapData = () => {
     MAP_DATA.staticEntities.push(new CurbStaticEntity(corner));
   }
 
-  // 创建玩家实体
-  MAP_DATA.dynamicEntitie.playerDynamicEntitys.push(
-    new PlayerDynamicEntity({ x: 0, y: 0 }, createTeamIdLength14(), 'Player', true)
-  );
-
-  // 构建静态实体空间索引
+  // 构建静态实体空间索引(先于玩家创建，供随机出生点检测使用)
   staticEntitySpatialGrid = new StaticEntitySpatialGrid(MAP_DATA.staticEntities, 400);
   DynamicEntity.staticEntitySpatialGrid = staticEntitySpatialGrid;
+
+  // 创建玩家实体(地图内随机出生)
+  MAP_DATA.dynamicEntitie.playerDynamicEntitys.push(
+    new PlayerDynamicEntity(getRandomRespawnPoint(), createTeamIdLength14(), 'Player', true)
+  );
 };
 ////////////////////
 //<--初始化函数区
@@ -570,6 +599,8 @@ const updateBulletEntities = (deltaTime: number): boolean => {
       if (entity.isDead) continue;
       if (bullet.ownerId === entity.id) continue; // 避免自残
       if(bullet.teamId!==null){if (bullet.teamId === entity.teamId) continue;} // 避免误伤队友
+      // 敌对 NPC 发射的子弹(teamId===null)不再与敌对 NPC(teamId===null)进行碰撞检测，直接穿透
+      if (bullet.teamId === null && entity instanceof NpcDynamicEntity && entity.teamId === null) continue;
 
       const hitDistance = Math.hypot(
         entity.position.x - bullet.position.x,
@@ -943,11 +974,53 @@ const resolveDynamicEntityCollisions = () => {
 };
 
 /**
- * 更新动态实体
- * @param deltaTime 
+ * 计算 NPC 与所有玩家之间的最小距离(px)
+ * @param npc NPC 实体
+ * @returns 与最近玩家的距离，无存活玩家时返回 Infinity
  */
+const getNpcMinDistanceToPlayers = (npc: NpcDynamicEntity): number => {
+  let minDist = Infinity;
+  for (const player of MAP_DATA.dynamicEntitie.playerDynamicEntitys) {
+    const dist = Math.hypot(npc.position.x - player.position.x, npc.position.y - player.position.y);
+    if (dist < minDist) minDist = dist;
+  }
+  return minDist;
+};
+
 const updateDynamicEntities = (deltaTime: number) => {
+  // 预计算本帧需要冻结(远端)或销毁(超远端)的 NPC，降低服务端计算负载
+  const frozenNpcIds = new Set<number>();
+  const despawnNpcIds = new Set<number>();
+  for (const npc of MAP_DATA.dynamicEntitie.npcDynamicEntitys) {
+    if (npc.isDead) continue;
+    const minDist = getNpcMinDistanceToPlayers(npc);
+    if (minDist > GCFG.npcDespawnDistance) {
+      despawnNpcIds.add(npc.id);
+    } else if (minDist > GCFG.npcSpawnLowRadius) {
+      frozenNpcIds.add(npc.id);
+    }
+  }
+
   for (const entity of getNpcPlayerDynamicEntityList()) {
+    if (entity instanceof NpcDynamicEntity && despawnNpcIds.has(entity.id)) {
+      // 超远端 NPC 销毁：直接击杀，且不掉落经验，避免生成多余实体
+      entity.game_exp = 0;
+      entity.health = 0;
+      entity.triggerDeath();
+      resolvePlayerServantDead(entity);
+      continue;
+    }
+
+    if (entity instanceof NpcDynamicEntity && frozenNpcIds.has(entity.id)) {
+      // 远端 NPC 冻结：停止移动并暂停事件循环
+      if (entity.isMoving) {
+        entity.stop();
+      }
+      entity.updateDamageEffect(deltaTime);
+      entity.updateDeathEffect(deltaTime);
+      continue;
+    }
+
     entity.update(deltaTime, MAP_DATA.staticEntities, MAP_DATA.dynamicEntitie, GCFG);
     entity.updateDamageEffect(deltaTime);
     entity.updateDeathEffect(deltaTime);
@@ -971,6 +1044,11 @@ const updateDynamicEntities = (deltaTime: number) => {
   };
 
   for (const entity of getNpcDynamicEntityList()) {
+    // 冻结或已销毁的 NPC 暂停事件循环与游走逻辑
+    if (frozenNpcIds.has(entity.id) || despawnNpcIds.has(entity.id)) {
+      continue;
+    }
+
     entity.updateCrowdStuckState(deltaTime);
     entity.updateStayDuration(deltaTime);
     entity.updateStaticCompressionEffects(deltaTime, MAP_DATA.staticEntities);

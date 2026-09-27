@@ -16,8 +16,8 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     super(position, ownerId, teamId, '', '', 0, 'white_pixel');
     this.fillColor = '#ffffff';
     this.strokeColor = '#bebebe';
-    this.health = 100;
-    this.healthMax = 100;
+    this.health = 1;
+    this.healthMax = 1;
     this.isActionLoopRunning = false;
     this.actionCooldownRemaining = 0;
     this.kill_score = 1; // 击杀该NPC获得的分数

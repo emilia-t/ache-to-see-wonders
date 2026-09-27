@@ -3,7 +3,7 @@ import type { Point, EntityDebugFlags } from '@/components/pixel_war/interface/I
 
 class BuckshotBulletDynamicEntity extends BulletDynamicEntity {
   constructor(position: Point, direction: Point, ownerId: number | null, teamId: number | null, name: string = 'Buckshot Bullet') {
-    super(position, direction, ownerId, teamId ,'short', name, 20, 'buckshot_bullet');
+    super(position, direction, ownerId, teamId ,'short', name, 1, 'buckshot_bullet');
     //
   }
 

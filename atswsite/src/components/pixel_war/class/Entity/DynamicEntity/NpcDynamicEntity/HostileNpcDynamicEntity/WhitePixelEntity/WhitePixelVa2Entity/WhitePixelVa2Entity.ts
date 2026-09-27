@@ -86,11 +86,9 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
           )
         );
       }
-      // 每次射击扣减 2 点生命值
-      this.applyDamage(2);
     };
     
-    // 射出两颗子弹，每颗独立扣血
+    // 射出两颗子弹
     shootAndDamage(dir1);
     if (!this.isDead) {
       shootAndDamage(dir2);
@@ -175,22 +173,6 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
     this.updateCrowdStuckState(dt);
     this.updateStaticCompressionEffects(dt, staticEntities);
 
-    if(this.health <= 4){
-      this.fillColor = '#ffffff25';
-      this.strokeColor = '#bebebe25';
-    }else if(this.health <= 8){
-      this.fillColor = '#ffffff54';
-      this.strokeColor = '#bebebe54';
-    }else if(this.health <= 12){
-      this.fillColor = '#ffffff79';
-      this.strokeColor = '#bebebe79';
-    }else if(this.health <= 16){
-      this.fillColor = '#ffffffa9';
-      this.strokeColor = '#bebebea9';
-    }else if(this.health <= 20){
-      this.fillColor = '#ffffffd2';
-      this.strokeColor = '#bebebed2';
-    }
   }
   
   /**

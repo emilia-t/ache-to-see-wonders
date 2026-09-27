@@ -216,6 +216,7 @@ export interface GameConfig {
   npcSpawnNoSpawnRadius:number;
   npcSpawnHighRadius:number;
   npcSpawnMediumRadius:number;
+  npcDespawnDistance:number;
   npcSpawnLowRadius:number;
   npcSpawnHighInterval:number;
   npcSpawnMediumInterval:number;

@@ -12,7 +12,7 @@ class OrdinaryBulletDynamicEntity extends BulletDynamicEntity {
     name: string = '',
     bulletColor: string = 'rgba(255, 255, 50, 0.9)'
   ) {
-    super(position, direction, ownerId, teamId, 'short', name, 50, 'ordinary_bullet');
+    super(position, direction, ownerId, teamId, 'short', name, 1, 'ordinary_bullet');
     this.bulletColor = bulletColor;
   }
 

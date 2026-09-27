@@ -60,8 +60,8 @@ abstract class DynamicEntity extends Entity {
     this.minMoveSpeed = Math.min(speedA, speedB);
     this.maxMoveSpeed = Math.max(speedA, speedB);
     this.movementPassion = 1;
-    this.health = 100;
-    this.healthMax = 100;
+    this.health = 1;
+    this.healthMax = 1;
     this.speed = this.minMoveSpeed;
     this.motionVelocity = { x: 0, y: 0 };
     this.wanderRange = 30 * ((this.width / 2) + (this.height / 2));

@@ -9,7 +9,7 @@ class SniperBulletDynamicEntity extends BulletDynamicEntity {
     teamId: number | null,
     name: string = ''
   ) {
-    super(position, direction, ownerId, teamId, 'long', name, 100, 'sniper_bullet');
+    super(position, direction, ownerId, teamId, 'long', name, 1, 'sniper_bullet');
     //
   }
 

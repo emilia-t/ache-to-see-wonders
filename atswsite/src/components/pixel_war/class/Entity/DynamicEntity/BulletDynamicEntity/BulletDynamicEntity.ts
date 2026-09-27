@@ -7,7 +7,7 @@ abstract class BulletDynamicEntity extends DynamicEntity {
   public static readonly WIDTH = 8;
   public static readonly HEIGHT = 8;
   public static readonly MOVE_SPEED = 720;
-  public static readonly DEFAULT_DAMAGE = 30;
+  public static readonly DEFAULT_DAMAGE = 1;
   public static readonly MAX_LIFETIME = 1.2;
 
   private lifetimeRemaining: number;

@@ -35,8 +35,8 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     super(position, ownerId, teamId ,'', '', 0, 'red_pixel');
     this.fillColor = '#ff1313';
     this.strokeColor = '#444444';
-    this.health = 60;
-    this.healthMax = 60;
+    this.health = 1;
+    this.healthMax = 1;
     this.kill_score = 3;
     this.mapColor = '#ff1313'; // 地图上的颜色表示
   }

@@ -173,6 +173,42 @@ const handleVisibilityChange = () => {
   }
 };
 
+/**
+ * 将相机中心重置到玩家当前位置(玩家居中)
+ * 若画布或玩家尚未就绪，则置为待处理状态，由动画循环在就绪后执行。
+ */
+const resetCameraToPlayer = () => {
+  if (!playerEntity || !GRAPHICS_CANVAS.value) {
+    pendingCameraResetToPlayer = true;
+    return;
+  }
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
+  offsetXX = width / 2 - playerEntity.position.x;
+  offsetYY = height / 2 + playerEntity.position.y;
+  pendingCameraResetToPlayer = false;
+};
+
+/**
+ * 在快照更新后根据玩家状态变化同步相机：
+ * - 首次看到玩家(首次进入游戏)时重置相机到玩家
+ * - 玩家从死亡变为存活(死亡后重生)时重置相机到玩家
+ */
+const syncCameraToPlayerIfNeeded = () => {
+  if (!playerEntity) {
+    prevPlayerIsDead = null;
+    return;
+  }
+  const isDead = playerEntity.isDead;
+  if (prevPlayerIsDead === null) {
+    // 首次进入游戏：相机重置到玩家
+    resetCameraToPlayer();
+  } else if (prevPlayerIsDead && !isDead) {
+    // 玩家死亡后重生：相机重置到玩家
+    resetCameraToPlayer();
+  }
+  prevPlayerIsDead = isDead;
+};
+
 const applyMapDataSnapshot = (mapData: MapData) => {
   // 1. 保存旧的健康值快照
   const oldHealthMap = new Map<number, number>();
@@ -222,6 +258,8 @@ const applyMapDataSnapshot = (mapData: MapData) => {
       ENTITY_CACHE.delete(id);
     }
   }
+
+  syncCameraToPlayerIfNeeded();
 };
 
 const applyDynamicMapDataSnapshot = (mapData: MapData) => {
@@ -272,6 +310,8 @@ const applyDynamicMapDataSnapshot = (mapData: MapData) => {
       ENTITY_CACHE.delete(id);
     }
   }
+
+  syncCameraToPlayerIfNeeded();
 };
 
 const sendClientInstruct = (instruct: InstructObject) => {
@@ -379,6 +419,8 @@ let ctxNumerical: CanvasRenderingContext2D | null = null;
 
 let offsetXX = 0;  // 原点在x轴上的偏移
 let offsetYY = 0;  // 原点在y轴上的偏移
+let prevPlayerIsDead: boolean | null = null; // 上一帧玩家是否死亡(用于检测首次进入与重生)
+let pendingCameraResetToPlayer = false;      // 相机是否需要重置到玩家(延迟到画布就绪后执行)
 let scale = 1;     // 缩放比例
 
 let eventArea: Array<EventArea> = []; // 事件触发区域列表
@@ -2264,6 +2306,11 @@ const animateEntities = (timestamp: number) => {
     lastTimestamp = timestamp;
     animationFrameId = requestAnimationFrame(animateEntities);
     return;
+  }
+
+  // 画布就绪后执行待处理的相机重置(首次进入/重生时)
+  if (pendingCameraResetToPlayer) {
+    resetCameraToPlayer();
   }
 
   const deltaTime = Math.min(0.033, (timestamp - lastTimestamp) / 1000); // 当前时间减去上一帧的时间等于此帧的时间-并且限制最大33ms

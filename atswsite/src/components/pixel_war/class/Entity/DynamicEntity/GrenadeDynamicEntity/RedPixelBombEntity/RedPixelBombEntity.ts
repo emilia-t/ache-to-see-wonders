@@ -25,7 +25,7 @@ export class RedPixelBombEntity extends GrenadeDynamicEntity {
     teamId: number | null,
     countdown = 0.5,
     radius = 80,
-    damage = 40
+    damage = 1
   ) {
     super(position, 10, 10, ownerId, teamId, '', '', 'bomb', 'red_pixel_bomb');
     this.countdown = countdown;
