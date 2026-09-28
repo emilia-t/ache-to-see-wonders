@@ -34,6 +34,7 @@ class SkyBluePixelEntity extends FriendlyNpcDynamicEntity {
     this.mapColor = '#87ceeb';   // 地图上的颜色表示
     // 将感知范围设为主动靠近的范围,便于调试圈可视化
     this.perceptionRange = SkyBluePixelEntity.APPROACH_RANGE;
+    this.loot = [];              // 战利品:友好 NPC 不掉落任何战利品
   }
 
   public tryPickupItem(_item: ItemEntity): boolean {

@@ -39,6 +39,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     this.healthMax = 1;
     this.kill_score = 3;
     this.mapColor = '#ff1313'; // 地图上的颜色表示
+    this.loot = []; // 战利品:红像素(自走爆炸)不掉落任何战利品
   }
 
   public tryPickupItem(_item: ItemEntity): boolean {

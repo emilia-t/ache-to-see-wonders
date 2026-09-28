@@ -3,7 +3,7 @@ import type { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/Dy
 import { GrenadeDynamicEntity } from '@/components/pixel_war/class';
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
-import type {Point, ActionLoopContext} from '@/components/pixel_war/interface/Interface';
+import type {Point, ActionLoopContext, NpcLoot} from '@/components/pixel_war/interface/Interface';
 import type { NpcAttitude } from '@/components/pixel_war/type/Type';
 
 export type NpcActionLoopContext = {
@@ -24,6 +24,8 @@ abstract class NpcDynamicEntity extends DynamicEntity {
   public attitude: NpcAttitude; // 友好/中立/敌对
   public pickupRange: number; // 拾取范围
   public kill_score: number; // NPC被击杀时获得的分数
+  public loot: NpcLoot[]; // 战利品配置(击杀后按概率掉落),默认空数组
+  public deathLootProcessed: boolean; // 死亡战利品是否已结算(防止重复掉落)
 
   constructor(
     position: Point,
@@ -42,6 +44,8 @@ abstract class NpcDynamicEntity extends DynamicEntity {
     this.teamId = teamId;
     this.kill_score = 1;
     this.game_exp = 2;// NPC 默认携带的游戏经验值
+    this.loot = [];// 默认不掉落任何战利品
+    this.deathLootProcessed = false;
   }
 
   public abstract tryPickupItem(item: ItemEntity): boolean;

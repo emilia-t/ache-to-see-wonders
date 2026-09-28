@@ -7,13 +7,28 @@
   Servant,
   PlayerRule,
   ServantMap,
-  NeighborGrid
+  NeighborGrid,
+  PlayerInventory
 } from '@/components/pixel_war/interface/Interface';
 
 import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
-import { FoodItemEntity } from '../../ItemEntity/FoodItemEntity/FoodItemEntity';
+import {
+  H_createEmptyPlayerInventory,
+  H_ensurePlayerInventory,
+  H_inventoryAddItem,
+  H_inventoryAddSkill,
+  H_inventoryAutoEquipSkill,
+  H_inventoryCanAcceptItem,
+  H_inventoryFindEntry,
+  H_inventoryHasSkill,
+  H_inventoryRemoveEntry,
+  H_normalizePlayerInventory
+} from '@/components/pixel_war/class/Inventory/Inventory';
+import { H_getSkillByTag } from '@/components/pixel_war/class/Skill/index';
+import { H_getItemDefinition } from '@/components/pixel_war/class/ItemRegistry/ItemRegistry';
+import type { Skill } from '@/components/pixel_war/class/Skill/Skill';
 
 type PlayerDodgeState = {
   start: Point;
@@ -87,6 +102,8 @@ class PlayerDynamicEntity extends DynamicEntity {
   private servantGrid:ServantGrid|null = null;
   private servantMap:ServantMap|null = null;
   private isme: boolean;
+  /** 玩家背包:持有物品与技能,并保存 10 个技能槽的装配状态 */
+  public inventory: PlayerInventory = H_createEmptyPlayerInventory();
   
 
   constructor(
@@ -105,8 +122,8 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.motionTurnResponsiveness = PlayerDynamicEntity.PLAYER_MOTION_TURN_RESPONSE;
     this.wanderRange = 0;
     this.perceptionRange = 0;
-    this.health = 1;
-    this.healthMax = 1;
+    this.health = 100000;
+    this.healthMax = 100000;
     this.movementPassion = 1;
     this.teamId = teamId;
     this.player_score = 0;
@@ -362,34 +379,137 @@ class PlayerDynamicEntity extends DynamicEntity {
 
   /**
    * 拾取物品检测
-   * @param item 
-   * @returns 
+   * 只要背包还能容纳该物品且距离足够近即可拾取(物品进入背包,由玩家主动使用)
+   * @param item 待拾取的物品实体
+   * @returns 是否可以拾取
    */
   public tryPickupItem(item: ItemEntity): boolean {
-    if(item instanceof FoodItemEntity && this.health < this.healthMax){
-      // 添加碰撞/距离检测
-      const distance = Math.hypot(
-        this.position.x - item.position.x,
-        this.position.y - item.position.y
-      );
-      const pickupRadius = (this.width + item.width) / 2; // 玩家和物品半径之和
-      
-      if (distance <= pickupRadius) {
-        return true;
-      }
-    }
-    return false;
+    if (!item || item.isDisappearing) return false;
+    // 添加碰撞/距离检测
+    const distance = Math.hypot(
+      this.position.x - item.position.x,
+      this.position.y - item.position.y
+    );
+    const pickupRadius = (this.width + item.width) / 2; // 玩家和物品半径之和
+    if (distance > pickupRadius) return false;
+    return this.canAcceptItem(item.tag);
   }
 
   /**
-   * 拾取物品
-   * @param item 
+   * 拾取物品:放入背包(可堆叠,单格上限 50)
+   * @param item 待拾取的物品实体
    */
   public pickupItem(item: ItemEntity): void {
-    if(item instanceof FoodItemEntity){
-      this.health = Math.min(this.healthMax,this.health+item.currentHealthIncrease)
-    }
+    this.acquireItem(item.tag, item.name);
   }
+
+  ////////////////////
+  // 背包与技能相关 -->
+  ////////////////////
+
+  /**
+   * 获取当前有效的背包数据(发生非法/缺失时自动修复)
+   */
+  public getInventory(): PlayerInventory {
+    this.inventory = H_ensurePlayerInventory(this.inventory);
+    return this.inventory;
+  }
+
+  /**
+   * 当前生效的开火技能:取技能装配区中第一个已装配的技能
+   * @returns 技能实例,未装配任何技能时返回 null
+   */
+  public getActiveFireSkill(): Skill | null {
+    const inventory = this.getInventory();
+    for (const tag of inventory.equippedSkills) {
+      if (tag === null) continue;
+      const skill = H_getSkillByTag(tag);
+      if (skill !== null) return skill;
+    }
+    return null;
+  }
+
+  /**
+   * 是否已持有该技能(背包中或已装配)
+   */
+  public hasSkill(skillTag: string): boolean {
+    return H_inventoryHasSkill(this.getInventory(), skillTag);
+  }
+
+  /**
+   * 获得一个技能(来自技能球):加入背包并自动装配到第一个空槽
+   * @param skillTag 技能标签
+   * @returns 调用后玩家是否持有该技能(重复获得时返回 true,但不会重复添加)
+   */
+  public acquireSkill(skillTag: string): boolean {
+    const inventory = this.getInventory();
+    const skill = H_getSkillByTag(skillTag);
+    if (skill === null) return false;
+    // 已持有该技能:直接视为消耗成功,避免地面堆积重复技能球
+    if (H_inventoryHasSkill(inventory, skillTag)) return true;
+    if (!H_inventoryAddSkill(inventory, skill)) return false;
+    // 有空槽时自动装配,让玩家立刻可以使用该技能
+    H_inventoryAutoEquipSkill(inventory, skillTag);
+    return true;
+  }
+
+  /**
+   * 判断背包是否还能容纳指定物品
+   */
+  public canAcceptItem(itemTag: string): boolean {
+    return H_inventoryCanAcceptItem(this.getInventory(), itemTag);
+  }
+
+  /**
+   * 获得物品:放入背包(自动按 50 堆叠)
+   * @returns 实际放入的数量
+   */
+  public acquireItem(itemTag: string, itemName: string = ''): number {
+    const inventory = this.getInventory();
+    const definition = H_getItemDefinition(itemTag);
+    return H_inventoryAddItem(
+      inventory,
+      itemTag,
+      itemName || definition.name,
+      1,
+      definition.color,
+      definition.maxStack
+    );
+  }
+
+  /**
+   * 使用背包中的物品(按 uid 定位)
+   * 物品产生效果后消耗 1 个,数量为 0 时自动移除条目。
+   * @returns 是否成功使用
+   */
+  public useInventoryItem(uid: string): boolean {
+    if (this.isDead) return false;
+    const inventory = this.getInventory();
+    const entry = H_inventoryFindEntry(inventory, uid);
+    if (entry === null || entry.kind !== 'item') return false;
+
+    const definition = H_getItemDefinition(entry.tag);
+    if (definition.heal > 0) {
+      // 满血时不消耗物品
+      if (this.health >= this.healthMax) return false;
+      this.health = Math.min(this.healthMax, this.health + definition.heal);
+    }
+    H_inventoryRemoveEntry(inventory, uid, 1);
+    return true;
+  }
+
+  /**
+   * 应用来自客户端提交的背包状态(装配调整/销毁等操作)
+   * 客户端提交的数据一律经过规范化校验(数量/堆叠上限/槽位长度)后再使用。
+   * @param rawInventory 客户端提交的背包数据
+   */
+  public applyInventoryState(rawInventory: unknown): void {
+    this.inventory = H_normalizePlayerInventory(rawInventory);
+  }
+
+  ////////////////////
+  // <-- 背包与技能相关
+  ////////////////////
 
   /**
    * 重生玩家并重置临时战斗状态

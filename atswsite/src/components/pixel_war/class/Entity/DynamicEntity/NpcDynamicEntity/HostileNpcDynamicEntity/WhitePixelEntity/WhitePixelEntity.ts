@@ -22,6 +22,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     this.actionCooldownRemaining = 0;
     this.kill_score = 1; // 击杀该NPC获得的分数
     this.mapColor = '#ffffff'; // 地图上的颜色表示
+    this.loot = []; // 战利品:白像素不掉落任何战利品
   }
 
   public tryPickupItem(_item: ItemEntity): boolean {

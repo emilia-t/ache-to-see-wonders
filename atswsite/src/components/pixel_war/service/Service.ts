@@ -26,7 +26,8 @@ import {
   SkyBluePixelEntity,
   HealingGemItemEntity,
   GrenadeDynamicEntity,
-  ExpOrbDynamicEntity
+  ExpOrbDynamicEntity,
+  SkillOrbDynamicEntity
 } from '@/components/pixel_war/class';
 
 ////////////////////
@@ -87,7 +88,8 @@ const MAP_DATA: MapData = {
     grenadeDynamicEntitys: [],
     npcDynamicEntitys: [],
     playerDynamicEntitys: [],
-    expOrbDynamicEntitys: []
+    expOrbDynamicEntitys: [],
+    skillOrbDynamicEntitys: []
   },
   staticEntities: [],
   itemEntities: []
@@ -497,6 +499,35 @@ const spawnPlayerBullet = (target: Point, playerId: number) => {
 
   const direction = { x: dx / len, y: dy / len };
   const spawnDistance = playerEntity.width * 0.6;
+  const bulletColor = playerEntity.playerRule.bulletColor;
+
+  // 技能装配区中存在技能时,按技能方式开火(如"斜向双弹");否则使用默认单发
+  const activeSkill = playerEntity.getActiveFireSkill();
+  if (activeSkill !== null) {
+    // 记录施法者,供技能回调生成子弹
+    const ownerId = playerEntity.id;
+    const teamId = playerEntity.teamId;
+    activeSkill.cast({
+      position: { ...playerEntity.position },
+      direction,
+      ownerId,
+      teamId,
+      bulletColor,
+      spawnDistance,
+      spawnBullet: (position: Point, dir: Point, color: string) => {
+        MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(
+          new OrdinaryBulletDynamicEntity(position, dir, ownerId, teamId, '', color)
+        );
+      }
+    });
+    // 技能冷却不低于施法者的基础开火冷却
+    playerEntity.playerRule.fireCooldownNow = Math.max(
+      playerEntity.playerRule.fireCooldownMax,
+      activeSkill.cooldown
+    );
+    return;
+  }
+
   MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(
     new OrdinaryBulletDynamicEntity(
       {
@@ -507,7 +538,7 @@ const spawnPlayerBullet = (target: Point, playerId: number) => {
       playerEntity.id,
       playerEntity.teamId,
       '',
-      playerEntity.playerRule.bulletColor
+      bulletColor
     )
   );
   playerEntity.playerRule.fireCooldownNow=playerEntity.playerRule.fireCooldownMax;
@@ -765,6 +796,70 @@ const updateExpOrbDynamicEntities = (deltaTime: number): boolean => {
   return oldLength !== MAP_DATA.dynamicEntitie.expOrbDynamicEntitys.length;
 };
 
+/**
+ * 在指定位置爆出一个技能球
+ * @param position 掉落位置(通常为 NPC 死亡位置)
+ * @param skillTag 技能标签
+ */
+const spawnSkillOrb = (position: Point, skillTag: string): void => {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 10 + Math.random() * 26;
+  const orb = new SkillOrbDynamicEntity(
+    {
+      x: position.x + Math.cos(angle) * dist,
+      y: position.y + Math.sin(angle) * dist
+    },
+    skillTag
+  );
+  // 给一个随机的初始冲量,制造"爆出"的手感
+  const burstAngle = Math.random() * Math.PI * 2;
+  const burstSpeed = 50 + Math.random() * 90;
+  orb.motionVelocity = {
+    x: Math.cos(burstAngle) * burstSpeed,
+    y: Math.sin(burstAngle) * burstSpeed
+  };
+  MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys.push(orb);
+};
+
+/**
+ * 结算 NPC 死亡时的战利品掉落
+ * 依据 NPC 的 loot 配置逐条按概率掉落:
+ * - 目前仅支持 type === 'skillOrb',掉落一颗对应技能的技能球
+ * - 每个 NPC 只结算一次(deathLootProcessed)
+ * - 仅无主的敌对/中立 NPC 掉落,玩家自己的从者与超远端销毁的 NPC 不产出战利品
+ */
+const handleNpcDeathLoot = (): void => {
+  for (const npc of getNpcDynamicEntityList()) {
+    if (!npc.isDead) continue;
+    if (npc.deathLootProcessed) continue;
+    npc.deathLootProcessed = true;
+
+    if (npc.ownerId !== null) continue;// 玩家从者不产出战利品
+    if (!Array.isArray(npc.loot) || npc.loot.length === 0) continue;
+
+    for (const loot of npc.loot) {
+      if (loot.type !== 'skillOrb') continue;
+      const odds = Math.max(0, Math.min(1, Number(loot.odds)));
+      if (!(Math.random() < odds)) continue;
+      spawnSkillOrb(npc.position, loot.tag);
+    }
+  }
+};
+
+/**
+ * 更新技能球实体(移动、吸引、拾取)
+ * 技能球被拾取后由实体自身将技能授予玩家。
+ */
+const updateSkillOrbDynamicEntities = (deltaTime: number): boolean => {
+  if (MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys.length === 0) return false;
+  for (const orb of MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys) {
+    orb.update(deltaTime, MAP_DATA.staticEntities, MAP_DATA.dynamicEntitie, GCFG);
+  }
+  const oldLength = MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys.length;
+  MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys = MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys.filter(orb => !orb.isPickedUp);
+  return oldLength !== MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys.length;
+};
+
 
 const setRandomTargetForNpc = (entity: NpcDynamicEntity): boolean => {
 
@@ -1009,6 +1104,7 @@ const updateDynamicEntities = (deltaTime: number) => {
       entity.game_exp = 0;
       entity.health = 0;
       entity.triggerDeath();
+      entity.deathLootProcessed = true;// 超远端销毁不产出战利品
       resolvePlayerServantDead(entity);
       continue;
     }
@@ -1033,6 +1129,8 @@ const updateDynamicEntities = (deltaTime: number) => {
 
   // 先结算本帧死亡实体的经验掉落(部分实体如红像素自爆会立即完成死亡特效并可能被清理)
   handleEntityDeathExpOrbs();
+  // 再结算战利品掉落(必须在清理死亡实体之前,否则刚死亡的 NPC 会被移除导致掉落丢失)
+  handleNpcDeathLoot();
   removeFinishedDeadDynamicEntities();
   resolveDynamicEntityCollisions();
 
@@ -1333,7 +1431,9 @@ const updateGame = (deltaTime: number) => {
   updateBulletEntities(deltaTime);
   updateGrenadeEntities(deltaTime);
   handleEntityDeathExpOrbs();            // 结算死亡掉落经验球(须在清理死亡实体之前)
+  handleNpcDeathLoot();                   // 结算死亡战利品掉落(技能球)
   updateExpOrbDynamicEntities(deltaTime); // 更新经验球(移动/吸引/拾取)
+  updateSkillOrbDynamicEntities(deltaTime); // 更新技能球(移动/吸引/拾取)
   generateNpcAroundPlayerSingle(deltaTime);
   generateItemAroundPlayerSingle(deltaTime);
   removeFinishedDeadDynamicEntities();
@@ -1413,6 +1513,24 @@ const handleInstruct = (instruct: InstructObject) => {
         gamePaused = !gamePaused;  // 无参数时切换状态
       }
       console.log(`[Service] Game ${gamePaused ? 'paused' : 'resumed'}`);
+      break;
+    }
+
+    case 'inventory_update': {
+      // 客户端提交最新的背包状态(装配调整/卸下/销毁),以服务端玩家实体为准进行覆盖
+      const playerEntity = getPlayerDynamicEntityById(instruct.data.playerId as number);
+      if (playerEntity) {
+        playerEntity.applyInventoryState(instruct.data.inventory);
+      }
+      break;
+    }
+
+    case 'inventory_use_item': {
+      if (gamePaused) break;
+      const playerEntity = getPlayerDynamicEntityById(instruct.data.playerId as number);
+      if (playerEntity && !playerEntity.isDead) {
+        playerEntity.useInventoryItem(instruct.data.uid as string);
+      }
       break;
     }
 

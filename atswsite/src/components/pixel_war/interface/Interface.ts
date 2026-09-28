@@ -7,6 +7,7 @@ import type { GrenadeDynamicEntity } from '@/components/pixel_war/class/Entity/D
 import type { NpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 import type { PlayerDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 import type { ExpOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/ExpOrbDynamicEntity/ExpOrbDynamicEntity';
+import type { SkillOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/SkillOrbDynamicEntity/SkillOrbDynamicEntity';
 import type { DynamicEntity } from '../class';
 
 export interface Resolution { width: number; height: number }
@@ -204,6 +205,7 @@ export interface DynamicEntitieList {
   npcDynamicEntitys: Array<NpcDynamicEntity>;
   playerDynamicEntitys: Array<PlayerDynamicEntity>;
   expOrbDynamicEntitys: Array<ExpOrbDynamicEntity>;
+  skillOrbDynamicEntitys: Array<SkillOrbDynamicEntity>;
 }
 
 export interface MapData {
@@ -328,3 +330,79 @@ export interface PlayerRule {
   dodgeCooldownNow: number,
   dodgeCooldownMax: number,
 };
+
+//////////////////////////////////////////////////
+// 战利品与背包相关类型(背包 / 技能球 / 物品) -->
+//////////////////////////////////////////////////
+
+/** 战利品类型:目前仅支持技能球,预留后续扩展(如物品球、金币等) */
+export type LootType = 'skillOrb';
+
+/** NPC 战利品配置 */
+export interface NpcLoot {
+  /** 战利品类型 */
+  type: LootType;
+  /** 战利品标签(技能球对应技能 tag,如 va2_shoot_skill) */
+  tag: string;
+  /** 掉落概率,取值范围 (0, 1] */
+  odds: number;
+}
+
+/** 背包条目种类:技能 / 物品 */
+export type InventoryEntryKind = 'skill' | 'item';
+
+/**
+ * 背包中的一个条目
+ * - 技能不可堆叠(count 恒为 1,maxStack 恒为 1)
+ * - 物品可堆叠,单格上限为 INVENTORY_ITEM_MAX_STACK(50)
+ */
+export interface InventoryEntry {
+  /** 条目唯一 id(拖拽/使用/销毁时作为定位依据) */
+  uid: string;
+  /** 条目种类 */
+  kind: InventoryEntryKind;
+  /** 标签:技能 tag 或物品 tag */
+  tag: string;
+  /** 显示名称 */
+  name: string;
+  /** 持有数量(技能恒为 1) */
+  count: number;
+  /** 堆叠上限(技能恒为 1,物品为 50) */
+  maxStack: number;
+  /** 主题色(用于背包与技能槽绘制) */
+  color: string;
+}
+
+/** 玩家背包:上半部分为持有物网格,下半部分为技能装配区 */
+export interface PlayerInventory {
+  /**
+   * 背包网格(固定长度,元素为 null 表示空格)
+   * 下标与背包界面槽位一一对应,便于拖拽/点击精确落到指定格子。
+   * 已装配的技能不在此网格中。
+   */
+  entries: (InventoryEntry | null)[];
+  /** 技能装配区(10 个槽位,存放技能 tag,null 表示空槽) */
+  equippedSkills: (string | null)[];
+}
+
+/** 物品定义(名称/说明/堆叠上限/使用效果) */
+export interface ItemDefinition {
+  /** 物品标签 */
+  tag: string;
+  /** 显示名称 */
+  name: string;
+  /** 功能说明 */
+  description: string;
+  /** 主题色 */
+  color: string;
+  /** 图标类型 */
+  icon: 'gem' | 'square';
+  /** 使用后恢复的生命值(0 表示无治疗效果) */
+  heal: number;
+  /** 单格堆叠上限 */
+  maxStack: number;
+}
+
+//////////////////////////////////////////////////
+// <-- 战利品与背包相关类型
+//////////////////////////////////////////////////

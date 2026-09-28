@@ -1,4 +1,5 @@
 import { WhitePixelEntity,OrdinaryBulletDynamicEntity,StaticEntity } from "@/components/pixel_war/class";
+import { Va2ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Va2ShootSkill/Va2ShootSkill';
 import type { Point, DynamicEntitieList, GameConfig, ActionLoopContext } from "@/components/pixel_war/interface/Interface";
 
 /**
@@ -27,6 +28,10 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
     this.isMoving = true;
     this.kill_score = 2; // 击杀该NPC获得的分数
     this.mapColor = '#dfdfdf'; // 地图上的颜色表示
+    // 战利品:击杀后 40% 概率掉落其持有的"斜向双弹"技能球
+    this.loot = [
+      { type: 'skillOrb', tag: Va2ShootSkill.TAG, odds: 0.4 }
+    ];
   }
 
   /**

@@ -21,6 +21,8 @@ import type {
   InstructObject,
   StarFieldStar,
   Tick,
+  PlayerInventory,
+  InventoryEntry
 } from '@/components/pixel_war/interface/Interface';
 
 import {
@@ -49,7 +51,26 @@ import {
   LaserBulletDynamicEntity,
   OrdinaryBulletDynamicEntity,
   GrenadeDynamicEntity,
-  ExpOrbDynamicEntity
+  ExpOrbDynamicEntity,
+  SkillOrbDynamicEntity,
+  Va2ShootSkill,
+  INVENTORY_SKILL_SLOT_COUNT,
+  INVENTORY_ITEM_MAX_STACK,
+  INVENTORY_BAG_CAPACITY,
+  H_inventoryGetEntryAtSlot,
+  H_inventoryUsedSlotCount,
+  H_inventoryEquipSkill,
+  H_inventoryAutoEquipSkill,
+  H_inventoryUnequipSkill,
+  H_inventoryUnequipSkillToSlot,
+  H_inventoryMoveSkillSlot,
+  H_inventoryMoveEntry,
+  H_inventoryDestroyEntry,
+  H_inventoryDestroyEquipped,
+  H_ensurePlayerInventory,
+  H_getSkillByTag,
+  H_getItemDefinition,
+  H_getAllSkills
 } from '@/components/pixel_war/class';
 
 // 底部状态栏技能信息类型
@@ -61,6 +82,10 @@ type BottomStatusSkill = {
   cooldownNow: number;
   cooldownMax: number;
   active?: boolean;
+  // 图标形状:未指定时按 key 推断(固定功能键);技能装配区的技能使用 'dual_arrow' / 'hexagon'
+  icon?: 'dual_arrow' | 'hexagon';
+  // 是否为已装配技能(来自技能装配区)
+  equipped?: boolean;
 };
 
 // 实体插值状态Map，key为实体ID，value为插值状态
@@ -232,11 +257,13 @@ const applyMapDataSnapshot = (mapData: MapData) => {
   grenadeEntityList = hydrateList(mapData.dynamicEntitie.grenadeDynamicEntitys) as GrenadeDynamicEntity[];
   bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
   expOrbEntityList = hydrateList(mapData.dynamicEntitie.expOrbDynamicEntitys) as ExpOrbDynamicEntity[];
+  skillOrbEntityList = hydrateList(mapData.dynamicEntitie.skillOrbDynamicEntitys ?? []) as SkillOrbDynamicEntity[];
 
   // 2. 生成数值浮层 (NPC + 玩家)
   generateFloatingNumbersFromHealthChange(npcEntityList, oldHealthMap);
   if (playerEntity) {
     generateFloatingNumbersFromHealthChange([playerEntity], oldHealthMap);
+    H_notifyNewlyAcquiredSkills();
   }
 
   // 3. 更新健康快照Map
@@ -284,11 +311,13 @@ const applyDynamicMapDataSnapshot = (mapData: MapData) => {
   grenadeEntityList = hydrateList(mapData.dynamicEntitie.grenadeDynamicEntitys) as GrenadeDynamicEntity[];
   bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
   expOrbEntityList = hydrateList(mapData.dynamicEntitie.expOrbDynamicEntitys) as ExpOrbDynamicEntity[];
+  skillOrbEntityList = hydrateList(mapData.dynamicEntitie.skillOrbDynamicEntitys ?? []) as SkillOrbDynamicEntity[];
 
   // 2. 生成数值浮层 (NPC + 玩家)
   generateFloatingNumbersFromHealthChange(npcEntityList, oldHealthMap);
   if (playerEntity) {
     generateFloatingNumbersFromHealthChange([playerEntity], oldHealthMap);
+    H_notifyNewlyAcquiredSkills();
   }
 
   // 3. 更新健康快照Map
@@ -458,7 +487,20 @@ let bulletEntityList: BulletDynamicEntity[] = [];           // 子弹动态实�
 let grenadeEntityList: GrenadeDynamicEntity[] = [];
 let itemEntityList: ItemEntity[] = [];                      // 物品实体列表
 let expOrbEntityList: ExpOrbDynamicEntity[] = [];           // 经验球实体列表
+let skillOrbEntityList: SkillOrbDynamicEntity[] = [];       // 技能球实体列表
 let playerEntity: PlayerDynamicEntity | null = null;
+
+// 背包界面状态
+let inventoryVisible = false;                               // 背包界面是否打开
+let inventoryDragPayload: InventoryDragPayload | null = null; // 当前拖拽中的条目
+let inventoryPointerX = 0;                                  // 拖拽/悬停指针位置(canvas 坐标)
+let inventoryPointerY = 0;
+let inventoryDragStartX = 0;                                // 拖拽起点(判断是"点击"还是"拖拽")
+let inventoryDragStartY = 0;
+let inventoryHoverTarget: InventorySlotTarget = null;       // 当前悬停/拖拽目标格
+let inventoryTooltipEntry: InventoryEntry | null = null;    // 需要显示浮窗的条目
+let inventoryTooltipSkillTag: string = '';                  // 需要显示浮窗的技能标签
+let prevOwnedSkillTags: Set<string> = new Set<string>();    // 上一帧玩家持有的技能(用于获得提示)
 
 // 底部状态栏动画状态
 let bottomStatusHealthRatio = 1;
@@ -641,9 +683,9 @@ const H_rgbToCss = (color: RGB, alpha = 1) => {
 };
 
 const H_getBottomStatusHealthColor = (healthRatio: number): RGB => {
-  if (healthRatio > 0.5) return { r: 40, g: 255, b: 143 };
-  if (healthRatio > 0.2) return { r: 255, g: 159, b: 51 };
-  return { r: 140, g: 24, b: 38 };
+  if (healthRatio > 0.5) return { r: 40, g: 255, b: 143 };  // 霓虹绿
+  if (healthRatio > 0.2) return { r: 255, g: 176, b: 58 };  // 琥珀
+  return { r: 255, g: 59, b: 92 };                          // 霓虹红
 };
 
 // 获取实体插值位置的辅助函数
@@ -812,6 +854,9 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
   else if(kind === 'exp_orb'){
     return new ExpOrbDynamicEntity(snapshot.position, snapshot.value);
   }
+  else if(kind === 'skill_orb'){
+    return new SkillOrbDynamicEntity(snapshot.position, snapshot.skillTag);
+  }
   else{//grenade
     const grenadeTag = snapshot.tag;
     switch (grenadeTag){
@@ -911,6 +956,8 @@ const startSetting = () => {
     UI_CANVAS.value.addEventListener('mouseleave', onMouseUp); // 鼠标离开画布时取消拖动
     UI_CANVAS.value.addEventListener('click', onCanvasClick);
     UI_CANVAS.value.addEventListener('dblclick', onCanvasDoubleClick);
+    // 右键用于背包快捷操作,屏蔽画布默认右键菜单
+    UI_CANVAS.value.addEventListener('contextmenu', onCanvasContextMenu);
     UI_CANVAS.value.addEventListener('wheel', onCanvasWheel, { passive: false });
     UI_CANVAS.value.addEventListener('mouseleave', onWindowMouseLeave);
     UI_CANVAS.value.addEventListener('mouseenter', onWindowMouseEnter);
@@ -1007,6 +1054,96 @@ const createRoundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w:
   ctx.quadraticCurveTo(x, y + h, x, y + h - r);
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
+};
+
+/**
+ * 绘制切角矩形路径(机械未来风格 HUD 面板,四个角斜切)
+ * @param corners 指定需要斜切的角,默认四角全切
+ */
+const createChamferRect = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  cut: number,
+  corners: { tl?: boolean; tr?: boolean; br?: boolean; bl?: boolean } = {}
+) => {
+  const { tl = true, tr = true, br = true, bl = true } = corners;
+  const c = Math.max(0, Math.min(cut, Math.min(w, h) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + (tl ? c : 0), y);
+  ctx.lineTo(x + w - (tr ? c : 0), y);
+  if (tr) ctx.lineTo(x + w, y + c);
+  ctx.lineTo(x + w, y + h - (br ? c : 0));
+  if (br) ctx.lineTo(x + w - c, y + h);
+  ctx.lineTo(x + (bl ? c : 0), y + h);
+  if (bl) ctx.lineTo(x, y + h - c);
+  ctx.lineTo(x, y + (tl ? c : 0));
+  if (tl) ctx.lineTo(x + c, y);
+  ctx.closePath();
+};
+
+/**
+ * 绘制 HUD 四角机械支架(带霓虹发光)
+ */
+const drawHudCornerBrackets = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  size: number,
+  color: string
+) => {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1.5, size * 0.11);
+  ctx.lineCap = 'square';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10;
+  const arm = size * 0.72;
+  const inset = arm * 0.16;
+  const corners: [number, number, number, number][] = [
+    [x, y, 1, 1],
+    [x + w, y, -1, 1],
+    [x + w, y + h, -1, -1],
+    [x, y + h, 1, -1]
+  ];
+  for (const [cx, cy, sx, sy] of corners) {
+    ctx.beginPath();
+    ctx.moveTo(cx + sx * inset, cy + sy * arm);
+    ctx.lineTo(cx + sx * inset, cy + sy * inset);
+    ctx.lineTo(cx + sx * arm, cy + sy * inset);
+    ctx.stroke();
+  }
+  ctx.restore();
+};
+
+/**
+ * 绘制斜向条纹理(机械质感填充,调用前需自行裁剪到目标形状)
+ */
+const drawSlantedStripes = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  step: number,
+  color: string
+) => {
+  if (w <= 0 || h <= 0) return;
+  const gap = Math.max(4, step);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1, gap * 0.14);
+  ctx.beginPath();
+  for (let sx = x - h; sx < x + w + h; sx += gap) {
+    ctx.moveTo(sx, y + h);
+    ctx.lineTo(sx + h, y);
+  }
+  ctx.stroke();
+  ctx.restore();
 };
 
 /**
@@ -1669,143 +1806,337 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   const skillRowH = panelHeight * 4 / 9;
   const padding = Math.max(8, panelWidth * 0.02);
 
-  CtxUi.save();
+  // 机械切角尺寸与主题常量
+  const cut = Math.max(6, panelHeight * 0.085);
+  const accent = 'rgba(0, 229, 255, 1)';
 
-  // 面板背景(浅色主题)
-  CtxUi.fillStyle = 'rgba(255, 255, 255, 0.92)';
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, x, y, panelWidth, panelHeight, 6);
+  CtxUi.save();
+  CtxUi.textAlign = 'left';
+  CtxUi.textBaseline = 'middle';
+
+  // ---- 面板主体:半透明玻璃底板(保留后方游戏画面可见) ----
+  createChamferRect(CtxUi, x, y, panelWidth, panelHeight, cut);
+  const panelGrad = CtxUi.createLinearGradient(x, y, x, y + panelHeight);
+  panelGrad.addColorStop(0, 'rgba(14, 40, 60, 0.60)');
+  panelGrad.addColorStop(0.45, 'rgba(7, 22, 34, 0.42)');
+  panelGrad.addColorStop(1, 'rgba(3, 10, 18, 0.26)');
+  CtxUi.fillStyle = panelGrad;
   CtxUi.fill();
-  CtxUi.strokeStyle = 'rgba(147, 210, 243, 1)'; // 浅蓝边框
-  CtxUi.lineWidth = 1.5;
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, x + 0.75, y + 0.75, panelWidth - 1.5, panelHeight - 1.5, 6);
+
+  // 玻璃高光 + 扫描线纹理 + 移动光带(全部裁剪在面板内)
+  CtxUi.save();
+  createChamferRect(CtxUi, x, y, panelWidth, panelHeight, cut);
+  CtxUi.clip();
+
+  const sheen = CtxUi.createLinearGradient(x, y, x + panelWidth * 0.55, y + panelHeight);
+  sheen.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
+  sheen.addColorStop(0.35, 'rgba(255, 255, 255, 0.02)');
+  sheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  CtxUi.fillStyle = sheen;
+  CtxUi.fillRect(x, y, panelWidth, panelHeight);
+
+  CtxUi.fillStyle = 'rgba(120, 235, 255, 0.05)';
+  const scanStep = Math.max(3, panelHeight / 36);
+  for (let ly = y + scanStep; ly < y + panelHeight; ly += scanStep) {
+    CtxUi.fillRect(x, Math.round(ly), panelWidth, 1);
+  }
+
+  const sweepH = panelHeight * 0.16;
+  const sweepY = y + ((time * 0.35) % 1) * (panelHeight + sweepH) - sweepH;
+  const sweepGrad = CtxUi.createLinearGradient(0, sweepY, 0, sweepY + sweepH);
+  sweepGrad.addColorStop(0, 'rgba(0, 229, 255, 0)');
+  sweepGrad.addColorStop(0.5, 'rgba(0, 229, 255, 0.10)');
+  sweepGrad.addColorStop(1, 'rgba(0, 229, 255, 0)');
+  CtxUi.fillStyle = sweepGrad;
+  CtxUi.fillRect(x, sweepY, panelWidth, sweepH);
+  CtxUi.restore();
+
+  // ---- 霓虹边框(外发光) + 内侧细线 ----
+  CtxUi.save();
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.5)';
+  CtxUi.shadowBlur = 12;
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.85)';
+  CtxUi.lineWidth = 1.6;
+  createChamferRect(CtxUi, x + 0.8, y + 0.8, panelWidth - 1.6, panelHeight - 1.6, cut);
+  CtxUi.stroke();
+  CtxUi.restore();
+
+  CtxUi.strokeStyle = 'rgba(150, 245, 255, 0.25)';
+  CtxUi.lineWidth = 1;
+  createChamferRect(CtxUi, x + 3.5, y + 3.5, panelWidth - 7, panelHeight - 7, Math.max(2, cut - 2));
   CtxUi.stroke();
 
-  // ---- 第1行: 玩家名称 + 分数(左) / 等级(右) ----
-  const levelBoxW = Math.max(46, panelWidth * 0.19);
-  const levelBoxH = levelRowH * 0.72;
+  // ---- 顶边能量刻度(随时间流动点亮) ----
+  const tickCount = Math.max(8, Math.round(panelWidth / 26));
+  const tickSpan = (panelWidth - cut * 2) / tickCount;
+  const flowIndex = Math.floor(time * 8) % tickCount;
+  for (let i = 0; i < tickCount; i++) {
+    const on = i === flowIndex;
+    CtxUi.strokeStyle = on ? 'rgba(200, 255, 255, 0.95)' : 'rgba(0, 229, 255, 0.22)';
+    CtxUi.lineWidth = on ? 2 : 1;
+    CtxUi.beginPath();
+    CtxUi.moveTo(x + cut + i * tickSpan + 2, y + 1);
+    CtxUi.lineTo(x + cut + i * tickSpan + 2, y + (on ? 8 : 4));
+    CtxUi.stroke();
+  }
+
+  // ---- 四角机械支架 ----
+  drawHudCornerBrackets(CtxUi, x, y, panelWidth, panelHeight, Math.max(10, panelHeight * 0.15), 'rgba(0, 229, 255, 0.9)');
+
+  // ---- 第1行: 玩家名称 + 分数(左) / 等级徽章(右) ----
+  const levelBoxW = Math.max(52, panelWidth * 0.18);
+  const levelBoxH = levelRowH * 0.76;
   const levelBoxX = x + panelWidth - padding - levelBoxW;
   const levelBoxY = y + (levelRowH - levelBoxH) / 2;
+  const lvCut = levelBoxH * 0.34;
 
-  CtxUi.fillStyle = 'rgba(255, 255, 255, 0.9)';
-  CtxUi.strokeStyle = 'rgba(129, 179, 55, 1)'; // 橄榄绿边框
-  CtxUi.lineWidth = 1.5;
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, levelBoxX, levelBoxY, levelBoxW, levelBoxH, 4);
+  CtxUi.save();
+  createChamferRect(CtxUi, levelBoxX, levelBoxY, levelBoxW, levelBoxH, lvCut);
+  const lvGrad = CtxUi.createLinearGradient(levelBoxX, levelBoxY, levelBoxX, levelBoxY + levelBoxH);
+  lvGrad.addColorStop(0, 'rgba(0, 229, 255, 0.22)');
+  lvGrad.addColorStop(1, 'rgba(0, 229, 255, 0.04)');
+  CtxUi.fillStyle = lvGrad;
   CtxUi.fill();
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.6)';
+  CtxUi.shadowBlur = 10;
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.9)';
+  CtxUi.lineWidth = 1.5;
+  createChamferRect(CtxUi, levelBoxX + 0.75, levelBoxY + 0.75, levelBoxW - 1.5, levelBoxH - 1.5, lvCut);
   CtxUi.stroke();
-  CtxUi.fillStyle = '#3f5a1c';
-  CtxUi.font = `bold ${Math.max(12, levelBoxH * 0.55)}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.restore();
+
+  CtxUi.fillStyle = '#dcfeff';
+  CtxUi.font = `bold ${Math.max(12, levelBoxH * 0.52)}px Consolas, "Courier New", monospace`;
   CtxUi.textAlign = 'center';
   CtxUi.textBaseline = 'middle';
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.85)';
+  CtxUi.shadowBlur = 8;
   CtxUi.fillText(`LV ${playerEntity?.game_level ?? 0}`, levelBoxX + levelBoxW / 2, levelBoxY + levelBoxH / 2 + 0.5);
+  CtxUi.shadowBlur = 0;
 
   // 名称与分数
   const nameX = x + padding;
   const nameY = y + levelRowH / 2;
-  CtxUi.textAlign = 'left';
-  CtxUi.textBaseline = 'middle';
-  CtxUi.font = `bold ${Math.max(12, levelRowH * 0.5)}px "Microsoft YaHei", Arial, sans-serif`;
-  CtxUi.fillStyle = '#2b3a47';
-  const nameText = playerEntity?.name || 'Player';
-  CtxUi.fillText(nameText, nameX, nameY);
-  const nameW = CtxUi.measureText(nameText).width;
-  CtxUi.font = `${Math.max(10, levelRowH * 0.38)}px Consolas, "Courier New", monospace`;
-  CtxUi.fillStyle = '#7a8a96';
-  CtxUi.fillText(`SCORE ${Math.floor(playerEntity?.player_score ?? 0)}`, nameX + nameW + 10, nameY);
+  const markerSize = Math.max(4, levelRowH * 0.15);
+  CtxUi.fillStyle = accent;
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.9)';
+  CtxUi.shadowBlur = 8;
+  CtxUi.beginPath();
+  CtxUi.moveTo(nameX, nameY);
+  CtxUi.lineTo(nameX + markerSize, nameY - markerSize * 1.15);
+  CtxUi.lineTo(nameX + markerSize * 2, nameY);
+  CtxUi.lineTo(nameX + markerSize, nameY + markerSize * 1.15);
+  CtxUi.closePath();
+  CtxUi.fill();
 
-  // ---- 第2行: 绿色经验条(当前等级到下一等级的升级进度) ----
+  const nameText = playerEntity?.name || 'Player';
+  const nameTextX = nameX + markerSize * 2 + 8;
+  CtxUi.textAlign = 'left';
+  CtxUi.font = `bold ${Math.max(12, levelRowH * 0.5)}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.fillStyle = '#eafdff';
+  CtxUi.fillText(nameText, nameTextX, nameY);
+  CtxUi.shadowBlur = 0;
+  const nameW = CtxUi.measureText(nameText).width;
+  CtxUi.font = `${Math.max(10, levelRowH * 0.36)}px Consolas, "Courier New", monospace`;
+  CtxUi.fillStyle = 'rgba(122, 214, 240, 0.9)';
+  CtxUi.fillText(
+    `SCORE ${String(Math.floor(playerEntity?.player_score ?? 0)).padStart(5, '0')}`,
+    nameTextX + nameW + 12,
+    nameY + 1
+  );
+
+  // ---- 第2行: 经验能量条(当前等级到下一等级的升级进度) ----
   const expBarX = x + padding;
   const expBarW = panelWidth - padding * 2;
-  const expBarH = Math.min(expRowH * 0.7, 14);
+  const expBarH = Math.min(expRowH * 0.66, 14);
   const expBarY = y + levelRowH + (expRowH - expBarH) / 2;
+  const expCut = Math.max(2, expBarH * 0.42);
 
   const gameLevel = playerEntity?.game_level ?? 0;
   const gameExp = playerEntity?.game_exp ?? 0;
   const expNeed = PlayerDynamicEntity.getExpToNextLevel(gameLevel);
   const expRatio = H_clamp(gameExp / expNeed, 0, 1);
 
-  CtxUi.fillStyle = 'rgba(245, 250, 240, 0.95)';
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, expBarX, expBarY, expBarW, expBarH, 4);
+  // 轨道
+  createChamferRect(CtxUi, expBarX, expBarY, expBarW, expBarH, expCut);
+  CtxUi.fillStyle = 'rgba(6, 20, 32, 0.72)';
   CtxUi.fill();
-  CtxUi.fillStyle = 'rgba(162, 239, 77, 0.9)';
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, expBarX, expBarY, expBarW * expRatio, expBarH, 4);
-  CtxUi.fill();
-  CtxUi.strokeStyle = 'rgba(162, 239, 77, 1)'; // 绿色边框
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.35)';
   CtxUi.lineWidth = 1;
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, expBarX + 0.5, expBarY + 0.5, expBarW - 1, expBarH - 1, 4);
+  createChamferRect(CtxUi, expBarX + 0.5, expBarY + 0.5, expBarW - 1, expBarH - 1, expCut);
   CtxUi.stroke();
-  CtxUi.fillStyle = '#4a5f26';
-  CtxUi.font = `${Math.max(9, expBarH * 0.8)}px Consolas, "Courier New", monospace`;
+
+  // 填充(青色 -> 荧光绿渐变 + 发光 + 斜纹 + 能量前沿)
+  if (expRatio > 0) {
+    CtxUi.save();
+    createChamferRect(CtxUi, expBarX, expBarY, expBarW, expBarH, expCut);
+    CtxUi.clip();
+    const expFillW = Math.max(expCut, expBarW * expRatio);
+    const expGrad = CtxUi.createLinearGradient(expBarX, expBarY, expBarX + expFillW, expBarY);
+    expGrad.addColorStop(0, 'rgba(0, 229, 255, 0.92)');
+    expGrad.addColorStop(1, 'rgba(90, 255, 195, 0.95)');
+    CtxUi.shadowColor = 'rgba(0, 229, 255, 0.85)';
+    CtxUi.shadowBlur = 10;
+    CtxUi.fillStyle = expGrad;
+    CtxUi.fillRect(expBarX, expBarY, expFillW, expBarH);
+    CtxUi.shadowBlur = 0;
+    drawSlantedStripes(CtxUi, expBarX, expBarY, expFillW, expBarH, expBarH * 1.3, 'rgba(224, 255, 255, 0.22)');
+    const expEdge = expBarX + expFillW;
+    CtxUi.fillStyle = 'rgba(224, 255, 255, 0.95)';
+    CtxUi.fillRect(expEdge - 1.5, expBarY, 2.5, expBarH);
+    CtxUi.restore();
+  }
+
+  // 分段刻度
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.16)';
+  CtxUi.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const tx = expBarX + (expBarW / 4) * i;
+    CtxUi.beginPath();
+    CtxUi.moveTo(tx, expBarY + 2);
+    CtxUi.lineTo(tx, expBarY + expBarH - 2);
+    CtxUi.stroke();
+  }
+
+  // 文本(暗色描边 + 霓虹白字)
+  const expText = `EXP ${Math.floor(gameExp)} / ${Math.floor(expNeed)}`;
+  CtxUi.font = `bold ${Math.max(9, expBarH * 0.7)}px Consolas, "Courier New", monospace`;
   CtxUi.textAlign = 'center';
   CtxUi.textBaseline = 'middle';
-  CtxUi.fillText(`EXP ${Math.floor(gameExp)} / ${Math.floor(expNeed)}`, expBarX + expBarW / 2, expBarY + expBarH / 2 + 0.5);
+  CtxUi.fillStyle = 'rgba(0, 30, 40, 0.85)';
+  CtxUi.fillText(expText, expBarX + expBarW / 2 + 1, expBarY + expBarH / 2 + 1.5);
+  CtxUi.fillStyle = '#eafdff';
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.8)';
+  CtxUi.shadowBlur = 6;
+  CtxUi.fillText(expText, expBarX + expBarW / 2, expBarY + expBarH / 2 + 0.5);
+  CtxUi.shadowBlur = 0;
 
-  // ---- 第3行: 血条(左,青色边框) + 体力条(右,琥珀色边框) ----
+  // ---- 第3行: 生命条(左,青色霓虹) + 体力条(右,琥珀霓虹) ----
   const barY = y + levelRowH + expRowH;
-  const barH = barRowH * 0.62;
+  const barH = barRowH * 0.6;
   const barYCenter = barY + (barRowH - barH) / 2;
   const barGap = Math.max(6, panelWidth * 0.015);
   const halfBarW = (panelWidth - padding * 2 - barGap) / 2;
+  const barCut = Math.max(2, barH * 0.4);
 
-  // 血条
-  const hpX = x + padding;
-  CtxUi.fillStyle = 'rgba(240, 247, 250, 0.95)';
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, hpX, barYCenter, halfBarW, barH, 4);
-  CtxUi.fill();
-  CtxUi.fillStyle = 'rgba(255, 75, 88, 0.5)';
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, hpX, barYCenter, halfBarW * H_clamp(bottomStatusDamageRatio, 0, 1), barH, 4);
-  CtxUi.fill();
-  CtxUi.fillStyle = H_rgbToCss(bottomStatusHealthColor, 0.95);
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, hpX, barYCenter, halfBarW * H_clamp(bottomStatusHealthRatio, 0, 1), barH, 4);
-  CtxUi.fill();
-  if (bottomStatusDamageFlash > 0) {
-    CtxUi.fillStyle = `rgba(255, 255, 255, ${bottomStatusDamageFlash * 0.35})`;
-    CtxUi.beginPath();
-    createRoundRect(CtxUi, hpX - 1, barYCenter - 1, halfBarW + 2, barH + 2, 5);
+  // 能量条轨道
+  const drawBarTrack = (bx: number, borderColor: string) => {
+    createChamferRect(CtxUi, bx, barYCenter, halfBarW, barH, barCut);
+    CtxUi.fillStyle = 'rgba(6, 18, 28, 0.78)';
     CtxUi.fill();
+    CtxUi.strokeStyle = borderColor;
+    CtxUi.lineWidth = 1.2;
+    createChamferRect(CtxUi, bx + 0.6, barYCenter + 0.6, halfBarW - 1.2, barH - 1.2, barCut);
+    CtxUi.stroke();
+  };
+
+  // 能量条分段刻度
+  const drawBarTicks = (bx: number) => {
+    CtxUi.save();
+    CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.16)';
+    CtxUi.lineWidth = 1;
+    for (let i = 1; i < 5; i++) {
+      const tx = bx + (halfBarW / 5) * i;
+      CtxUi.beginPath();
+      CtxUi.moveTo(tx, barYCenter + 2);
+      CtxUi.lineTo(tx, barYCenter + barH - 2);
+      CtxUi.stroke();
+    }
+    CtxUi.restore();
+  };
+
+  // 能量条标签(标签色 + 数值白)
+  const drawBarLabel = (bx: number, label: string, value: string, labelColor: string) => {
+    CtxUi.save();
+    CtxUi.font = `bold ${Math.max(9, barH * 0.56)}px Consolas, "Courier New", monospace`;
+    CtxUi.textBaseline = 'middle';
+    const gap = Math.max(4, barH * 0.4);
+    const totalW = CtxUi.measureText(label).width + gap + CtxUi.measureText(value).width;
+    let tx = bx + (halfBarW - totalW) / 2;
+    const ty = barYCenter + barH / 2 + 0.5;
+    CtxUi.textAlign = 'left';
+    CtxUi.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    CtxUi.shadowBlur = 4;
+    CtxUi.fillStyle = labelColor;
+    CtxUi.fillText(label, tx, ty);
+    tx += CtxUi.measureText(label).width + gap;
+    CtxUi.fillStyle = '#f2feff';
+    CtxUi.fillText(value, tx, ty);
+    CtxUi.restore();
+  };
+
+  // 生命条
+  const hpX = x + padding;
+  const hpRatio = H_clamp(bottomStatusHealthRatio, 0, 1);
+  const damageRatio = H_clamp(bottomStatusDamageRatio, 0, 1);
+  const lowHealth = hpRatio < 0.3 && !playerDead;
+  const lowPulse = 0.5 + 0.5 * Math.sin(time * 7);
+
+  drawBarTrack(hpX, `rgba(25, 204, 228, ${lowHealth ? 0.55 + lowPulse * 0.45 : 0.6})`);
+
+  CtxUi.save();
+  createChamferRect(CtxUi, hpX, barYCenter, halfBarW, barH, barCut);
+  CtxUi.clip();
+  // 掉血残影
+  if (damageRatio > hpRatio) {
+    CtxUi.fillStyle = 'rgba(255, 59, 92, 0.45)';
+    CtxUi.fillRect(hpX, barYCenter, halfBarW * damageRatio, barH);
   }
-  CtxUi.strokeStyle = 'rgba(25, 204, 228, 1)'; // 青色边框(血条)
-  CtxUi.lineWidth = 1.5;
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, hpX + 0.75, barYCenter + 0.75, halfBarW - 1.5, barH - 1.5, 4);
-  CtxUi.stroke();
-  CtxUi.fillStyle = '#0f5c6b';
-  CtxUi.font = `bold ${Math.max(9, barH * 0.6)}px Consolas, "Courier New", monospace`;
-  CtxUi.textAlign = 'center';
-  CtxUi.textBaseline = 'middle';
-  CtxUi.fillText(`HP ${Math.ceil(currentHealth)} / ${Math.ceil(healthMax)}`, hpX + halfBarW / 2, barYCenter + barH / 2 + 0.5);
+  // 主填充(发光 + 斜纹 + 能量前沿)
+  const hpFillW = halfBarW * hpRatio;
+  if (hpFillW > 0) {
+    CtxUi.shadowColor = H_rgbToCss(bottomStatusHealthColor, 0.9);
+    CtxUi.shadowBlur = 12;
+    CtxUi.fillStyle = H_rgbToCss(bottomStatusHealthColor, 0.95);
+    CtxUi.fillRect(hpX, barYCenter, hpFillW, barH);
+    CtxUi.shadowBlur = 0;
+    drawSlantedStripes(CtxUi, hpX, barYCenter, hpFillW, barH, barH * 1.2, 'rgba(3, 18, 26, 0.30)');
+    CtxUi.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    CtxUi.fillRect(hpX + hpFillW - 1.5, barYCenter, 2.5, barH);
+  }
+  // 低血量警告脉冲
+  if (lowHealth) {
+    CtxUi.fillStyle = `rgba(255, 59, 92, ${0.08 + lowPulse * 0.18})`;
+    CtxUi.fillRect(hpX, barYCenter, halfBarW, barH);
+  }
+  // 受击闪白
+  if (bottomStatusDamageFlash > 0) {
+    CtxUi.fillStyle = `rgba(255, 255, 255, ${bottomStatusDamageFlash * 0.4})`;
+    CtxUi.fillRect(hpX, barYCenter, halfBarW, barH);
+  }
+  CtxUi.restore();
+
+  drawBarTicks(hpX);
+  drawBarLabel(hpX, 'HP', `${Math.ceil(currentHealth)} / ${Math.ceil(healthMax)}`, 'rgba(0, 229, 255, 0.95)');
 
   // 体力条
   const staminaMax = Math.max(1, playerEntity?.staminaMax ?? 100);
   const currentStamina = playerDead ? 0 : Math.max(0, playerEntity?.stamina ?? 0);
   const staminaRatio = playerDead ? 0 : H_clamp(currentStamina / staminaMax, 0, 1);
   const staminaX = hpX + halfBarW + barGap;
-  CtxUi.fillStyle = 'rgba(252, 248, 235, 0.95)';
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, staminaX, barYCenter, halfBarW, barH, 4);
-  CtxUi.fill();
-  CtxUi.fillStyle = playerEntity?.isSprinting ? 'rgba(255, 190, 60, 0.95)' : 'rgba(248, 198, 69, 0.85)';
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, staminaX, barYCenter, halfBarW * staminaRatio, barH, 4);
-  CtxUi.fill();
-  CtxUi.strokeStyle = 'rgba(248, 198, 69, 1)'; // 琥珀色边框(体力条)
-  CtxUi.lineWidth = 1.5;
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, staminaX + 0.75, barYCenter + 0.75, halfBarW - 1.5, barH - 1.5, 4);
-  CtxUi.stroke();
-  CtxUi.fillStyle = '#7a5a1a';
-  CtxUi.font = `bold ${Math.max(9, barH * 0.6)}px Consolas, "Courier New", monospace`;
-  CtxUi.textAlign = 'center';
-  CtxUi.textBaseline = 'middle';
-  CtxUi.fillText(`SP ${Math.ceil(currentStamina)} / ${Math.ceil(staminaMax)}`, staminaX + halfBarW / 2, barYCenter + barH / 2 + 0.5);
+  const sprinting = playerEntity?.isSprinting ?? false;
+  const staminaBorder = sprinting ? 'rgba(255, 190, 60, 0.95)' : 'rgba(248, 198, 69, 0.7)';
+
+  drawBarTrack(staminaX, staminaBorder);
+
+  CtxUi.save();
+  createChamferRect(CtxUi, staminaX, barYCenter, halfBarW, barH, barCut);
+  CtxUi.clip();
+  const staminaFillW = halfBarW * staminaRatio;
+  if (staminaFillW > 0) {
+    CtxUi.shadowColor = 'rgba(255, 190, 60, 0.85)';
+    CtxUi.shadowBlur = 12;
+    CtxUi.fillStyle = sprinting ? 'rgba(255, 196, 76, 0.98)' : 'rgba(248, 198, 69, 0.9)';
+    CtxUi.fillRect(staminaX, barYCenter, staminaFillW, barH);
+    CtxUi.shadowBlur = 0;
+    drawSlantedStripes(CtxUi, staminaX, barYCenter, staminaFillW, barH, barH * 1.2, 'rgba(40, 24, 2, 0.25)');
+    CtxUi.fillStyle = 'rgba(255, 250, 228, 0.9)';
+    CtxUi.fillRect(staminaX + staminaFillW - 1.5, barYCenter, 2.5, barH);
+  }
+  CtxUi.restore();
+
+  drawBarTicks(staminaX);
+  drawBarLabel(staminaX, 'SP', `${Math.ceil(currentStamina)} / ${Math.ceil(staminaMax)}`, 'rgba(255, 190, 60, 0.95)');
 
   // ---- 第4行: 技能槽(10个,参考设计稿;空槽留空) ----
   const skills: BottomStatusSkill[] = [
@@ -1855,20 +2186,51 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
     }
   ];
 
-  const skillCount = 10;
-  const skillGap = Math.max(2, panelWidth * 0.004);
+  // 技能装配区中已装配的技能填充剩余技能槽(让玩家直观看到当前生效的技能)
+  if (playerEntity) {
+    const equippedTags = H_ensurePlayerInventory(playerEntity.inventory).equippedSkills;
+    for (const tag of equippedTags) {
+      if (skills.length >= BOTTOM_STATUS_SKILL_SLOT_COUNT) break;
+      if (!tag) continue;
+      const skill = H_getSkillByTag(tag);
+      if (!skill) continue;
+      skills.push({
+        key: '',
+        title: skill.name,
+        subtitle: skill.shortName,
+        color: skill.color,
+        cooldownNow: 0,
+        cooldownMax: 1,
+        active: true,
+        icon: tag === Va2ShootSkill.TAG ? 'dual_arrow' : 'hexagon',
+        equipped: true
+      });
+    }
+  }
+
+  const skillCount = BOTTOM_STATUS_SKILL_SLOT_COUNT;
+  const skillGap = Math.max(2, panelWidth * 0.005);
   const skillAreaX = x + padding;
   const skillAreaW = panelWidth - padding * 2;
-  const slotSize = Math.max(24, Math.floor((skillAreaW - skillGap * (skillCount - 1)) / skillCount));
-  const slotY = y + levelRowH + expRowH + barRowH + (skillRowH - slotSize) / 2;
+  const footerH = panelHeight * 0.08; // 底部预留:技能副标题空间
+  const skillAreaY = y + levelRowH + expRowH + barRowH;
+  const skillAreaH = skillRowH - footerH;
+  const widthSlotSize = Math.floor((skillAreaW - skillGap * (skillCount - 1)) / skillCount);
+  const slotSize = Math.max(20, Math.min(widthSlotSize, skillAreaH * 0.82));
+  const slotsTotalW = slotSize * skillCount + skillGap * (skillCount - 1);
+  const slotsStartX = skillAreaX + (skillAreaW - slotsTotalW) / 2;
+  const slotY = skillAreaY + (skillAreaH - slotSize) / 2;
+  const slotCut = slotSize * 0.26;
+  // 副标题统一贴齐面板底部内侧一行(空间不足时由绘制函数自动省略)
+  const slotSubtitleY = skillAreaY + skillRowH - panelHeight * 0.045;
 
   for (let i = 0; i < skillCount; i++) {
-    const slotX = skillAreaX + i * (slotSize + skillGap);
+    const slotX = slotsStartX + i * (slotSize + skillGap);
     const skill = skills[i];
     if (skill) {
-      drawBottomStatusSkill(CtxUi, skill, slotX, slotY, slotSize, time);
+      drawBottomStatusSkill(CtxUi, skill, slotX, slotY, slotSize, slotCut, slotSubtitleY, time);
     } else {
-      drawEmptyBottomStatusSkill(CtxUi, slotX, slotY, slotSize);
+      drawEmptyBottomStatusSkill(CtxUi, slotX, slotY, slotSize, slotCut);
     }
   }
 
@@ -1876,27 +2238,43 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
 };
 
 /**
- * 绘制空的技能槽(参考设计稿,空槽留空)
+ * 绘制空的技能槽(机械风格:虚线切角框 + 中心微标)
  */
 const drawEmptyBottomStatusSkill = (
   CtxUi: CanvasRenderingContext2D,
   x: number,
   y: number,
-  size: number
+  size: number,
+  cut: number
 ) => {
   CtxUi.save();
-  CtxUi.fillStyle = 'rgba(248, 250, 252, 0.85)';
-  CtxUi.strokeStyle = 'rgba(190, 190, 190, 1)';
-  CtxUi.lineWidth = 1;
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, x, y, size, size, 4);
+  createChamferRect(CtxUi, x, y, size, size, cut);
+  CtxUi.fillStyle = 'rgba(6, 16, 26, 0.34)';
   CtxUi.fill();
+
+  CtxUi.setLineDash([Math.max(2, size * 0.07), Math.max(2, size * 0.06)]);
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.22)';
+  CtxUi.lineWidth = 1;
+  createChamferRect(CtxUi, x + 0.5, y + 0.5, size - 1, size - 1, cut);
+  CtxUi.stroke();
+  CtxUi.setLineDash([]);
+
+  // 中心十字微标
+  const cx = x + size / 2;
+  const cy = y + size / 2;
+  const m = size * 0.1;
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.18)';
+  CtxUi.beginPath();
+  CtxUi.moveTo(cx - m, cy);
+  CtxUi.lineTo(cx + m, cy);
+  CtxUi.moveTo(cx, cy - m);
+  CtxUi.lineTo(cx, cy + m);
   CtxUi.stroke();
   CtxUi.restore();
 };
 
 /**
- * 绘制底部状态栏技能槽(UI层)
+ * 绘制底部状态栏技能槽(UI层,机械未来风格)
  */
 const drawBottomStatusSkill = (
   CtxUi: CanvasRenderingContext2D,
@@ -1904,94 +2282,1307 @@ const drawBottomStatusSkill = (
   x: number,
   y: number,
   size: number,
+  cut: number,
+  subtitleY: number,
   time: number
 ) => {
   const cooldownMax = Math.max(0.001, skill.cooldownMax);
   const cooldownRatio = H_clamp(skill.cooldownNow / cooldownMax, 0, 1);
   const ready = cooldownRatio <= 0;
-  const pulse = ready ? 0.55 + Math.sin(time * 5.5) * 0.2 : 0.2;
+  const active = !!skill.active;
+  const highlight = ready || active;
+  const pulse = ready ? 0.55 + Math.sin(time * 5.5) * 0.25 : 0.2;
+  const centerX = x + size / 2;
+  // 槽内布局:底部预留快捷键标签条,图标占据其余空间,避免二者重叠
+  const keyStrip = Math.max(9, size * 0.24);
+  const iconAreaH = size - keyStrip;
+  const centerY = y + iconAreaH / 2 + size * 0.02;
 
   CtxUi.save();
-  CtxUi.fillStyle = 'rgba(255, 255, 255, 0.92)';
-  CtxUi.strokeStyle = ready || skill.active ? skill.color : 'rgba(190, 190, 190, 1)';
-  CtxUi.lineWidth = ready || skill.active ? 2 : 1;
-  CtxUi.beginPath();
-  createRoundRect(CtxUi, x, y, size, size, 4);
+
+  // 槽体底板(透明玻璃渐变)
+  createChamferRect(CtxUi, x, y, size, size, cut);
+  const bgGrad = CtxUi.createLinearGradient(x, y, x, y + size);
+  bgGrad.addColorStop(0, ready ? 'rgba(14, 44, 60, 0.72)' : 'rgba(8, 22, 32, 0.6)');
+  bgGrad.addColorStop(1, 'rgba(3, 12, 20, 0.5)');
+  CtxUi.fillStyle = bgGrad;
   CtxUi.fill();
+
+  // 霓虹边框(就绪/激活时发光)
+  CtxUi.strokeStyle = highlight ? skill.color : 'rgba(120, 160, 180, 0.45)';
+  CtxUi.lineWidth = highlight ? 1.8 : 1;
+  if (highlight) {
+    CtxUi.shadowColor = skill.color;
+    CtxUi.shadowBlur = active ? 16 : 10;
+  }
+  createChamferRect(CtxUi, x + 0.9, y + 0.9, size - 1.8, size - 1.8, cut);
+  CtxUi.stroke();
+  CtxUi.shadowBlur = 0;
+
+  // 侧边导轨刻度
+  CtxUi.strokeStyle = `${skill.color}${highlight ? '77' : '33'}`;
+  CtxUi.lineWidth = 1;
+  const railInset = size * 0.09;
+  CtxUi.beginPath();
+  CtxUi.moveTo(x + railInset, y + size * 0.28);
+  CtxUi.lineTo(x + railInset, y + size * 0.72);
+  CtxUi.moveTo(x + size - railInset, y + size * 0.28);
+  CtxUi.lineTo(x + size - railInset, y + size * 0.72);
   CtxUi.stroke();
 
-  const inner = size * 0.6;
-  const centerX = x + size / 2;
-  const centerY = y + size * 0.42;
-  CtxUi.fillStyle = `${skill.color}${ready ? 'cc' : '99'}`;
-  CtxUi.beginPath();
-  if (skill.key === 'F') {
-    // 开火:三角形
-    CtxUi.moveTo(centerX - inner * 0.28, centerY + inner * 0.28);
-    CtxUi.lineTo(centerX + inner * 0.3, centerY);
-    CtxUi.lineTo(centerX - inner * 0.28, centerY - inner * 0.28);
-    CtxUi.closePath();
-  } else if (skill.key === 'SHIFT') {
-    // 疾跑:两个向右的三角形(快进)
-    const triW = inner * 0.24;
-    const triH = inner * 0.3;
-    const gapX = inner * 0.1;
-    for (let k = 0; k < 2; k++) {
-      const bx = centerX - (triW + gapX) / 2 + k * (triW + gapX);
-      CtxUi.moveTo(bx, centerY - triH);
-      CtxUi.lineTo(bx, centerY + triH);
-      CtxUi.lineTo(bx + triW, centerY);
-      CtxUi.closePath();
-    }
-  } else if (skill.key === 'SP') {
-    // 闪避:闪电
-    CtxUi.moveTo(centerX - inner * 0.28, centerY + inner * 0.26);
-    CtxUi.lineTo(centerX + inner * 0.2, centerY);
-    CtxUi.lineTo(centerX - inner * 0.28, centerY - inner * 0.26);
-    CtxUi.lineTo(centerX - inner * 0.08, centerY);
-    CtxUi.closePath();
-  } else if (skill.key === 'C') {
-    // 从者网格:方形
-    CtxUi.rect(centerX - inner * 0.25, centerY - inner * 0.25, inner * 0.5, inner * 0.5);
-  } else {
-    // 视角:圆形
-    CtxUi.arc(centerX, centerY, inner * 0.25, 0, Math.PI * 2);
-  }
-  CtxUi.fill();
+  // 技能图标(发光)
+  const inner = iconAreaH * 0.72;
+  const iconPaint = `${skill.color}${ready ? 'e6' : '80'}`;
+  CtxUi.fillStyle = iconPaint;
+  CtxUi.strokeStyle = iconPaint;
+  CtxUi.lineWidth = Math.max(1, size * 0.07);
+  CtxUi.lineJoin = 'round';
+  CtxUi.shadowColor = highlight ? skill.color : 'transparent';
+  CtxUi.shadowBlur = highlight ? 10 : 0;
 
+  if (skill.icon === 'dual_arrow') {
+    // 斜向双弹:两条呈 ±45° 的箭头
+    const arm = inner * 0.32;
+    for (const sign of [-1, 1]) {
+      const ex = centerX + arm * 0.7;
+      const ey = centerY + sign * arm * 0.7;
+      CtxUi.beginPath();
+      CtxUi.moveTo(centerX - arm * 0.7, centerY - sign * arm * 0.7);
+      CtxUi.lineTo(ex, ey);
+      CtxUi.stroke();
+
+      const head = inner * 0.17;
+      CtxUi.beginPath();
+      CtxUi.moveTo(ex + head * 0.3, ey + sign * head * 0.3);
+      CtxUi.lineTo(ex - head * 0.85, ey + sign * head * 0.1);
+      CtxUi.lineTo(ex - head * 0.1, ey - sign * head * 0.85);
+      CtxUi.closePath();
+      CtxUi.fill();
+    }
+  } else if (skill.icon === 'hexagon') {
+    // 通用技能:六边形 + 中心核心
+    const radius = inner * 0.3;
+    CtxUi.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const theta = Math.PI / 6 + (Math.PI / 3) * i;
+      const px = centerX + Math.cos(theta) * radius;
+      const py = centerY + Math.sin(theta) * radius;
+      if (i === 0) CtxUi.moveTo(px, py);
+      else CtxUi.lineTo(px, py);
+    }
+    CtxUi.closePath();
+    CtxUi.stroke();
+    CtxUi.beginPath();
+    CtxUi.arc(centerX, centerY, Math.max(1.2, inner * 0.1), 0, Math.PI * 2);
+    CtxUi.fill();
+  } else {
+    CtxUi.beginPath();
+    if (skill.key === 'F') {
+      // 开火:三角形
+      CtxUi.moveTo(centerX - inner * 0.28, centerY + inner * 0.28);
+      CtxUi.lineTo(centerX + inner * 0.3, centerY);
+      CtxUi.lineTo(centerX - inner * 0.28, centerY - inner * 0.28);
+      CtxUi.closePath();
+    } else if (skill.key === 'SHIFT') {
+      // 疾跑:两个向右的三角形(快进)
+      const triW = inner * 0.24;
+      const triH = inner * 0.3;
+      const gapX = inner * 0.1;
+      for (let k = 0; k < 2; k++) {
+        const bx = centerX - (triW + gapX) / 2 + k * (triW + gapX);
+        CtxUi.moveTo(bx, centerY - triH);
+        CtxUi.lineTo(bx, centerY + triH);
+        CtxUi.lineTo(bx + triW, centerY);
+        CtxUi.closePath();
+      }
+    } else if (skill.key === 'SP') {
+      // 闪避:闪电
+      CtxUi.moveTo(centerX - inner * 0.28, centerY + inner * 0.26);
+      CtxUi.lineTo(centerX + inner * 0.2, centerY);
+      CtxUi.lineTo(centerX - inner * 0.28, centerY - inner * 0.26);
+      CtxUi.lineTo(centerX - inner * 0.08, centerY);
+      CtxUi.closePath();
+    } else if (skill.key === 'C') {
+      // 从者网格:方形
+      CtxUi.rect(centerX - inner * 0.25, centerY - inner * 0.25, inner * 0.5, inner * 0.5);
+    } else {
+      // 视角:圆形
+      CtxUi.arc(centerX, centerY, inner * 0.25, 0, Math.PI * 2);
+    }
+    CtxUi.fill();
+  }
+  CtxUi.shadowBlur = 0;
+
+  // 冷却扇形遮罩 / 就绪呼吸内框
   if (cooldownRatio > 0) {
-    CtxUi.fillStyle = 'rgba(40, 60, 70, 0.62)';
+    CtxUi.save();
+    createChamferRect(CtxUi, x, y, size, size, cut);
+    CtxUi.clip();
+    CtxUi.fillStyle = 'rgba(3, 12, 20, 0.7)';
     CtxUi.beginPath();
     CtxUi.moveTo(centerX, centerY);
-    CtxUi.arc(centerX, centerY, size * 0.72, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * cooldownRatio, false);
+    CtxUi.arc(centerX, centerY, size * 1.1, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * cooldownRatio, false);
     CtxUi.closePath();
     CtxUi.fill();
-    CtxUi.fillStyle = 'rgba(255, 255, 255, 0.96)';
-    CtxUi.font = `bold ${Math.max(12, size * 0.24)}px Consolas, "Courier New", monospace`;
+    CtxUi.restore();
+
+    CtxUi.save();
+    CtxUi.fillStyle = '#eafdff';
+    CtxUi.shadowColor = skill.color;
+    CtxUi.shadowBlur = 8;
+    CtxUi.font = `bold ${Math.max(11, size * 0.26)}px Consolas, "Courier New", monospace`;
     CtxUi.textAlign = 'center';
     CtxUi.textBaseline = 'middle';
     CtxUi.fillText(skill.cooldownNow.toFixed(1), centerX, centerY);
+    CtxUi.restore();
   } else {
     CtxUi.save();
     CtxUi.strokeStyle = skill.color;
-    CtxUi.globalAlpha = Math.max(0.2, pulse);
+    CtxUi.globalAlpha = Math.max(0.15, pulse * 0.55);
     CtxUi.lineWidth = 1;
-    CtxUi.beginPath();
-    createRoundRect(CtxUi, x + 4, y + 4, size - 8, size - 8, 4);
+    createChamferRect(CtxUi, x + 4, y + 4, size - 8, size - 8, Math.max(2, cut - 2));
     CtxUi.stroke();
     CtxUi.restore();
   }
 
-  CtxUi.fillStyle = '#5a6b78';
-  CtxUi.font = `bold ${Math.max(10, size * 0.17)}px Consolas, "Courier New", monospace`;
+  // 快捷键标签(槽内底部,必要时缩字号以适配槽宽;已装配技能无快捷键,不绘制)
   CtxUi.textAlign = 'center';
   CtxUi.textBaseline = 'middle';
-  CtxUi.fillText(skill.key, centerX, y + size - 10);
-  CtxUi.fillStyle = skill.active ? skill.color : 'rgba(122, 140, 152, 0.85)';
-  CtxUi.font = `${Math.max(8, size * 0.13)}px Consolas, "Courier New", monospace`;
-  CtxUi.fillText(skill.subtitle, centerX, y + size + 12);
+  if (skill.key !== '') {
+    let keyFont = Math.max(9, size * 0.18);
+    CtxUi.font = `bold ${keyFont}px Consolas, "Courier New", monospace`;
+    while (keyFont > 7 && CtxUi.measureText(skill.key).width > size * 0.82) {
+      keyFont -= 0.5;
+      CtxUi.font = `bold ${keyFont}px Consolas, "Courier New", monospace`;
+    }
+    CtxUi.fillStyle = highlight ? '#eafdff' : 'rgba(150, 180, 195, 0.85)';
+    if (highlight) {
+      CtxUi.shadowColor = skill.color;
+      CtxUi.shadowBlur = 6;
+    }
+    CtxUi.fillText(skill.key, centerX, y + size - keyStrip / 2);
+    CtxUi.shadowBlur = 0;
+  }
+
+  // 副标题(槽外下方,状态提示;空间不足时省略避免重叠)
+  const subtitleFont = Math.max(8, size * 0.15);
+  if (subtitleY - (y + size) >= subtitleFont) {
+    CtxUi.font = `${subtitleFont}px Consolas, "Courier New", monospace`;
+    CtxUi.fillStyle = active ? skill.color : 'rgba(120, 190, 215, 0.85)';
+    let subText = skill.subtitle;
+    if (CtxUi.measureText(subText).width > size * 1.15) {
+      subText = subText.slice(0, 4);
+    }
+    CtxUi.fillText(subText, centerX, subtitleY);
+  }
+
   CtxUi.restore();
 };
+
+////////////////////
+// 背包界面相关 -->
+////////////////////
+
+/** 背包(持有物)网格列数 */
+const INVENTORY_BAG_COLS = 10;
+/** 背包(持有物)网格行数 */
+const INVENTORY_BAG_ROWS = 2;
+/** 背包界面的持有物格数(需与数据层容量一致) */
+const INVENTORY_BAG_SLOT_COUNT = INVENTORY_BAG_COLS * INVENTORY_BAG_ROWS;
+/** 技能装配区槽位数量 */
+const INVENTORY_EQUIP_COUNT = INVENTORY_SKILL_SLOT_COUNT;
+/** 底部状态栏技能槽数量 */
+const BOTTOM_STATUS_SKILL_SLOT_COUNT = 10;
+
+/** 背包界面中的命中目标 */
+type InventorySlotTarget =
+  | { zone: 'bag'; index: number }
+  | { zone: 'equip'; index: number }
+  | { zone: 'trash'; index: -1 }
+  | null;
+
+/** 拖拽中的条目快照(拖拽期间背包可能被服务端快照覆盖,因此只保留必要数据) */
+type InventoryDragPayload = {
+  kind: 'skill' | 'item';
+  tag: string;
+  name: string;
+  count: number;
+  color: string;
+  uid: string;
+  fromZone: 'bag' | 'equip';
+  fromIndex: number;
+};
+
+/** 背包界面布局(绘制与命中检测共用同一份计算结果) */
+type InventoryLayout = {
+  panelX: number;
+  panelY: number;
+  panelWidth: number;
+  panelHeight: number;
+  padding: number;
+  slotGap: number;
+  slotSize: number;
+  headerHeight: number;
+  bagX: number;
+  bagY: number;
+  bagWidth: number;
+  bagHeight: number;
+  labelHeight: number;
+  dividerY: number;
+  equipX: number;
+  equipY: number;
+  equipSlotSize: number;
+  equipWidth: number;
+  trashX: number;
+  trashY: number;
+  trashSize: number;
+  hintY: number;
+};
+
+/** 矩形命中检测 */
+const H_pointInRect = (
+  x: number,
+  y: number,
+  rect: { x: number; y: number; width: number; height: number },
+  tolerance: number = 0
+): boolean => {
+  return (
+    x >= rect.x - tolerance &&
+    x <= rect.x + rect.width + tolerance &&
+    y >= rect.y - tolerance &&
+    y <= rect.y + rect.height + tolerance
+  );
+};
+
+/**
+ * 计算背包界面布局
+ * 格子尺寸同时受画布宽高约束,保证在窄屏/矮屏下仍完整可见。
+ */
+const H_getInventoryLayout = (canvasWidth: number, canvasHeight: number): InventoryLayout => {
+  const padding = H_clamp(canvasWidth * 0.018, 14, 26);
+  const slotGap = H_clamp(canvasWidth * 0.005, 4, 9);
+  const maxPanelWidth = Math.min(canvasWidth * 0.94, 1120);
+  const maxPanelHeight = canvasHeight * 0.9;
+  // 标题/标签/提示等固定区域折算成的格子高度倍率
+  const fixedSlotRatio = 1.5;
+  const equipSlotRatio = 0.78;
+
+  const slotFromWidth =
+    (maxPanelWidth - padding * 2 - slotGap * (INVENTORY_BAG_COLS - 1)) / INVENTORY_BAG_COLS;
+  const slotFromHeight =
+    (maxPanelHeight - padding * 2 - slotGap * (INVENTORY_BAG_ROWS + 2)) /
+    (INVENTORY_BAG_ROWS + equipSlotRatio + fixedSlotRatio);
+  const slotSize = Math.max(24, Math.floor(Math.min(slotFromWidth, slotFromHeight)));
+
+  const bagWidth = slotSize * INVENTORY_BAG_COLS + slotGap * (INVENTORY_BAG_COLS - 1);
+  const bagHeight = slotSize * INVENTORY_BAG_ROWS + slotGap * (INVENTORY_BAG_ROWS - 1);
+  const equipSlotSize = Math.round(slotSize * equipSlotRatio);
+  const equipWidth = equipSlotSize * INVENTORY_EQUIP_COUNT + slotGap * (INVENTORY_EQUIP_COUNT - 1);
+  const trashSize = equipSlotSize;
+  const equipRowWidth = equipWidth + slotGap * 4 + trashSize;
+  const contentWidth = Math.max(bagWidth, equipRowWidth);
+
+  const headerHeight = Math.round(slotSize * 0.6);
+  const labelHeight = Math.round(slotSize * 0.36);
+  const dividerHeight = Math.round(slotSize * 0.24);
+  const hintHeight = Math.round(slotSize * 0.36);
+  const panelWidth = contentWidth + padding * 2;
+  const panelHeight =
+    padding * 2 +
+    headerHeight +
+    labelHeight +
+    bagHeight +
+    dividerHeight +
+    labelHeight +
+    equipSlotSize +
+    hintHeight;
+
+  const panelX = (canvasWidth - panelWidth) / 2;
+  const panelY = Math.max(8, (canvasHeight - panelHeight) / 2 - canvasHeight * 0.02);
+  const bagX = panelX + padding + (contentWidth - bagWidth) / 2;
+  const bagY = panelY + padding + headerHeight + labelHeight;
+  const equipX = panelX + padding + (contentWidth - equipRowWidth) / 2;
+  const equipY = bagY + bagHeight + dividerHeight + labelHeight;
+  const trashX = equipX + equipWidth + slotGap * 4;
+
+  return {
+    panelX,
+    panelY,
+    panelWidth,
+    panelHeight,
+    padding,
+    slotGap,
+    slotSize,
+    headerHeight,
+    bagX,
+    bagY,
+    bagWidth,
+    bagHeight,
+    labelHeight,
+    dividerY: bagY + bagHeight + dividerHeight / 2,
+    equipX,
+    equipY,
+    equipSlotSize,
+    equipWidth,
+    trashX,
+    trashY: equipY,
+    trashSize,
+    hintY: panelY + panelHeight - padding * 0.7
+  };
+};
+
+/** 背包格矩形 */
+const H_getInventoryBagSlotRect = (
+  layout: InventoryLayout,
+  index: number
+): { x: number; y: number; width: number; height: number } => {
+  const col = index % INVENTORY_BAG_COLS;
+  const row = Math.floor(index / INVENTORY_BAG_COLS);
+  return {
+    x: layout.bagX + col * (layout.slotSize + layout.slotGap),
+    y: layout.bagY + row * (layout.slotSize + layout.slotGap),
+    width: layout.slotSize,
+    height: layout.slotSize
+  };
+};
+
+/** 技能装配槽矩形 */
+const H_getInventoryEquipSlotRect = (
+  layout: InventoryLayout,
+  index: number
+): { x: number; y: number; width: number; height: number } => ({
+  x: layout.equipX + index * (layout.equipSlotSize + layout.slotGap),
+  y: layout.equipY,
+  width: layout.equipSlotSize,
+  height: layout.equipSlotSize
+});
+
+/** 垃圾桶矩形 */
+const H_getInventoryTrashRect = (
+  layout: InventoryLayout
+): { x: number; y: number; width: number; height: number } => ({
+  x: layout.trashX,
+  y: layout.trashY,
+  width: layout.trashSize,
+  height: layout.trashSize
+});
+
+/**
+ * 命中断言:返回指针所在的背包界面区域
+ */
+const H_hitTestInventorySlot = (
+  layout: InventoryLayout,
+  x: number,
+  y: number,
+  tolerance: number = 0
+): InventorySlotTarget => {
+  if (H_pointInRect(x, y, H_getInventoryTrashRect(layout), tolerance)) {
+    return { zone: 'trash', index: -1 };
+  }
+  for (let i = 0; i < INVENTORY_EQUIP_COUNT; i++) {
+    if (H_pointInRect(x, y, H_getInventoryEquipSlotRect(layout, i), tolerance)) {
+      return { zone: 'equip', index: i };
+    }
+  }
+  for (let i = 0; i < INVENTORY_BAG_SLOT_COUNT; i++) {
+    if (H_pointInRect(x, y, H_getInventoryBagSlotRect(layout, i), tolerance)) {
+      return { zone: 'bag', index: i };
+    }
+  }
+  return null;
+};
+
+/**
+ * 绘制背包格/技能槽的机械风格边框
+ */
+const H_drawInventorySlotFrame = (
+  CtxUi: CanvasRenderingContext2D,
+  rect: { x: number; y: number; width: number; height: number },
+  options: {
+    accent?: string;
+    hovered?: boolean;
+    draggingOver?: boolean;
+    invalid?: boolean;
+    dashed?: boolean;
+  } = {}
+) => {
+  const cut = Math.max(3, Math.min(rect.width, rect.height) * 0.22);
+  const accent = options.invalid
+    ? 'rgba(255, 90, 104, 0.9)'
+    : options.accent ?? 'rgba(0, 229, 255, 0.8)';
+  const highlight = options.hovered === true || options.draggingOver === true;
+
+  CtxUi.save();
+  createChamferRect(CtxUi, rect.x, rect.y, rect.width, rect.height, cut);
+  const grad = CtxUi.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height);
+  grad.addColorStop(0, highlight ? 'rgba(0, 229, 255, 0.22)' : 'rgba(10, 30, 44, 0.5)');
+  grad.addColorStop(1, 'rgba(4, 14, 24, 0.38)');
+  CtxUi.fillStyle = grad;
+  CtxUi.fill();
+
+  if (options.dashed) {
+    CtxUi.setLineDash([Math.max(2, rect.width * 0.09), Math.max(2, rect.width * 0.07)]);
+  }
+  CtxUi.strokeStyle = accent;
+  CtxUi.lineWidth = highlight ? 1.6 : 1;
+  if (highlight) {
+    CtxUi.shadowColor = accent;
+    CtxUi.shadowBlur = 10;
+  }
+  createChamferRect(CtxUi, rect.x + 0.6, rect.y + 0.6, rect.width - 1.2, rect.height - 1.2, cut);
+  CtxUi.stroke();
+  CtxUi.restore();
+};
+
+/**
+ * 绘制技能图标(按技能 tag 选择图形)
+ */
+const H_drawInventorySkillIcon = (
+  CtxUi: CanvasRenderingContext2D,
+  skillTag: string,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string
+) => {
+  CtxUi.save();
+  CtxUi.strokeStyle = color;
+  CtxUi.fillStyle = color;
+  CtxUi.lineWidth = Math.max(1, size * 0.07);
+  CtxUi.shadowColor = color;
+  CtxUi.shadowBlur = size * 0.35;
+
+  if (skillTag === Va2ShootSkill.TAG) {
+    // 斜向双弹:两条呈 ±45° 的箭头
+    const arm = size * 0.3;
+    for (const sign of [-1, 1]) {
+      const sx = cx - arm * 0.7;
+      const sy = cy - sign * arm * 0.7;
+      const ex = cx + arm * 0.7;
+      const ey = cy + sign * arm * 0.7;
+      CtxUi.beginPath();
+      CtxUi.moveTo(sx, sy);
+      CtxUi.lineTo(ex, ey);
+      CtxUi.stroke();
+      // 箭头
+      const head = size * 0.16;
+      CtxUi.beginPath();
+      CtxUi.moveTo(ex + head * 0.35, ey + sign * head * 0.35);
+      CtxUi.lineTo(ex - head * 0.8, ey + sign * head * 0.05);
+      CtxUi.lineTo(ex - head * 0.05, ey - sign * head * 0.8);
+      CtxUi.closePath();
+      CtxUi.fill();
+    }
+  } else {
+    // 通用技能图标:六边形 + 中心核心
+    const radius = size * 0.32;
+    CtxUi.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const theta = Math.PI / 6 + (Math.PI / 3) * i;
+      const px = cx + Math.cos(theta) * radius;
+      const py = cy + Math.sin(theta) * radius;
+      if (i === 0) CtxUi.moveTo(px, py);
+      else CtxUi.lineTo(px, py);
+    }
+    CtxUi.closePath();
+    CtxUi.stroke();
+    CtxUi.beginPath();
+    CtxUi.arc(cx, cy, Math.max(1.2, size * 0.09), 0, Math.PI * 2);
+    CtxUi.fill();
+  }
+  CtxUi.restore();
+};
+
+/**
+ * 绘制物品图标
+ */
+const H_drawInventoryItemIcon = (
+  CtxUi: CanvasRenderingContext2D,
+  icon: 'gem' | 'square',
+  cx: number,
+  cy: number,
+  size: number,
+  color: string
+) => {
+  CtxUi.save();
+  CtxUi.shadowColor = color;
+  CtxUi.shadowBlur = size * 0.3;
+  CtxUi.fillStyle = color;
+
+  if (icon === 'gem') {
+    // 宝石:菱形切面 + 高光
+    const radius = size * 0.32;
+    CtxUi.beginPath();
+    CtxUi.moveTo(cx, cy - radius);
+    CtxUi.lineTo(cx + radius * 0.82, cy - radius * 0.12);
+    CtxUi.lineTo(cx, cy + radius);
+    CtxUi.lineTo(cx - radius * 0.82, cy - radius * 0.12);
+    CtxUi.closePath();
+    CtxUi.fill();
+    CtxUi.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    CtxUi.beginPath();
+    CtxUi.moveTo(cx, cy - radius);
+    CtxUi.lineTo(cx + radius * 0.82, cy - radius * 0.12);
+    CtxUi.lineTo(cx, cy - radius * 0.08);
+    CtxUi.closePath();
+    CtxUi.fill();
+  } else {
+    const half = size * 0.26;
+    CtxUi.beginPath();
+    CtxUi.rect(cx - half, cy - half, half * 2, half * 2);
+    CtxUi.fill();
+  }
+  CtxUi.restore();
+};
+
+/**
+ * 绘制背包条目内容(技能图标 / 物品图标 + 数量角标 + 可选名称)
+ */
+const H_drawInventoryEntryContent = (
+  CtxUi: CanvasRenderingContext2D,
+  entry: { kind: 'skill' | 'item'; tag: string; name: string; count: number; color: string },
+  rect: { x: number; y: number; width: number; height: number },
+  options: { alpha?: number; showName?: boolean } = {}
+) => {
+  const size = Math.min(rect.width, rect.height);
+  const showName = options.showName === true;
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2 - (showName ? size * 0.08 : 0);
+
+  CtxUi.save();
+  if (options.alpha !== undefined) CtxUi.globalAlpha = options.alpha;
+
+  if (entry.kind === 'skill') {
+    H_drawInventorySkillIcon(CtxUi, entry.tag, cx, cy, size, entry.color);
+    if (showName) {
+      CtxUi.fillStyle = 'rgba(224, 253, 255, 0.92)';
+      CtxUi.font = `bold ${Math.max(9, size * 0.16)}px "Microsoft YaHei", Arial, sans-serif`;
+      CtxUi.textAlign = 'center';
+      CtxUi.textBaseline = 'middle';
+      CtxUi.fillText(entry.name, cx, rect.y + rect.height - size * 0.15);
+    }
+  } else {
+    H_drawInventoryItemIcon(CtxUi, H_getItemDefinition(entry.tag).icon, cx, cy, size, entry.color);
+    if (entry.count > 1) {
+      const text = `x${entry.count}`;
+      CtxUi.font = `bold ${Math.max(9, size * 0.24)}px Consolas, "Courier New", monospace`;
+      CtxUi.textAlign = 'right';
+      CtxUi.textBaseline = 'alphabetic';
+      CtxUi.lineWidth = 3;
+      CtxUi.strokeStyle = 'rgba(2, 10, 18, 0.9)';
+      CtxUi.strokeText(text, rect.x + rect.width - size * 0.06, rect.y + rect.height - size * 0.06);
+      CtxUi.fillStyle = '#eafdff';
+      CtxUi.fillText(text, rect.x + rect.width - size * 0.06, rect.y + rect.height - size * 0.06);
+    }
+  }
+  CtxUi.restore();
+};
+
+/**
+ * 绘制垃圾桶图标
+ */
+const H_drawInventoryTrashIcon = (
+  CtxUi: CanvasRenderingContext2D,
+  rect: { x: number; y: number; width: number; height: number },
+  hovered: boolean
+) => {
+  const size = Math.min(rect.width, rect.height);
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  const color = hovered ? '#ff9aa4' : 'rgba(255, 107, 120, 0.9)';
+  const bodyW = size * 0.4;
+  const bodyH = size * 0.44;
+  const top = cy - bodyH * 0.34;
+
+  CtxUi.save();
+  CtxUi.strokeStyle = color;
+  CtxUi.lineWidth = Math.max(1.2, size * 0.06);
+  CtxUi.lineJoin = 'round';
+  CtxUi.shadowColor = 'rgba(255, 90, 104, 0.8)';
+  CtxUi.shadowBlur = hovered ? size * 0.45 : size * 0.2;
+
+  // 桶身
+  CtxUi.beginPath();
+  CtxUi.moveTo(cx - bodyW / 2, top);
+  CtxUi.lineTo(cx + bodyW / 2, top);
+  CtxUi.lineTo(cx + bodyW * 0.36, top + bodyH);
+  CtxUi.lineTo(cx - bodyW * 0.36, top + bodyH);
+  CtxUi.closePath();
+  CtxUi.stroke();
+  // 桶盖
+  CtxUi.beginPath();
+  CtxUi.moveTo(cx - bodyW * 0.64, top);
+  CtxUi.lineTo(cx + bodyW * 0.64, top);
+  CtxUi.stroke();
+  // 提手
+  CtxUi.beginPath();
+  CtxUi.moveTo(cx - bodyW * 0.2, top - size * 0.07);
+  CtxUi.lineTo(cx + bodyW * 0.2, top - size * 0.07);
+  CtxUi.stroke();
+  // 桶身竖纹
+  CtxUi.globalAlpha = 0.7;
+  CtxUi.beginPath();
+  CtxUi.moveTo(cx - bodyW * 0.13, top + bodyH * 0.18);
+  CtxUi.lineTo(cx - bodyW * 0.13, top + bodyH * 0.8);
+  CtxUi.moveTo(cx + bodyW * 0.13, top + bodyH * 0.18);
+  CtxUi.lineTo(cx + bodyW * 0.13, top + bodyH * 0.8);
+  CtxUi.stroke();
+  CtxUi.restore();
+};
+
+/**
+ * 绘制条目浮窗(名称/数量/说明)
+ */
+const H_drawInventoryTooltip = (
+  CtxUi: CanvasRenderingContext2D,
+  canvasWidth: number,
+  canvasHeight: number,
+  anchorX: number,
+  anchorY: number,
+  title: string,
+  subtitle: string,
+  description: string,
+  color: string
+) => {
+  const titleFont = 'bold 14px "Microsoft YaHei", Arial, sans-serif';
+  const descFont = '12px "Microsoft YaHei", Arial, sans-serif';
+  const padding = 10;
+
+  CtxUi.save();
+  CtxUi.font = titleFont;
+  const titleWidth = CtxUi.measureText(title).width;
+  CtxUi.font = descFont;
+  const descWidth = CtxUi.measureText(description).width;
+  const subtitleWidth = subtitle ? CtxUi.measureText(subtitle).width : 0;
+  const boxWidth = Math.min(canvasWidth - 24, Math.max(titleWidth + subtitleWidth + 20, descWidth) + padding * 2);
+  const boxHeight = description ? 62 : 40;
+
+  let boxX = anchorX + 18;
+  let boxY = anchorY + 16;
+  if (boxX + boxWidth > canvasWidth - 12) boxX = anchorX - boxWidth - 18;
+  if (boxY + boxHeight > canvasHeight - 12) boxY = anchorY - boxHeight - 16;
+  boxX = Math.max(12, boxX);
+  boxY = Math.max(12, boxY);
+
+  createChamferRect(CtxUi, boxX, boxY, boxWidth, boxHeight, 8);
+  const grad = CtxUi.createLinearGradient(boxX, boxY, boxX, boxY + boxHeight);
+  grad.addColorStop(0, 'rgba(10, 32, 46, 0.96)');
+  grad.addColorStop(1, 'rgba(4, 14, 24, 0.94)');
+  CtxUi.fillStyle = grad;
+  CtxUi.shadowColor = `${color}88`;
+  CtxUi.shadowBlur = 16;
+  CtxUi.fill();
+  CtxUi.shadowBlur = 0;
+  CtxUi.strokeStyle = color;
+  CtxUi.lineWidth = 1.2;
+  createChamferRect(CtxUi, boxX + 0.6, boxY + 0.6, boxWidth - 1.2, boxHeight - 1.2, 8);
+  CtxUi.stroke();
+
+  CtxUi.textAlign = 'left';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.font = titleFont;
+  CtxUi.fillStyle = '#eafdff';
+  CtxUi.fillText(title, boxX + padding, boxY + padding + 7);
+  if (subtitle) {
+    CtxUi.font = '11px Consolas, "Courier New", monospace';
+    CtxUi.fillStyle = color;
+    CtxUi.fillText(subtitle, boxX + padding + titleWidth + 10, boxY + padding + 8);
+  }
+  if (description) {
+    CtxUi.font = descFont;
+    CtxUi.fillStyle = 'rgba(170, 220, 240, 0.9)';
+    CtxUi.fillText(description, boxX + padding, boxY + padding + 30);
+  }
+  CtxUi.restore();
+};
+
+/**
+ * 发送背包状态同步指令
+ */
+const sendInventoryUpdate = (inventory: PlayerInventory) => {
+  sendClientInstruct(Instruct.I_InventoryUpdate(playerEntity ? playerEntity.id : -1, inventory));
+};
+
+/**
+ * 发送使用背包物品指令
+ */
+const sendInventoryUseItem = (uid: string) => {
+  sendClientInstruct(Instruct.I_InventoryUseItem(playerEntity ? playerEntity.id : -1, uid));
+};
+
+/**
+ * 打开/关闭背包界面
+ */
+const toggleInventory = (visible?: boolean) => {
+  inventoryVisible = visible ?? !inventoryVisible;
+  inventoryDragPayload = null;
+  inventoryHoverTarget = null;
+  inventoryTooltipEntry = null;
+  inventoryTooltipSkillTag = '';
+  drawUI();
+};
+
+/**
+ * 应用一次拖拽(或点击放置)结果
+ * @returns 背包是否发生了变化
+ */
+const H_applyInventoryDrop = (payload: InventoryDragPayload, target: InventorySlotTarget): boolean => {
+  const player = playerEntity;
+  if (!player || !target) return false;
+  const inventory = H_ensurePlayerInventory(player.inventory);
+  let changed = false;
+
+  if (target.zone === 'trash') {
+    // 垃圾桶:销毁
+    changed = payload.fromZone === 'bag'
+      ? H_inventoryDestroyEntry(inventory, payload.uid)
+      : H_inventoryDestroyEquipped(inventory, payload.fromIndex);
+  } else if (target.zone === 'equip') {
+    // 物品不能装配到技能槽
+    if (payload.kind === 'skill') {
+      if (payload.fromZone === 'equip') {
+        changed = H_inventoryMoveSkillSlot(inventory, payload.fromIndex, target.index);
+      } else {
+        changed = H_inventoryEquipSkill(inventory, payload.tag, target.index);
+      }
+    }
+  } else if (target.zone === 'bag') {
+    if (payload.fromZone === 'equip') {
+      // 从技能槽放回背包:优先放入点击的格子,该格被占用时退回第一个空格
+      changed = H_inventoryUnequipSkillToSlot(inventory, payload.fromIndex, target.index)
+        || H_inventoryUnequipSkill(inventory, payload.fromIndex);
+    } else {
+      changed = H_inventoryMoveEntry(inventory, payload.fromIndex, target.index);
+    }
+  }
+
+  if (changed) sendInventoryUpdate(inventory);
+  return changed;
+};
+
+/**
+ * 判断目标格是否与"拿起来源"是同一格
+ */
+const H_isSameInventorySlot = (payload: InventoryDragPayload, target: InventorySlotTarget): boolean => {
+  if (!target) return false;
+  if (target.zone === 'bag' && payload.fromZone === 'bag' && target.index === payload.fromIndex) return true;
+  if (target.zone === 'equip' && payload.fromZone === 'equip' && target.index === payload.fromIndex) return true;
+  return false;
+};
+
+/**
+ * 在指定位置拿起一个条目(左键按下且手上没有条目时调用)
+ */
+const handleInventoryPickUp = (canvas: HTMLCanvasElement, x: number, y: number) => {
+  if (!playerEntity) return;
+  const { width, height } = H_getCanvasCssSize(canvas);
+  const layout = H_getInventoryLayout(width, height);
+  const inventory = H_ensurePlayerInventory(playerEntity.inventory);
+  const target = H_hitTestInventorySlot(layout, x, y);
+  if (!target) return;
+
+  if (target.zone === 'bag') {
+    const entry = H_inventoryGetEntryAtSlot(inventory, target.index);
+    if (entry === null) return;
+    inventoryDragPayload = {
+      kind: entry.kind,
+      tag: entry.tag,
+      name: entry.name,
+      count: entry.count,
+      color: entry.color,
+      uid: entry.uid,
+      fromZone: 'bag',
+      fromIndex: target.index
+    };
+  } else if (target.zone === 'equip') {
+    const tag = inventory.equippedSkills[target.index];
+    if (tag === null) return;
+    const skill = H_getSkillByTag(tag);
+    inventoryDragPayload = {
+      kind: 'skill',
+      tag,
+      name: skill?.name ?? tag,
+      count: 1,
+      color: skill?.color ?? '#9fe8ff',
+      uid: '',
+      fromZone: 'equip',
+      fromIndex: target.index
+    };
+  }
+};
+
+/**
+ * 背包界面下的鼠标左键按下处理
+ * - 手上已有条目:点击目标格完成放置(再次点原格=放回)
+ * - 手上没有条目:拿起该格的条目
+ * @returns 是否已消费该事件
+ */
+const handleInventoryLeftDown = (canvas: HTMLCanvasElement, x: number, y: number): boolean => {
+  if (!playerEntity) return false;
+  const { width, height } = H_getCanvasCssSize(canvas);
+  const layout = H_getInventoryLayout(width, height);
+  const target = H_hitTestInventorySlot(layout, x, y);
+
+  if (inventoryDragPayload) {
+    const payload = inventoryDragPayload;
+    // 点回原格:放回原处
+    if (H_isSameInventorySlot(payload, target)) {
+      inventoryDragPayload = null;
+      return true;
+    }
+    // 点在面板空白处:保持拿起状态
+    if (!target) return true;
+    // 放置到目标格(目标不合法时保持拿起,例如把物品拖到技能槽)
+    if (H_applyInventoryDrop(payload, target)) {
+      inventoryDragPayload = null;
+    }
+    return true;
+  }
+
+  handleInventoryPickUp(canvas, x, y);
+  return true;
+};
+
+/**
+ * 背包界面下的鼠标右键处理
+ * - 手上已有条目:取消拿起(放回原处)
+ * - 背包物品:使用
+ * - 背包技能:快捷装配到第一个空槽
+ * - 技能槽:卸下回背包
+ */
+const handleInventoryRightDown = (canvas: HTMLCanvasElement, x: number, y: number) => {
+  if (!playerEntity) return;
+  // 取消拿起
+  if (inventoryDragPayload) {
+    inventoryDragPayload = null;
+    drawUI();
+    return;
+  }
+
+  const { width, height } = H_getCanvasCssSize(canvas);
+  const layout = H_getInventoryLayout(width, height);
+  const inventory = H_ensurePlayerInventory(playerEntity.inventory);
+  const target = H_hitTestInventorySlot(layout, x, y);
+  if (!target) return;
+
+  if (target.zone === 'bag') {
+    const entry = H_inventoryGetEntryAtSlot(inventory, target.index);
+    if (entry === null) return;
+    if (entry.kind === 'item') {
+      // 使用物品
+      sendInventoryUseItem(entry.uid);
+      return;
+    }
+    // 技能:快捷装配
+    if (H_inventoryAutoEquipSkill(inventory, entry.tag) !== null) {
+      sendInventoryUpdate(inventory);
+    }
+    drawUI();
+    return;
+  }
+
+  if (target.zone === 'equip') {
+    if (H_inventoryUnequipSkill(inventory, target.index)) {
+      sendInventoryUpdate(inventory);
+    }
+    drawUI();
+  }
+};
+
+/**
+ * 背包界面下的鼠标抬起处理
+ * - 拖动过(位移超过阈值):按落点结算移动/装配/销毁
+ * - 未拖动(单击):保留"拿起"状态,等待点击目标格放置
+ */
+const handleInventoryMouseUp = (canvas: HTMLCanvasElement, x: number, y: number, moved: boolean) => {
+  const payload = inventoryDragPayload;
+  if (!payload) {
+    drawUI();
+    return;
+  }
+  // 单击:进入"拿起"状态(条目跟随光标,点击目标格即可放置)
+  if (!moved) {
+    drawUI();
+    return;
+  }
+
+  const { width, height } = H_getCanvasCssSize(canvas);
+  const layout = H_getInventoryLayout(width, height);
+  const target = H_hitTestInventorySlot(layout, x, y, layout.slotGap);
+  inventoryDragPayload = null;
+
+  // 拖回原格或不合法落点:视为取消(不产生变化)
+  if (H_isSameInventorySlot(payload, target)) {
+    drawUI();
+    return;
+  }
+  if (target) {
+    H_applyInventoryDrop(payload, target);
+  }
+  drawUI();
+};
+
+/**
+ * 绘制背包界面(UI层)
+ */
+const drawInventoryPanel = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
+  // 玩家死亡时自动关闭背包(玩家尚未同步到本地时不关闭,否则首帧会被误关)
+  if (inventoryVisible && playerEntity && (playerEntity.isDead || playerEntity.health <= 0)) {
+    inventoryVisible = false;
+    inventoryDragPayload = null;
+    inventoryHoverTarget = null;
+  }
+  if (!inventoryVisible || !playerEntity) return;
+
+  const { width, height } = H_getCanvasCssSize(CANVAS);
+  const layout = H_getInventoryLayout(width, height);
+  const inventory = H_ensurePlayerInventory(playerEntity.inventory);
+  const time = performance.now() / 1000;
+  const cut = H_clamp(layout.panelHeight * 0.026, 6, 14);
+  const panelRight = layout.panelX + layout.panelWidth;
+  const panelBottom = layout.panelY + layout.panelHeight;
+
+  // 命中目标(拖拽时使用指针位置,否则使用鼠标位置)
+  inventoryHoverTarget = inventoryDragPayload
+    ? H_hitTestInventorySlot(layout, inventoryPointerX, inventoryPointerY, layout.slotGap)
+    : H_hitTestInventorySlot(layout, mouseX, mouseY);
+
+  CtxUi.save();
+  CtxUi.textAlign = 'left';
+  CtxUi.textBaseline = 'middle';
+
+  // 全屏遮罩
+  CtxUi.fillStyle = 'rgba(2, 6, 12, 0.42)';
+  CtxUi.fillRect(0, 0, width, height);
+
+  // ---- 面板主体:半透明玻璃 ----
+  createChamferRect(CtxUi, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, cut);
+  const panelGrad = CtxUi.createLinearGradient(layout.panelX, layout.panelY, layout.panelX, panelBottom);
+  panelGrad.addColorStop(0, 'rgba(14, 40, 60, 0.86)');
+  panelGrad.addColorStop(0.5, 'rgba(7, 22, 34, 0.74)');
+  panelGrad.addColorStop(1, 'rgba(3, 10, 18, 0.68)');
+  CtxUi.fillStyle = panelGrad;
+  CtxUi.fill();
+
+  // 扫描线纹理 + 移动光带(裁剪在面板内)
+  CtxUi.save();
+  createChamferRect(CtxUi, layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, cut);
+  CtxUi.clip();
+  CtxUi.fillStyle = 'rgba(120, 235, 255, 0.045)';
+  const scanStep = Math.max(3, layout.panelHeight / 56);
+  for (let ly = layout.panelY + scanStep; ly < panelBottom; ly += scanStep) {
+    CtxUi.fillRect(layout.panelX, Math.round(ly), layout.panelWidth, 1);
+  }
+  const sweepH = layout.panelHeight * 0.16;
+  const sweepY = layout.panelY + ((time * 0.2) % 1) * (layout.panelHeight + sweepH) - sweepH;
+  const sweepGrad = CtxUi.createLinearGradient(0, sweepY, 0, sweepY + sweepH);
+  sweepGrad.addColorStop(0, 'rgba(0, 229, 255, 0)');
+  sweepGrad.addColorStop(0.5, 'rgba(0, 229, 255, 0.06)');
+  sweepGrad.addColorStop(1, 'rgba(0, 229, 255, 0)');
+  CtxUi.fillStyle = sweepGrad;
+  CtxUi.fillRect(layout.panelX, sweepY, layout.panelWidth, sweepH);
+  CtxUi.restore();
+
+  // ---- 霓虹边框 + 内侧细线 + 四角支架 ----
+  CtxUi.save();
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.5)';
+  CtxUi.shadowBlur = 14;
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.85)';
+  CtxUi.lineWidth = 1.6;
+  createChamferRect(CtxUi, layout.panelX + 0.8, layout.panelY + 0.8, layout.panelWidth - 1.6, layout.panelHeight - 1.6, cut);
+  CtxUi.stroke();
+  CtxUi.restore();
+  CtxUi.strokeStyle = 'rgba(150, 245, 255, 0.22)';
+  CtxUi.lineWidth = 1;
+  createChamferRect(CtxUi, layout.panelX + 4, layout.panelY + 4, layout.panelWidth - 8, layout.panelHeight - 8, Math.max(2, cut - 2));
+  CtxUi.stroke();
+  drawHudCornerBrackets(
+    CtxUi,
+    layout.panelX,
+    layout.panelY,
+    layout.panelWidth,
+    layout.panelHeight,
+    Math.max(12, layout.panelHeight * 0.055),
+    'rgba(0, 229, 255, 0.9)'
+  );
+
+  // ---- 标题栏 ----
+  const headerCenterY = layout.panelY + layout.padding + layout.headerHeight / 2;
+  CtxUi.font = `bold ${Math.max(14, layout.slotSize * 0.32)}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.fillStyle = '#eafdff';
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.8)';
+  CtxUi.shadowBlur = 10;
+  CtxUi.fillText('背包', layout.panelX + layout.padding, headerCenterY);
+  CtxUi.shadowBlur = 0;
+  const titleWidth = CtxUi.measureText('背包').width;
+  CtxUi.font = `${Math.max(10, layout.slotSize * 0.19)}px Consolas, "Courier New", monospace`;
+  CtxUi.fillStyle = 'rgba(122, 214, 240, 0.85)';
+  CtxUi.fillText('INVENTORY', layout.panelX + layout.padding + titleWidth + 10, headerCenterY + 1);
+  CtxUi.textAlign = 'right';
+  CtxUi.fillStyle = 'rgba(0, 229, 255, 0.85)';
+  CtxUi.fillText('E / ESC 关闭', panelRight - layout.padding, headerCenterY);
+  CtxUi.textAlign = 'left';
+
+  // 标题下分割线
+  const headerLineY = layout.panelY + layout.padding + layout.headerHeight;
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.28)';
+  CtxUi.lineWidth = 1;
+  CtxUi.beginPath();
+  CtxUi.moveTo(layout.panelX + layout.padding, headerLineY);
+  CtxUi.lineTo(panelRight - layout.padding, headerLineY);
+  CtxUi.stroke();
+
+  // ---- 持有物标签 ----
+  const labelFontSize = Math.max(11, layout.slotSize * 0.22);
+  CtxUi.font = `bold ${labelFontSize}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.fillStyle = 'rgba(224, 253, 255, 0.92)';
+  CtxUi.fillText('持有物品与技能', layout.panelX + layout.padding, layout.bagY - layout.labelHeight / 2);
+  const bagLabelWidth = CtxUi.measureText('持有物品与技能').width;
+  CtxUi.font = `${Math.max(10, layout.slotSize * 0.19)}px Consolas, "Courier New", monospace`;
+  CtxUi.fillStyle = 'rgba(122, 214, 240, 0.8)';
+  CtxUi.fillText(
+    `${H_inventoryUsedSlotCount(inventory)} / ${INVENTORY_BAG_CAPACITY}`,
+    layout.panelX + layout.padding + bagLabelWidth + 12,
+    layout.bagY - layout.labelHeight / 2 + 1
+  );
+
+  // ---- 背包格 ----
+  for (let i = 0; i < INVENTORY_BAG_SLOT_COUNT; i++) {
+    const rect = H_getInventoryBagSlotRect(layout, i);
+    const entry = H_inventoryGetEntryAtSlot(inventory, i);
+    const isTarget = inventoryHoverTarget?.zone === 'bag' && inventoryHoverTarget.index === i;
+    const hovered = isTarget && inventoryDragPayload === null;
+    const draggingOver = isTarget && inventoryDragPayload !== null;
+    // 该格是当前“拿起”的来源:淡化显示,表示条目已跟随光标
+    const held = inventoryDragPayload !== null
+      && inventoryDragPayload.fromZone === 'bag'
+      && inventoryDragPayload.fromIndex === i;
+    H_drawInventorySlotFrame(CtxUi, rect, {
+      accent: entry ? `${entry.color}cc` : 'rgba(0, 229, 255, 0.2)',
+      hovered,
+      draggingOver,
+      dashed: !entry
+    });
+    if (entry) {
+      H_drawInventoryEntryContent(CtxUi, entry, rect, {
+        showName: entry.kind === 'skill',
+        alpha: held ? 0.25 : 1
+      });
+    }
+  }
+
+  // ---- 分割线 ----
+  CtxUi.save();
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.3)';
+  CtxUi.lineWidth = 1;
+  CtxUi.beginPath();
+  CtxUi.moveTo(layout.panelX + layout.padding, layout.dividerY);
+  CtxUi.lineTo(panelRight - layout.padding, layout.dividerY);
+  CtxUi.stroke();
+  // 中部分割菱形
+  const dividerSize = Math.max(4, layout.slotSize * 0.11);
+  CtxUi.fillStyle = 'rgba(0, 229, 255, 0.9)';
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.8)';
+  CtxUi.shadowBlur = 8;
+  CtxUi.beginPath();
+  CtxUi.moveTo(width / 2, layout.dividerY - dividerSize);
+  CtxUi.lineTo(width / 2 + dividerSize, layout.dividerY);
+  CtxUi.lineTo(width / 2, layout.dividerY + dividerSize);
+  CtxUi.lineTo(width / 2 - dividerSize, layout.dividerY);
+  CtxUi.closePath();
+  CtxUi.fill();
+  CtxUi.restore();
+
+  // ---- 技能装配区标签 ----
+  CtxUi.font = `bold ${labelFontSize}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.fillStyle = 'rgba(224, 253, 255, 0.92)';
+  CtxUi.fillText('技能装配区', layout.panelX + layout.padding, layout.equipY - layout.labelHeight / 2);
+  const equipLabelWidth = CtxUi.measureText('技能装配区').width;
+  CtxUi.font = `${Math.max(10, layout.slotSize * 0.19)}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.fillStyle = 'rgba(122, 214, 240, 0.8)';
+  CtxUi.fillText(
+    '拖拽调整顺序 · 拖回上方卸下 · 拖入垃圾桶销毁',
+    layout.panelX + layout.padding + equipLabelWidth + 14,
+    layout.equipY - layout.labelHeight / 2 + 1
+  );
+
+  // ---- 技能槽 ----
+  const equippedTags = inventory.equippedSkills;
+  for (let i = 0; i < INVENTORY_EQUIP_COUNT; i++) {
+    const rect = H_getInventoryEquipSlotRect(layout, i);
+    const tag = equippedTags[i];
+    const skill = tag ? H_getSkillByTag(tag) : null;
+    const isTarget = inventoryHoverTarget?.zone === 'equip' && inventoryHoverTarget.index === i;
+    const hovered = isTarget && inventoryDragPayload === null;
+    const draggingOver = isTarget && inventoryDragPayload !== null;
+    const invalid = draggingOver && inventoryDragPayload !== null && inventoryDragPayload.kind !== 'skill';
+
+    H_drawInventorySlotFrame(CtxUi, rect, {
+      accent: skill ? `${skill.color}cc` : 'rgba(0, 229, 255, 0.22)',
+      hovered,
+      draggingOver,
+      invalid,
+      dashed: !skill
+    });
+
+    // 槽位序号
+    CtxUi.font = `${Math.max(8, layout.equipSlotSize * 0.2)}px Consolas, "Courier New", monospace`;
+    CtxUi.fillStyle = 'rgba(120, 190, 215, 0.65)';
+    CtxUi.textAlign = 'left';
+    CtxUi.textBaseline = 'top';
+    CtxUi.fillText(`${i + 1}`, rect.x + layout.equipSlotSize * 0.09, rect.y + layout.equipSlotSize * 0.07);
+    CtxUi.textBaseline = 'middle';
+
+    if (skill && tag) {
+      const heldFromEquip = inventoryDragPayload !== null
+        && inventoryDragPayload.fromZone === 'equip'
+        && inventoryDragPayload.fromIndex === i;
+      H_drawInventoryEntryContent(
+        CtxUi,
+        { kind: 'skill', tag, name: skill.name, count: 1, color: skill.color },
+        rect,
+        { showName: true, alpha: heldFromEquip ? 0.25 : 1 }
+      );
+    }
+  }
+
+  // ---- 垃圾桶 ----
+  const trashRect = H_getInventoryTrashRect(layout);
+  const trashTarget = inventoryHoverTarget?.zone === 'trash';
+  H_drawInventorySlotFrame(CtxUi, trashRect, {
+    accent: 'rgba(255, 90, 104, 0.85)',
+    hovered: trashTarget && inventoryDragPayload === null,
+    draggingOver: trashTarget && inventoryDragPayload !== null,
+    dashed: true
+  });
+  H_drawInventoryTrashIcon(CtxUi, trashRect, trashTarget);
+
+  // ---- 底部操作提示 ----
+  CtxUi.font = `${Math.max(10, layout.slotSize * 0.2)}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.fillStyle = 'rgba(150, 214, 235, 0.85)';
+  CtxUi.textAlign = 'center';
+  CtxUi.fillText(
+    '左键点击/拖拽:拿起并放置　·　右键:使用物品 / 装配·卸下技能　·　拖入垃圾桶:销毁',
+    width / 2,
+    layout.hintY
+  );
+  CtxUi.textAlign = 'left';
+
+  // ---- 悬停浮窗 ----
+  inventoryTooltipEntry = null;
+  inventoryTooltipSkillTag = '';
+  if (inventoryDragPayload === null && inventoryHoverTarget) {
+    if (inventoryHoverTarget.zone === 'bag') {
+      inventoryTooltipEntry = inventory.entries[inventoryHoverTarget.index] ?? null;
+    } else if (inventoryHoverTarget.zone === 'equip') {
+      inventoryTooltipSkillTag = equippedTags[inventoryHoverTarget.index] ?? '';
+    }
+  }
+
+  if (inventoryTooltipEntry) {
+    const entry = inventoryTooltipEntry;
+    if (entry.kind === 'skill') {
+      const skill = H_getSkillByTag(entry.tag);
+      H_drawInventoryTooltip(
+        CtxUi,
+        width,
+        height,
+        mouseX,
+        mouseY,
+        entry.name,
+        '技能',
+        skill?.description ?? '',
+        entry.color
+      );
+    } else {
+      const definition = H_getItemDefinition(entry.tag);
+      H_drawInventoryTooltip(
+        CtxUi,
+        width,
+        height,
+        mouseX,
+        mouseY,
+        entry.name,
+        `x${entry.count}`,
+        definition.description,
+        entry.color
+      );
+    }
+  } else if (inventoryTooltipSkillTag) {
+    const skill = H_getSkillByTag(inventoryTooltipSkillTag);
+    H_drawInventoryTooltip(
+      CtxUi,
+      width,
+      height,
+      mouseX,
+      mouseY,
+      skill?.name ?? inventoryTooltipSkillTag,
+      '已装配',
+      skill?.description ?? '',
+      skill?.color ?? '#9fe8ff'
+    );
+  }
+
+  // ---- 拖拽中的条目 ----
+  if (inventoryDragPayload) {
+    const ghostSize = layout.slotSize;
+    const ghostRect = {
+      x: inventoryPointerX - ghostSize / 2,
+      y: inventoryPointerY - ghostSize / 2,
+      width: ghostSize,
+      height: ghostSize
+    };
+    H_drawInventorySlotFrame(CtxUi, ghostRect, {
+      accent: `${inventoryDragPayload.color}dd`,
+      hovered: true
+    });
+    H_drawInventoryEntryContent(
+      CtxUi,
+      {
+        kind: inventoryDragPayload.kind,
+        tag: inventoryDragPayload.tag,
+        name: inventoryDragPayload.name,
+        count: inventoryDragPayload.count,
+        color: inventoryDragPayload.color
+      },
+      ghostRect,
+      { alpha: 0.92 }
+    );
+  }
+
+  CtxUi.restore();
+};
+
+/**
+ * 检测玩家新获得的技能并给出飘字提示
+ */
+const H_notifyNewlyAcquiredSkills = () => {
+  const currentTags = new Set<string>();
+  if (playerEntity) {
+    const inventory = H_ensurePlayerInventory(playerEntity.inventory);
+    for (const entry of inventory.entries) {
+      if (entry !== null && entry.kind === 'skill') currentTags.add(entry.tag);
+    }
+    for (const tag of inventory.equippedSkills) {
+      if (tag) currentTags.add(tag);
+    }
+    for (const tag of currentTags) {
+      if (prevOwnedSkillTags.has(tag)) continue;
+      const skill = H_getSkillByTag(tag);
+      numericalManager.addNumber(
+        `获得技能:${skill?.name ?? tag}`,
+        playerEntity.position.x,
+        playerEntity.position.y + 20,
+        skill?.color ?? '#9fe8ff'
+      );
+    }
+  }
+  prevOwnedSkillTags = currentTags;
+};
+
+////////////////////
+// <-- 背包界面相关
+////////////////////
 
 /**
  * 绘制图形层(网格、轴、元素、临时预览)
@@ -2093,7 +3684,13 @@ const drawEntities = () => {
   }
   // 绘制经验球
   for (const entity of expOrbEntityList) {
+   
+  // 绘制技能球
+  for (const entity of skillOrbEntityList) {
     if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
+      entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
+    }
+  } if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
       entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
     }
   }
@@ -2266,6 +3863,7 @@ const drawUI = () => {
   drawMiniMap(ctxUi, UI_CANVAS.value);
   drawBottomStatusBar(ctxUi, UI_CANVAS.value);
   drawDebugBoard(ctxUi, UI_CANVAS.value);
+  drawInventoryPanel(ctxUi, UI_CANVAS.value);
   drawDebugTerminal(ctxUi, UI_CANVAS.value);
   drawDeathOverlay(ctxUi, UI_CANVAS.value);
 };
@@ -2274,13 +3872,13 @@ const drawUI = () => {
  * 加载所有实体的纹理
  */
 const loadEntityTextures = async () => {
-  const allEntities = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList, ...expOrbEntityList];
+  const allEntities = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList, ...expOrbEntityList, ...skillOrbEntityList];
   await Promise.all(allEntities.map(e => e.loadTexture()));
   drawEntities(); // 加载完成后重绘
 };
 
 const refreshRenderEntityList = () => {
-  renderEntityList = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList, ...expOrbEntityList];
+  renderEntityList = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList, ...expOrbEntityList, ...skillOrbEntityList];
 };
 
 
@@ -2662,6 +4260,24 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
  * 全局键盘快捷键处理
  */
 const onGlobalKeyDown = (e: KeyboardEvent) => {
+  // E 键打开/关闭背包(调试终端未打开时生效)
+  if (!debugTerminalVisible && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'e' && !e.repeat) {
+    e.preventDefault();
+    if (!playerEntity) {
+      pushDebugTerminalLog('[WARN] Player not ready, cannot open inventory.');
+      return;
+    }
+    toggleInventory();
+    return;
+  }
+
+  // 背包打开时,ESC 关闭背包
+  if (inventoryVisible && e.key === 'Escape') {
+    e.preventDefault();
+    toggleInventory(false);
+    return;
+  }
+
   // ~ 统一用于打开/关闭调试终端
   if (e.key === '`' || e.key === '~') {
     e.preventDefault();
@@ -2865,6 +4481,9 @@ const onGlobalKeyUp = (e: KeyboardEvent) => {
 const onCanvasClick = (e: MouseEvent) => {
   if (!UI_CANVAS.value || !ctxGraphics) return;
 
+  // 背包界面打开时,点击事件不参与世界交互(背包的拖拽/点击已在 mousedown/mouseup 中处理)
+  if (inventoryVisible) return;
+
   const screenX = e.offsetX;
   const screenY = e.offsetY;
   const hitArea = H_getHitEventArea(screenX, screenY);
@@ -2893,8 +4512,27 @@ const onCanvasClick = (e: MouseEvent) => {
   dragTotalY = 0;
 };
 
-const onCanvasDoubleClick = (_e: MouseEvent) => {
-  // drawing-board polyline feature removed
+const onCanvasDoubleClick = (e: MouseEvent) => {
+  // 背包界面打开时,双击背包物品 = 使用该物品
+  if (!inventoryVisible || !playerEntity) return;
+  const { width, height } = H_getCanvasCssSize(e.currentTarget as HTMLCanvasElement);
+  const layout = H_getInventoryLayout(width, height);
+  const target = H_hitTestInventorySlot(layout, e.offsetX, e.offsetY);
+  if (!target || target.zone !== 'bag') return;
+  const entry = H_inventoryGetEntryAtSlot(H_ensurePlayerInventory(playerEntity.inventory), target.index);
+  if (entry === null || entry.kind !== 'item') return;
+  // 双击前会先发生一次单击(拿起)与一次单击(放回),此处直接使用物品
+  inventoryDragPayload = null;
+  sendInventoryUseItem(entry.uid);
+  drawUI();
+};
+
+/**
+ * 画布右键菜单处理:背包界面打开时屏蔽浏览器默认右键菜单(右键用于快捷操作)
+ */
+const onCanvasContextMenu = (e: MouseEvent) => {
+  if (!inventoryVisible) return;
+  e.preventDefault();
 };
 
 const onCanvasWheel = (e: WheelEvent) => {
@@ -2984,6 +4622,24 @@ const onMousedown = (e: MouseEvent) => {
   const screenX = e.offsetX;
   const screenY = e.offsetY;
 
+  // 背包界面打开时,鼠标交互全部交给背包界面(禁用画布拖动/开火/从者编辑)
+  if (inventoryVisible) {
+    e.preventDefault();
+    inventoryPointerX = screenX;
+    inventoryPointerY = screenY;
+    inventoryDragStartX = screenX;
+    inventoryDragStartY = screenY;
+    if (UI_CANVAS.value) {
+      if (e.button === 2) {
+        handleInventoryRightDown(UI_CANVAS.value, screenX, screenY);
+      } else {
+        handleInventoryLeftDown(UI_CANVAS.value, screenX, screenY);
+      }
+    }
+    drawUI();
+    return;
+  }
+
   if (H_getHitEventArea(screenX, screenY)) return;
 
   if (e.button === 0 && servantGridEditorEnabled) {
@@ -3029,6 +4685,14 @@ const onMouseMove = (e: MouseEvent) => {
 
   if (!UI_CANVAS.value) return;
 
+  // 背包界面打开时,仅维护指针位置与光标样式(高亮由每帧绘制时重算)
+  if (inventoryVisible) {
+    inventoryPointerX = mouseX;
+    inventoryPointerY = mouseY;
+    cursorManager?.setNowCursorType(inventoryDragPayload ? 'move' : 'pointer');
+    return;
+  }
+
   const hitArea = H_getHitEventArea(mouseX, mouseY);
   hoveredArea = hitArea;
 
@@ -3063,6 +4727,16 @@ const onMouseMove = (e: MouseEvent) => {
  * 鼠标释放事件(绑定到UI Canvas)
  */
 const onMouseUp = () => {
+  // 背包界面打开时,抬起鼠标即结算背包拖拽/点击
+  if (inventoryVisible) {
+    if (UI_CANVAS.value) {
+      const moved = Math.hypot(inventoryPointerX - inventoryDragStartX, inventoryPointerY - inventoryDragStartY) > 4;
+      handleInventoryMouseUp(UI_CANVAS.value, inventoryPointerX, inventoryPointerY, moved);
+    }
+    isDragging = false;
+    isMoveCanvas = false;
+    return;
+  }
   isDragging = false;
   isMoveCanvas = false;
   cursorManager?.setNowCursorType(servantGridEditorEnabled ? 'pointer' : (playerFireMode ? 'crosshair' : 'default'));
@@ -3120,6 +4794,7 @@ onUnmounted(() => {
     UI_CANVAS.value.removeEventListener('mouseleave', onMouseUp);
     UI_CANVAS.value.removeEventListener('click', onCanvasClick);
     UI_CANVAS.value.removeEventListener('dblclick', onCanvasDoubleClick);
+    UI_CANVAS.value.removeEventListener('contextmenu', onCanvasContextMenu);
     UI_CANVAS.value.removeEventListener('wheel', onCanvasWheel);
   }
 

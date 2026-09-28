@@ -1,4 +1,4 @@
-import type { MapData, InstructObject, Point } from '@/components/pixel_war/interface/Interface';
+import type { MapData, InstructObject, Point, PlayerInventory } from '@/components/pixel_war/interface/Interface';
 
 export class Instruct {
     ////////////////////
@@ -223,6 +223,38 @@ export class Instruct {
             conveyor: 'client',
             time: this.H_getFormatTime(),
             data: { paused } // 携带暂停标志，若不传则服务端自行切换
+        };
+    };
+
+    /**
+     * 背包状态同步指令
+     * 客户端在装配技能、调整顺序、卸下或销毁条目后提交最新的背包状态,
+     * 服务端以此为准更新玩家背包(技能释放依赖装配区数据)。
+     * @param playerId 玩家ID
+     * @param inventory 客户端提交的完整背包状态
+     */
+    public static I_InventoryUpdate = (playerId: number, inventory: PlayerInventory): InstructObject => {
+        return {
+            type: 'inventory_update',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: { playerId, inventory }
+        };
+    };
+
+    /**
+     * 使用背包物品指令
+     * @param playerId 玩家ID
+     * @param uid 背包条目的唯一id
+     */
+    public static I_InventoryUseItem = (playerId: number, uid: string): InstructObject => {
+        return {
+            type: 'inventory_use_item',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: { playerId, uid }
         };
     };
 
