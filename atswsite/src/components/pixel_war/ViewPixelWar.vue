@@ -53,7 +53,6 @@ import {
   GrenadeDynamicEntity,
   ExpOrbDynamicEntity,
   SkillOrbDynamicEntity,
-  Va2ShootSkill,
   INVENTORY_SKILL_SLOT_COUNT,
   INVENTORY_ITEM_MAX_STACK,
   INVENTORY_BAG_CAPACITY,
@@ -70,7 +69,9 @@ import {
   H_ensurePlayerInventory,
   H_getSkillByTag,
   H_getItemDefinition,
-  H_getAllSkills
+  H_getAllSkills,
+  H_drawSkillIconTexture,
+  H_preloadSkillIconTextures
 } from '@/components/pixel_war/class';
 
 // 底部状态栏技能信息类型
@@ -82,8 +83,9 @@ type BottomStatusSkill = {
   cooldownNow: number;
   cooldownMax: number;
   active?: boolean;
-  // 图标形状:未指定时按 key 推断(固定功能键);技能装配区的技能使用 'dual_arrow' / 'hexagon'
-  icon?: 'dual_arrow' | 'hexagon';
+  // 技能图标贴图文件名(resource/skill_icon 下的 100px × 100px PNG,取自 Skill.icon);
+  // 固定功能键无贴图,按 key 绘制矢量图标
+  icon?: string;
   // 是否为已装配技能(来自技能装配区)
   equipped?: boolean;
 };
@@ -97,6 +99,8 @@ type EntityInterpolationState = {
 };
 
 import ServiceWorker from '@/components/pixel_war/service/Service?worker';
+// 特效贴图资源已由 public/effects 迁移至 pixel_war/resource/effects
+import dynamicEntityDeathEffectUrl from '@/components/pixel_war/resource/effects/dynamic_entity_death_default.png?url';
 
 const router = useRouter();
 
@@ -414,7 +418,7 @@ const EFFECT_SPRITE_FRAME_WIDTH = 100;
 const EFFECT_SPRITE_FRAME_HEIGHT = 100;
 const EFFECT_SPRITE_FRAME_COUNT = 30;
 const EFFECT_SPRITE_FPS = 30;
-const EFFECT_PATH_DYNAMIC_ENTITY_DEATH = './effects/dynamic_entity_death_default.png';
+const EFFECT_PATH_DYNAMIC_ENTITY_DEATH = dynamicEntityDeathEffectUrl;
 const ENTITY_CACHE = new Map<number, Entity>();// 服务端实体快照对应的本地渲染实体缓存
 const SERVER_TICK_MS = 20; // 服务端固定 50 FPS,前端在两帧之间插值渲染
 const MIN_INTERPOLATION_DURATION_MS = 10;//最小插值持续时间（毫秒）
@@ -943,6 +947,10 @@ const H_ensureStarsInViewport = () => {
 ////////////////////
 const startSetting = () => {
   onResizeCanvas();
+
+  // 预加载技能图标贴图(resource/skill_icon 下的 100px × 100px PNG),避免首帧技能槽图标缺失
+  H_preloadSkillIconTextures(H_getAllSkills().map((skill) => skill.icon));
+
   if (GRAPHICS_CANVAS.value) {
       const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
       offsetXX = width / 2;// 初始化原点偏移量为画布中心
@@ -2202,7 +2210,7 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
         cooldownNow: 0,
         cooldownMax: 1,
         active: true,
-        icon: tag === Va2ShootSkill.TAG ? 'dual_arrow' : 'hexagon',
+        icon: skill.icon,
         equipped: true
       });
     }
@@ -2330,52 +2338,34 @@ const drawBottomStatusSkill = (
   CtxUi.lineTo(x + size - railInset, y + size * 0.72);
   CtxUi.stroke();
 
-  // 技能图标(发光)
+  // 技能图标:已装配技能使用 resource/skill_icon 下的 PNG 贴图;固定功能键仍绘制矢量图形
   const inner = iconAreaH * 0.72;
-  const iconPaint = `${skill.color}${ready ? 'e6' : '80'}`;
-  CtxUi.fillStyle = iconPaint;
-  CtxUi.strokeStyle = iconPaint;
-  CtxUi.lineWidth = Math.max(1, size * 0.07);
-  CtxUi.lineJoin = 'round';
-  CtxUi.shadowColor = highlight ? skill.color : 'transparent';
-  CtxUi.shadowBlur = highlight ? 10 : 0;
+  let iconDrawn = false;
+  if (skill.equipped === true && skill.icon) {
+    CtxUi.save();
+    CtxUi.shadowColor = highlight ? skill.color : 'transparent';
+    CtxUi.shadowBlur = highlight ? 10 : 0;
+    // 冷却中压暗贴图
+    iconDrawn = H_drawSkillIconTexture(
+      CtxUi,
+      skill.icon,
+      centerX,
+      centerY,
+      iconAreaH * 0.78,
+      ready ? 1 : 0.5
+    );
+    CtxUi.restore();
+  }
 
-  if (skill.icon === 'dual_arrow') {
-    // 斜向双弹:两条呈 ±45° 的箭头
-    const arm = inner * 0.32;
-    for (const sign of [-1, 1]) {
-      const ex = centerX + arm * 0.7;
-      const ey = centerY + sign * arm * 0.7;
-      CtxUi.beginPath();
-      CtxUi.moveTo(centerX - arm * 0.7, centerY - sign * arm * 0.7);
-      CtxUi.lineTo(ex, ey);
-      CtxUi.stroke();
+  if (!iconDrawn && skill.equipped !== true) {
+    const iconPaint = `${skill.color}${ready ? 'e6' : '80'}`;
+    CtxUi.fillStyle = iconPaint;
+    CtxUi.strokeStyle = iconPaint;
+    CtxUi.lineWidth = Math.max(1, size * 0.07);
+    CtxUi.lineJoin = 'round';
+    CtxUi.shadowColor = highlight ? skill.color : 'transparent';
+    CtxUi.shadowBlur = highlight ? 10 : 0;
 
-      const head = inner * 0.17;
-      CtxUi.beginPath();
-      CtxUi.moveTo(ex + head * 0.3, ey + sign * head * 0.3);
-      CtxUi.lineTo(ex - head * 0.85, ey + sign * head * 0.1);
-      CtxUi.lineTo(ex - head * 0.1, ey - sign * head * 0.85);
-      CtxUi.closePath();
-      CtxUi.fill();
-    }
-  } else if (skill.icon === 'hexagon') {
-    // 通用技能:六边形 + 中心核心
-    const radius = inner * 0.3;
-    CtxUi.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const theta = Math.PI / 6 + (Math.PI / 3) * i;
-      const px = centerX + Math.cos(theta) * radius;
-      const py = centerY + Math.sin(theta) * radius;
-      if (i === 0) CtxUi.moveTo(px, py);
-      else CtxUi.lineTo(px, py);
-    }
-    CtxUi.closePath();
-    CtxUi.stroke();
-    CtxUi.beginPath();
-    CtxUi.arc(centerX, centerY, Math.max(1.2, inner * 0.1), 0, Math.PI * 2);
-    CtxUi.fill();
-  } else {
     CtxUi.beginPath();
     if (skill.key === 'F') {
       // 开火:三角形
@@ -2735,7 +2725,7 @@ const H_drawInventorySlotFrame = (
 };
 
 /**
- * 绘制技能图标(按技能 tag 选择图形)
+ * 绘制技能图标(贴图路径由技能只读属性 icon 指定,资源位于 resource/skill_icon,100px × 100px PNG)
  */
 const H_drawInventorySkillIcon = (
   CtxUi: CanvasRenderingContext2D,
@@ -2745,51 +2735,14 @@ const H_drawInventorySkillIcon = (
   size: number,
   color: string
 ) => {
-  CtxUi.save();
-  CtxUi.strokeStyle = color;
-  CtxUi.fillStyle = color;
-  CtxUi.lineWidth = Math.max(1, size * 0.07);
-  CtxUi.shadowColor = color;
-  CtxUi.shadowBlur = size * 0.35;
+  const skill = H_getSkillByTag(skillTag);
+  if (!skill) return;
 
-  if (skillTag === Va2ShootSkill.TAG) {
-    // 斜向双弹:两条呈 ±45° 的箭头
-    const arm = size * 0.3;
-    for (const sign of [-1, 1]) {
-      const sx = cx - arm * 0.7;
-      const sy = cy - sign * arm * 0.7;
-      const ex = cx + arm * 0.7;
-      const ey = cy + sign * arm * 0.7;
-      CtxUi.beginPath();
-      CtxUi.moveTo(sx, sy);
-      CtxUi.lineTo(ex, ey);
-      CtxUi.stroke();
-      // 箭头
-      const head = size * 0.16;
-      CtxUi.beginPath();
-      CtxUi.moveTo(ex + head * 0.35, ey + sign * head * 0.35);
-      CtxUi.lineTo(ex - head * 0.8, ey + sign * head * 0.05);
-      CtxUi.lineTo(ex - head * 0.05, ey - sign * head * 0.8);
-      CtxUi.closePath();
-      CtxUi.fill();
-    }
-  } else {
-    // 通用技能图标:六边形 + 中心核心
-    const radius = size * 0.32;
-    CtxUi.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const theta = Math.PI / 6 + (Math.PI / 3) * i;
-      const px = cx + Math.cos(theta) * radius;
-      const py = cy + Math.sin(theta) * radius;
-      if (i === 0) CtxUi.moveTo(px, py);
-      else CtxUi.lineTo(px, py);
-    }
-    CtxUi.closePath();
-    CtxUi.stroke();
-    CtxUi.beginPath();
-    CtxUi.arc(cx, cy, Math.max(1.2, size * 0.09), 0, Math.PI * 2);
-    CtxUi.fill();
-  }
+  CtxUi.save();
+  CtxUi.shadowColor = color;
+  CtxUi.shadowBlur = size * 0.24;
+  // 预留内边距,保持与物品图标一致的视觉占比
+  H_drawSkillIconTexture(CtxUi, skill.icon, cx, cy, size * 0.74);
   CtxUi.restore();
 };
 

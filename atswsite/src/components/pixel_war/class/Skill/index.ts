@@ -36,3 +36,10 @@ export { SKILL_REGISTRY, H_getSkillByTag, H_getAllSkills, H_isSkillTagValid };
 export { Skill } from '@/components/pixel_war/class/Skill/Skill';
 export type { SkillTagType, SkillCastContext } from '@/components/pixel_war/class/Skill/Skill';
 export { Va2ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Va2ShootSkill/Va2ShootSkill';
+// 技能图标贴图(resource/skill_icon 下的 100px × 100px PNG)
+export {
+  H_getSkillIconTexture,
+  H_preloadSkillIconTextures,
+  H_isSkillIconTextureReady,
+  H_drawSkillIconTexture
+} from '@/components/pixel_war/class/Skill/SkillIconTexture';

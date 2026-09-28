@@ -11,6 +11,8 @@ import type { Point } from '@/components/pixel_war/interface/Interface';
 class Va2ShootSkill extends Skill {
   /** 技能标签 */
   public static readonly TAG = 'va2_shoot_skill';
+  /** 技能图标贴图文件名(resource/skill_icon 下的 100px × 100px PNG) */
+  public static readonly ICON = 'va2_shoot_skill.png';
   /** 双弹相对瞄准方向的偏转角度(弧度,±45°) */
   public static readonly SPREAD_ANGLE = Math.PI / 4;
 
@@ -21,7 +23,8 @@ class Va2ShootSkill extends Skill {
       '双弹',
       '以瞄准方向为中心,向上下各偏转 45° 射出两发子弹',
       '#9fe8ff',
-      0.6
+      0.6,
+      Va2ShootSkill.ICON
     );
   }
 

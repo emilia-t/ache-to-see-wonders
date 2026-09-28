@@ -45,6 +45,12 @@ abstract class Skill {
   public readonly description: string;
   /** 技能主题色(技能球、背包、技能槽统一使用) */
   public readonly color: string;
+  /**
+   * 技能图标贴图文件名(含扩展名)
+   * 指向 src/components/pixel_war/resource/skill_icon/ 下的 100px × 100px PNG,
+   * 由 class/Skill/SkillIconTexture.ts 负责加载与绘制。
+   */
+  public readonly icon: string;
   /** 技能释放冷却(秒),实际冷却取施法者开火冷却与该值的较大者 */
   public readonly cooldown: number;
   /** 是否可以堆叠(技能恒为 false) */
@@ -56,7 +62,8 @@ abstract class Skill {
     shortName: string,
     description: string,
     color: string,
-    cooldown: number
+    cooldown: number,
+    icon: string
   ) {
     this.tag = tag;
     this.name = name;
@@ -64,6 +71,7 @@ abstract class Skill {
     this.description = description;
     this.color = color;
     this.cooldown = cooldown;
+    this.icon = icon;
   }
 
   /**

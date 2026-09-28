@@ -24,6 +24,11 @@ export { Skill } from './Skill/Skill';
 export type { SkillTagType, SkillCastContext } from './Skill/Skill';
 export { Va2ShootSkill } from './Skill/Skills/Va2ShootSkill/Va2ShootSkill';
 export { SKILL_REGISTRY, H_getSkillByTag, H_getAllSkills, H_isSkillTagValid } from './Skill/index';
+export {
+  H_preloadSkillIconTextures,
+  H_isSkillIconTextureReady,
+  H_drawSkillIconTexture
+} from './Skill/SkillIconTexture';
 // Inventory(背包)
 export {
   INVENTORY_SKILL_SLOT_COUNT,

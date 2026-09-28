@@ -1,10 +1,12 @@
 ﻿import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { Point } from '@/components/pixel_war/interface/Interface';
+// 贴图资源已由 public/textures 迁移至 pixel_war/resource/textures,通过 Vite 资源导入解析为可用 URL
+import curbStaticEntityTextureUrl from '@/components/pixel_war/resource/textures/curb_static_entity.png?url';
 
 class CurbStaticEntity extends StaticEntity {
   public static readonly WIDTH = 50;
   public static readonly HEIGHT = 50;
-  public static readonly TEXTURE_PATH = './textures/curb_static_entity.png';
+  public static readonly TEXTURE_PATH = curbStaticEntityTextureUrl;
 
   constructor(
     position: Point,
