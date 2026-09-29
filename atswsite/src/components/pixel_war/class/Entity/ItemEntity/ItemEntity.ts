@@ -6,7 +6,8 @@ abstract class ItemEntity extends Entity {
   public lifetimeRemaining: number; // 寿命剩余时间（秒）
   public isDisappearing: boolean; // 是否进入消失特效阶段
   public disappearDuration: number; // 消失特效总时长（秒）
-  public disappearTimer: number; // 消失特效剩余时长（秒）
+  public disappearTimer: number; // 消失特效剩余时间（秒）
+  public count: number; // 该掉落物承载的物品数量（堆叠,1 表示单个;拾取时按背包剩余空间结算）
 
   constructor(
     position: Point,
@@ -23,6 +24,7 @@ abstract class ItemEntity extends Entity {
     this.isDisappearing = false;
     this.disappearDuration = 0.45;
     this.disappearTimer = 0;
+    this.count = 1;
     // ItemEntity 不参与碰撞体积计算
     this.collisionBox = {
       x: position.x,
@@ -97,6 +99,21 @@ abstract class ItemEntity extends Entity {
       ctx.fillRect(left, top, this.width, this.height);
       ctx.strokeStyle = '#000';
       ctx.strokeRect(left, top, this.width, this.height);
+    }
+
+    // 堆叠数量大于 1 时在物品右下角标注,便于玩家看清掉落了一堆物品
+    if (this.count > 1) {
+      const label = `x${this.count}`;
+      const labelX = left + this.width;
+      const labelY = top + this.height + 4;
+      ctx.font = 'bold 10px Consolas, "Courier New", monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'alphabetic';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.strokeText(label, labelX, labelY);
+      ctx.fillStyle = '#eafdff';
+      ctx.fillText(label, labelX, labelY);
     }
     ctx.restore();
   }

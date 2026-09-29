@@ -8,7 +8,10 @@
   PlayerRule,
   ServantMap,
   NeighborGrid,
-  PlayerInventory
+  PlayerInventory,
+  DroppedItemStack,
+  InventoryDeathDrop,
+  PlayerDeathDrop
 } from '@/components/pixel_war/interface/Interface';
 
 import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
@@ -122,8 +125,8 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.motionTurnResponsiveness = PlayerDynamicEntity.PLAYER_MOTION_TURN_RESPONSE;
     this.wanderRange = 0;
     this.perceptionRange = 0;
-    this.health = 100000;
-    this.healthMax = 100000;
+    this.health = 10000;
+    this.healthMax = 10000;
     this.movementPassion = 1;
     this.teamId = teamId;
     this.player_score = 0;
@@ -465,16 +468,62 @@ class PlayerDynamicEntity extends DynamicEntity {
    * @returns 实际放入的数量
    */
   public acquireItem(itemTag: string, itemName: string = ''): number {
+    return this.acquireItemCount(itemTag, itemName, 1);
+  }
+
+  /**
+   * 获得指定数量的物品:放入背包(自动按堆叠上限堆叠)
+   * @param itemTag 物品标签
+   * @param itemName 物品名称(为空时使用物品定义中的名称)
+   * @param count 数量
+   * @returns 实际放入背包的数量(背包空间不足时会小于 count)
+   */
+  public acquireItemCount(itemTag: string, itemName: string, count: number): number {
+    if (count <= 0) return 0;
     const inventory = this.getInventory();
     const definition = H_getItemDefinition(itemTag);
     return H_inventoryAddItem(
       inventory,
       itemTag,
       itemName || definition.name,
-      1,
+      count,
       definition.color,
       definition.maxStack
     );
+  }
+
+  /**
+   * 取出背包与技能装配区中的全部内容,并清空背包(仅供死亡结算使用)
+   * - 物品按标签合并为掉落堆叠(保留数量)
+   * - 技能(背包格子与已装配的槽位)以技能标签返回
+   * @returns 背包掉落内容(调用后玩家背包已被清空)
+   */
+  private takeInventoryForDeathDrop(): InventoryDeathDrop {
+    const inventory = this.getInventory();
+    const itemStacks = new Map<string, DroppedItemStack>();
+    const skillTags: string[] = [];
+
+    for (const entry of inventory.entries) {
+      if (entry === null) continue;
+      if (entry.kind === 'item') {
+        const stack = itemStacks.get(entry.tag);
+        if (stack) {
+          stack.count += entry.count;
+        } else {
+          itemStacks.set(entry.tag, { tag: entry.tag, name: entry.name, count: entry.count });
+        }
+        continue;
+      }
+      skillTags.push(entry.tag);
+    }
+    for (const tag of inventory.equippedSkills) {
+      if (tag !== null) skillTags.push(tag);
+    }
+
+    // 背包整体清空:死亡后不再保留任何物品与技能
+    this.inventory = H_createEmptyPlayerInventory();
+
+    return { items: Array.from(itemStacks.values()), skillTags };
   }
 
   /**
@@ -509,6 +558,45 @@ class PlayerDynamicEntity extends DynamicEntity {
 
   ////////////////////
   // <-- 背包与技能相关
+  ////////////////////
+
+  ////////////////////
+  // 死亡相关 -->
+  ////////////////////
+
+  /**
+   * 玩家死亡事件:统一处理玩家死亡后需要做的事情
+   * 具体包含:
+   * - 清空背包:背包中的物品全部取出并掉落
+   * - 清空技能:技能装配区中已装配的技能与背包中的技能条目一并取出并掉落
+   * - 清空经验:结算经验掉落后经验归零(掉落经验 = ceil(经验 × 60%))
+   * - 清空等级:游戏等级归零
+   * - 清空积分:击杀积分归零
+   * 说明:本函数只负责修改玩家自身状态并产出掉落清单,
+   * 地面实体(掉落物/技能球/经验球)由服务端依据返回值生成。
+   * @returns 死亡结算结果(掉落经验值 + 掉落物品堆叠 + 掉落技能标签)
+   */
+  public onDeath(): PlayerDeathDrop {
+    // 清空背包与技能:取出背包中的物品与技能,并清空整个背包(含技能装配区)
+    const inventoryDrop = this.takeInventoryForDeathDrop();
+
+    // 清空经验:60% 经验掉落为经验球(向上取整),其余 40% 作为死亡惩罚扣除
+    const droppedExp = Math.ceil(this.game_exp * 0.6);
+    this.game_exp = 0;
+
+    // 清空等级与击杀积分
+    this.game_level = 0;
+    this.player_score = 0;
+
+    return {
+      droppedExp,
+      items: inventoryDrop.items,
+      skillTags: inventoryDrop.skillTags
+    };
+  }
+
+  ////////////////////
+  // <-- 死亡相关
   ////////////////////
 
   /**

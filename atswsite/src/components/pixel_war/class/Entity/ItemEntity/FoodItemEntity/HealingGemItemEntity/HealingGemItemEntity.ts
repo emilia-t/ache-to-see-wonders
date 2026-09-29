@@ -4,6 +4,7 @@ import { FoodItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/F
 import healingGemItemEntityTextureUrl from '@/components/pixel_war/resource/textures/healing_gem_item_entity.png?url';
 
 class HealingGemItemEntity extends FoodItemEntity {
+  public static GENERATE_WEIGHT = 0.02;// 生成权重，越大越容易生成
   public static readonly WIDTH = 25;
   public static readonly HEIGHT = 25;
   public static readonly TEXTURE_PATH = healingGemItemEntityTextureUrl;
@@ -20,8 +21,8 @@ class HealingGemItemEntity extends FoodItemEntity {
       HealingGemItemEntity.TEXTURE_PATH,
       name,
       tag,
-      40,
-      10
+      1,
+      1
     );
   }
 }

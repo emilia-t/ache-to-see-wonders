@@ -37,27 +37,29 @@ import {
 const SERVICE: DedicatedWorkerGlobalScope = self;
 
 const GCFG:GameConfig = {
-  npcSpawnNoSpawnRadius:300,// 玩家周围 0-300px 半径内为禁刷怪区,单位px
-  npcSpawnHighRadius:600,// 玩家周围 300-600px 半径内为高频刷怪区外边界,单位px
-  npcSpawnMediumRadius:1000,// 玩家周围 600-1000px 半径内为中频刷怪区外边界,单位px
-  npcSpawnLowRadius:2000,// 玩家周围 1000-2000px 半径内为低频刷怪区外边界,单位px
-  npcDespawnDistance:3600,// 玩家周围 3600px 半径外的 NPC 将被强制移除,单位px
+  npcSpawnTotalProbability:0.4,//NPC 生成总概率(0,1]
+  npcSpawnNoSpawnRadius:300,// 禁刷怪区,单位px
+  npcSpawnHighRadius:900,// 高频刷怪区外边界,单位px
+  npcSpawnMediumRadius:1800,// 中频刷怪区外边界,单位px
+  npcSpawnLowRadius:3200,// 低频刷怪区外边界,单位px
+  npcDespawnDistance:4800,// NPC 超出此距离后消失,单位px
   npcSpawnHighInterval:4,// 高频刷怪区生成间隔,单位秒
-  npcSpawnMediumInterval:8,// 中频刷怪区生成间隔,单位秒
-  npcSpawnLowInterval:16,// 低频刷怪区生成间隔,单位秒
+  npcSpawnMediumInterval:10,// 中频刷怪区生成间隔,单位秒
+  npcSpawnLowInterval:22,// 低频刷怪区生成间隔,单位秒
   npcSpawnMaxCountSinglePlayer:240,// 地图中同时存在的 NPC 数量上限,单位个
-  npcSpawnMaxAttempts:30,// 每次刷怪在目标环形区域内寻找可用生成点的最大尝试次数,单位次
+  npcSpawnMaxAttempts:1,// 每个游戏刻tick最大尝试生成次数
   npcSpawnPadding:12,// 新 NPC 与已有动态实体之间额外保留的安全距离,单位px
   
-  itemSpawnNoSpawnRadius:300,// 玩家周围 0-300px 
-  itemSpawnHighRadius:600,// 玩家周围 300-600px 
-  itemSpawnMediumRadius:1000,// 玩家周围 600-1000px 
-  itemSpawnLowRadius:2000,// 玩家周围 1000-2000px 
-  itemSpawnHighInterval:4,// 高频生成间隔,单位秒
-  itemSpawnMediumInterval:8,// 中频生成间隔,单位秒
-  itemSpawnLowInterval:16,// 低频生成间隔,单位秒
+  itemSpawnTotalProbability:0.1,//item 生成总概率(0,1]
+  itemSpawnNoSpawnRadius:300,// 禁生成物品区,单位px
+  itemSpawnHighRadius:900,// 高频生成区外边界,单位px
+  itemSpawnMediumRadius:1800,// 中频生成区外边界,单位px
+  itemSpawnLowRadius:3200,// 低频生成区外边界,单位px
+  itemSpawnHighInterval:6,// 高频生成间隔,单位秒
+  itemSpawnMediumInterval:14,// 中频生成间隔,单位秒
+  itemSpawnLowInterval:30,// 低频生成间隔,单位秒
   itemSpawnMaxCountSinglePlayer:20,// 地图中同时存在的 ITEM 数量上限,单位个
-  itemSpawnMaxAttempts:30, // 每Tk最大尝试生成次数
+  itemSpawnMaxAttempts:1, // 每个游戏刻tick最大尝试生成次数
   itemSpawnPadding:50,// 生成物品的间距
 
   singleplayerMode: true,
@@ -94,7 +96,7 @@ const MAP_DATA: MapData = {
   staticEntities: [],
   itemEntities: []
 };
-// 生成权重
+// 可生成的 NPC 类列表
 const SPAWNABLE_NPC_CLASSES = [
   RedPixelEntity,
   WhitePixelEntity,
@@ -102,6 +104,23 @@ const SPAWNABLE_NPC_CLASSES = [
   SkyBluePixelEntity
   // more
 ] as const;
+
+// 可生成的 ITEM 类列表
+const SPAWNABLE_ITEM_CLASSES = [
+  HealingGemItemEntity
+  // more
+] as const;
+
+// 预先计算每个 ITEM 的权重,并验证权重是否合法
+const ITEM_WEIGHTS = SPAWNABLE_ITEM_CLASSES.map((ctor) => {
+  const weight = (ctor as any).GENERATE_WEIGHT; // 读取静态属性
+  if (typeof weight !== 'number' || weight <= 0 || weight > 1) {
+    throw new Error(
+      `Item class ${ctor.name} must have a static GENERATE_WEIGHT property in (0,1]`
+    );
+  }
+  return { ctor, weight };
+});
 
 // 预先计算每个 NPC 的权重,并验证权重是否合法
 const NPC_WEIGHTS = SPAWNABLE_NPC_CLASSES.map((ctor) => {
@@ -129,9 +148,9 @@ let lastTickTime = performance.now();
 let npcSpawnHighTimer = GCFG.npcSpawnHighInterval;
 let npcSpawnMediumTimer = GCFG.npcSpawnMediumInterval;
 let npcSpawnLowTimer = GCFG.npcSpawnLowInterval;
-let itemSpawnHighTimer = GCFG.npcSpawnHighInterval;
-let itemSpawnMediumTimer = GCFG.npcSpawnMediumInterval;
-let itemSpawnLowTimer = GCFG.npcSpawnLowInterval;
+let itemSpawnHighTimer = GCFG.itemSpawnHighInterval;
+let itemSpawnMediumTimer = GCFG.itemSpawnMediumInterval;
+let itemSpawnLowTimer = GCFG.itemSpawnLowInterval;
 let staticEntitiesSent = false;
 let gamePaused = false;      // 游戏逻辑是否暂停
 let lastPauseState = false;  // 用于日志去重
@@ -563,7 +582,18 @@ const updateDynamicEntityItemPickups = (): boolean => {
     if (item.isDisappearing) continue;
     for (const dynamicEntity of dynamicEntityList) {
       if (dynamicEntity.isDead) continue;
-      if (dynamicEntity instanceof NpcDynamicEntity || dynamicEntity instanceof PlayerDynamicEntity) {
+      if (dynamicEntity instanceof PlayerDynamicEntity) {
+        if (!dynamicEntity.tryPickupItem(item)) continue;
+        // 掉落物可能是一堆(count>1,如死亡掉落),按背包剩余空间结算,装不下的继续留在地上
+        const droppedCount = Math.max(1, Math.floor(item.count));
+        const accepted = dynamicEntity.acquireItemCount(item.tag, item.name, droppedCount);
+        if (accepted <= 0) break;// 背包已满,等玩家腾出空间后再拾取
+        item.count = droppedCount - accepted;
+        if (item.count <= 0) item.beginDisappear();
+        pickedAny = true;
+        break;
+      }
+      if (dynamicEntity instanceof NpcDynamicEntity) {
         if (dynamicEntity.tryPickupItem(item)) {
           dynamicEntity.pickupItem(item);
           item.beginDisappear();
@@ -1240,11 +1270,11 @@ const canSpawnNpcOrItemAt = (position: Point, spawnItem: boolean, spawnNpc: bool
 };
 
 /**
- * 尝试在玩家周围生成ITEM
- * @param playerEntity 
- * @param minRadius 
- * @param maxRadius 
- * @returns 
+ * 尝试在玩家周围生成 ITEM
+ * @param playerEntity
+ * @param minRadius
+ * @param maxRadius
+ * @returns
  */
 const spawnItemInRingAroundPlayer = (
   playerEntity: PlayerDynamicEntity,
@@ -1253,11 +1283,13 @@ const spawnItemInRingAroundPlayer = (
 ): boolean => {
   for (let i = 0; i < GCFG.itemSpawnMaxAttempts; i++) {
     const position = getRandomPointInRing(playerEntity.position, minRadius, maxRadius);
-    if (!canSpawnNpcOrItemAt(position,true,false)) continue;
+    if (!canSpawnNpcOrItemAt(position, true, false)) continue;
 
-    //暂时只有一个item类型
-    const item = new HealingGemItemEntity(position);
+    // 根据权重随机选择一个 ITEM 类型(同时受 itemSpawnTotalProbability 影响)
+    const ItemCtor = selectRandomItemCtor();
+    if (ItemCtor === null){break;} // 本次不生成
 
+    const item = new ItemCtor(position);
     MAP_DATA.itemEntities.push(item);
     return true;
   }
@@ -1282,6 +1314,7 @@ const spawnNpcInRingAroundPlayer = (
 
     // 根据权重随机选择一个 NPC 类型
     const NpcCtor = selectRandomNpcCtor();
+    if(NpcCtor === null){break;}
     const npc = new NpcCtor(position,null,null);
     npc.setTarget(position, MAP_DATA.staticEntities, { preferStraight: true });
     MAP_DATA.dynamicEntitie.npcDynamicEntitys.push(npc);
@@ -1293,9 +1326,19 @@ const spawnNpcInRingAroundPlayer = (
 /**
  * 根据静态权重随机选择一个 NPC 构造函数
  * 权重越高,被选中的概率越大
+ * 该机制还会受到游戏配置的影响例如npcSpawnTotalProbability
  */
-const selectRandomNpcCtor = (): new (position: Point, ownerId: number | null, teamId: number | null) => NpcDynamicEntity => {
-  // 计算总权重(注意每个权重 <=1,总和可能小于 1,但无影响)
+const selectRandomNpcCtor = (): (
+  | (new (position: Point, ownerId: number | null, teamId: number | null) => NpcDynamicEntity)
+  | null
+) => {
+  // ---- 前置机制:总概率判断 ----
+  const totalProbability = Math.max(0, Math.min(1, GCFG.npcSpawnTotalProbability));
+  if (Math.random() >= totalProbability) {
+    return null; // 本次不生成
+  }
+
+  // ---- 原有的权重轮盘赌 ----
   const totalWeight = NPC_WEIGHTS.reduce((sum, { weight }) => sum + weight, 0);
   let random = Math.random() * totalWeight;
   for (const { ctor, weight } of NPC_WEIGHTS) {
@@ -1304,6 +1347,32 @@ const selectRandomNpcCtor = (): new (position: Point, ownerId: number | null, te
   }
   // fallback
   return NPC_WEIGHTS[0].ctor;
+};
+
+/**
+ * 根据静态权重随机选择一个 ITEM 构造函数
+ * 权重越高,被选中的概率越大
+ * 该机制还会受到游戏配置的影响,例如 itemSpawnTotalProbability
+ */
+const selectRandomItemCtor = (): (
+  | (new (position: Point) => HealingGemItemEntity)
+  | null
+) => {
+  // ---- 前置机制:总概率判断 ----
+  const totalProbability = Math.max(0, Math.min(1, GCFG.itemSpawnTotalProbability));
+  if (Math.random() >= totalProbability) {
+    return null; // 本次不生成
+  }
+
+  // ---- 原有的权重轮盘赌 ----
+  const totalWeight = ITEM_WEIGHTS.reduce((sum, { weight }) => sum + weight, 0);
+  let random = Math.random() * totalWeight;
+  for (const { ctor, weight } of ITEM_WEIGHTS) {
+    if (random < weight) return ctor;
+    random -= weight;
+  }
+  // fallback
+  return ITEM_WEIGHTS[0].ctor;
 };
 
 /**
@@ -1341,9 +1410,8 @@ const updateItemSpawnTimer = (
   minRadius: number,
   maxRadius: number
 ) => {
-  let nextTimer = timer - deltaTime;//global
-  //deltaTime >= nextTimer
-  while (nextTimer <= 0 && MAP_DATA.dynamicEntitie.npcDynamicEntitys.length < GCFG.npcSpawnMaxCountSinglePlayer) {
+  let nextTimer = timer - deltaTime;
+  while (nextTimer <= 0 && MAP_DATA.itemEntities.length < GCFG.itemSpawnMaxCountSinglePlayer) {
     spawnItemInRingAroundPlayer(playerEntity, minRadius, maxRadius);
     nextTimer += interval;
   }

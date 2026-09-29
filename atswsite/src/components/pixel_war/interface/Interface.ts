@@ -215,6 +215,7 @@ export interface MapData {
 }
 
 export interface GameConfig {
+  npcSpawnTotalProbability:number;// (0,1]
   npcSpawnNoSpawnRadius:number;
   npcSpawnHighRadius:number;
   npcSpawnMediumRadius:number;
@@ -227,6 +228,7 @@ export interface GameConfig {
   npcSpawnMaxAttempts:number;
   npcSpawnPadding:number;
   
+  itemSpawnTotalProbability:number;// (0,1]
   itemSpawnNoSpawnRadius:number;
   itemSpawnHighRadius:number;
   itemSpawnMediumRadius:number;
@@ -401,6 +403,37 @@ export interface ItemDefinition {
   heal: number;
   /** 单格堆叠上限 */
   maxStack: number;
+}
+
+/**
+ * 掉落物堆叠:地面上的一堆物品
+ * 同一个物品标签的掉落会合并为一条,count 表示这一堆的数量。
+ */
+export interface DroppedItemStack {
+  /** 物品标签 */
+  tag: string;
+  /** 物品名称(用于背包与界面展示) */
+  name: string;
+  /** 堆叠数量 */
+  count: number;
+}
+
+/**
+ * 背包掉落内容:从背包(含技能装配区)中取出、需要落在地面上的东西
+ */
+export interface InventoryDeathDrop {
+  /** 物品掉落(已按标签合并的堆叠) */
+  items: DroppedItemStack[];
+  /** 技能掉落(技能标签,掉落为技能球) */
+  skillTags: string[];
+}
+
+/**
+ * 玩家死亡结算结果:玩家死亡后需要落在地面上的内容
+ */
+export interface PlayerDeathDrop extends InventoryDeathDrop {
+  /** 掉落为经验球的经验值 */
+  droppedExp: number;
 }
 
 //////////////////////////////////////////////////

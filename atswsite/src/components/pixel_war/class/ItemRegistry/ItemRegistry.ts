@@ -11,10 +11,10 @@ const ITEM_REGISTRY: ReadonlyMap<string, ItemDefinition> = new Map<string, ItemD
     {
       tag: 'healing_gem',
       name: '治疗宝石',
-      description: '使用后立即恢复 10 点生命值',
+      description: '使用后立即恢复 1 点生命值',
       color: '#7ef0b0',
       icon: 'gem',
-      heal: 10,
+      heal: 1,
       maxStack: INVENTORY_ITEM_MAX_STACK
     }
   ]
