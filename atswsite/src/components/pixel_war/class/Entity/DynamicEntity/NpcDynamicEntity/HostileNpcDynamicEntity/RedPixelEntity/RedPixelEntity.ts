@@ -77,7 +77,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     if (this.isDead) return;
 
     let playerPos: Point | null = null;
-    if (gameConfig.singleplayerMode) {
+    if (gameConfig.singlePlayerMode) {
       // 单人模式下追玩家0
       const singlePlayer = dynamicEntity.playerDynamicEntitys[0];
       if (singlePlayer && !singlePlayer.isDead) {

@@ -98,7 +98,7 @@ type EntityInterpolationState = {
   duration: number;
 };
 
-import ServiceWorker from '@/components/pixel_war/service/Service?worker';
+import { createServiceTransport } from '@/components/pixel_war/service/transport/ServiceTransport';
 // 特效贴图资源已由 public/effects 迁移至 pixel_war/resource/effects
 import dynamicEntityDeathEffectUrl from '@/components/pixel_war/resource/effects/dynamic_entity_death_default.png?url';
 
@@ -147,9 +147,10 @@ const generateFloatingNumbersFromHealthChange = (
 //服务器通信相关区-->
 ////////////////////
 
-const serviceWorker = new ServiceWorker();
+// 服务端通道:默认使用浏览器内 Worker(单人模式);配置指向 websocket 时连接 Java 多人服务端
+const serviceTransport = createServiceTransport();
 
-serviceWorker.addEventListener('message', (event: MessageEvent) => {
+serviceTransport.addEventListener('message', (event: MessageEvent) => {
   handleWorkerMessage(event);
 });
 
@@ -213,6 +214,12 @@ const resetCameraToPlayer = () => {
     return;
   }
   const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
+  // 画布尚未完成布局(CSS 尺寸为 0)时无法计算相机偏移,
+  // 必须保持"待处理"状态等下一帧重试,否则会把相机算到错误位置导致视角不跟随玩家。
+  if (!(width > 0) || !(height > 0)) {
+    pendingCameraResetToPlayer = true;
+    return;
+  }
   offsetXX = width / 2 - playerEntity.position.x;
   offsetYY = height / 2 + playerEntity.position.y;
   pendingCameraResetToPlayer = false;
@@ -258,6 +265,10 @@ const applyMapDataSnapshot = (mapData: MapData) => {
   npcEntityList = hydrateList(mapData.dynamicEntitie.npcDynamicEntitys) as NpcDynamicEntity[];
   const playerEntityList = hydrateList(mapData.dynamicEntitie.playerDynamicEntitys) as PlayerDynamicEntity[];
   playerEntity = playerEntityList[0] || null;
+  // 服务端保证本地玩家在列表首位,其余的都是其他玩家(多人模式需要一并渲染)
+  otherPlayerEntityList = playerEntity
+    ? playerEntityList.filter((player) => player.id !== playerEntity!.id)
+    : playerEntityList;
   grenadeEntityList = hydrateList(mapData.dynamicEntitie.grenadeDynamicEntitys) as GrenadeDynamicEntity[];
   bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
   expOrbEntityList = hydrateList(mapData.dynamicEntitie.expOrbDynamicEntitys) as ExpOrbDynamicEntity[];
@@ -312,6 +323,10 @@ const applyDynamicMapDataSnapshot = (mapData: MapData) => {
   npcEntityList = hydrateList(mapData.dynamicEntitie.npcDynamicEntitys) as NpcDynamicEntity[];
   const playerEntityList = hydrateList(mapData.dynamicEntitie.playerDynamicEntitys) as PlayerDynamicEntity[];
   playerEntity = playerEntityList[0] || null;
+  // 服务端保证本地玩家在列表首位,其余的都是其他玩家(多人模式需要一并渲染)
+  otherPlayerEntityList = playerEntity
+    ? playerEntityList.filter((player) => player.id !== playerEntity!.id)
+    : playerEntityList;
   grenadeEntityList = hydrateList(mapData.dynamicEntitie.grenadeDynamicEntitys) as GrenadeDynamicEntity[];
   bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
   expOrbEntityList = hydrateList(mapData.dynamicEntitie.expOrbDynamicEntitys) as ExpOrbDynamicEntity[];
@@ -349,7 +364,7 @@ const applyDynamicMapDataSnapshot = (mapData: MapData) => {
 };
 
 const sendClientInstruct = (instruct: InstructObject) => {
-  serviceWorker.postMessage(H_getWorkerTickPackage([instruct]));
+  serviceTransport.postMessage(H_getWorkerTickPackage([instruct]));
 };
 
 const sendPlayerMoveInput = () => {
@@ -439,6 +454,11 @@ const MINIMAP_MARGIN_RATIO = 20 / 240;// 设计稿中小地图边距与边长的
 const MINIMAP_MARGIN_MIN = 8;         // 小地图边距最小值,单位px
 const MINIMAP_WORLD_HALF = 10050;  // 小地图映射的世界坐标半宽(略大于服务端世界边界,以容纳边界墙)
 const MINIMAP_DEFAULT_COLOR = '#ffffff'; // 小地图实体未设置mapColor时的默认显示颜色
+// 小地图缩放档位:各档显示范围的“世界半宽”(px)。
+// 1 档 = 整张地图(以世界原点为中心);5 档 = 500×500px 范围(半宽 250);2~4 档居中取值。
+// 除 1 档外,其余档位以相机视角中心为中心,并跟随相机移动。
+const MINIMAP_ZOOM_WORLD_HALVES = [MINIMAP_WORLD_HALF, 3000, 1500, 750, 250];
+const MINIMAP_ZOOM_EVENT_PREFIX = 'minimap_zoom_'; // 缩放按钮事件区域id前缀
 ////////////////////
 //<--常量区
 ////////////////////
@@ -493,6 +513,8 @@ let itemEntityList: ItemEntity[] = [];                      // 物品实体列�
 let expOrbEntityList: ExpOrbDynamicEntity[] = [];           // 经验球实体列表
 let skillOrbEntityList: SkillOrbDynamicEntity[] = [];       // 技能球实体列表
 let playerEntity: PlayerDynamicEntity | null = null;
+// 其他玩家(多人模式):快照中除自己以外的玩家实体,单人模式恒为空
+let otherPlayerEntityList: PlayerDynamicEntity[] = [];
 
 // 背包界面状态
 let inventoryVisible = false;                               // 背包界面是否打开
@@ -549,6 +571,7 @@ let servantGridEditorEnabled = false;
 let selectedServantNpcId: number | null = null;
 let showPlayerServantHealth = false;
 let showPlayerServantFacingDirection = false;
+let minimapZoomLevel = 1; // 小地图缩放档位(1..5):1=整张地图,5=500×500px
 
 // 健康值快照Map (用于生成数值浮层)
 let prevHealthMap = new Map<number, number>();
@@ -575,6 +598,196 @@ const H_getMiniMapMetrics = (canvasWidth: number, canvasHeight: number) => {
   const margin = Math.max(MINIMAP_MARGIN_MIN, size * MINIMAP_MARGIN_RATIO);
   const scale = size / MINIMAP_DESIGN_SIZE; // 内部图形元素的缩放比例
   return { size, margin, scale };
+};
+
+/** 当前小地图档位对应的世界半宽(px) */
+const H_getMiniMapWorldHalf = (): number => {
+  const index = H_clamp(Math.round(minimapZoomLevel), 1, MINIMAP_ZOOM_WORLD_HALVES.length) - 1;
+  return MINIMAP_ZOOM_WORLD_HALVES[index];
+};
+
+/**
+ * 相机视角中心的世界坐标。
+ * 第三人称跟随玩家、第一人称、鼠标拖动、开火模式边界滚动都会体现在偏移量里,
+ * 所以直接由画布中心反推即可。
+ */
+const H_getCameraWorldCenter = (): Point => {
+  if (!GRAPHICS_CANVAS.value) return { x: 0, y: 0 };
+  const { width, height } = H_getCanvasCssSize(GRAPHICS_CANVAS.value);
+  return TOscreen2Canvas(width / 2, height / 2);
+};
+
+/** 切换小地图缩放档位(自动限制在 1..5) */
+const setMiniMapZoomLevel = (level: number) => {
+  const next = H_clamp(Math.round(level), 1, MINIMAP_ZOOM_WORLD_HALVES.length);
+  if (next === minimapZoomLevel) return;
+  minimapZoomLevel = next;
+  drawUI();
+};
+
+/**
+ * 小地图缩放控件布局(底部左侧“−”、右侧“+”,中间为档位标签)
+ * 绘制与命中检测共用同一份计算结果。
+ */
+const H_getMiniMapZoomControls = (mapX: number, mapY: number, mapSize: number) => {
+  const size = Math.max(14, Math.round(mapSize * 0.085));
+  const inset = Math.max(5, Math.round(mapSize * 0.034));
+  const y = mapY + mapSize - size - inset;
+  return {
+    size,
+    inset,
+    centerY: y + size / 2,
+    zoomOut: { x: mapX + inset, y, width: size, height: size },
+    zoomIn: { x: mapX + mapSize - inset - size, y, width: size, height: size },
+    labelCenterX: mapX + mapSize / 2
+  };
+};
+
+/** 绘制小地图外框:霓虹切角边框 + 内侧细线 + 四角机械支架 + 顶边流动刻度 */
+const H_drawMiniMapFrame = (
+  CtxUi: CanvasRenderingContext2D,
+  mapX: number,
+  mapY: number,
+  mapSize: number,
+  mapScale: number,
+  time: number
+) => {
+  const cut = Math.max(5, mapSize * 0.055);
+
+  // 内侧细线
+  CtxUi.save();
+  CtxUi.strokeStyle = 'rgba(150, 245, 255, 0.22)';
+  CtxUi.lineWidth = 1;
+  createChamferRect(CtxUi, mapX + 3.5, mapY + 3.5, mapSize - 7, mapSize - 7, Math.max(2, cut - 2));
+  CtxUi.stroke();
+  CtxUi.restore();
+
+  // 外层霓虹(带发光)
+  CtxUi.save();
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.55)';
+  CtxUi.shadowBlur = 16 * mapScale;
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.92)';
+  CtxUi.lineWidth = Math.max(1.2, 1.7 * mapScale);
+  createChamferRect(CtxUi, mapX + 0.9, mapY + 0.9, mapSize - 1.8, mapSize - 1.8, cut);
+  CtxUi.stroke();
+  CtxUi.restore();
+
+  // 四角机械支架
+  drawHudCornerBrackets(CtxUi, mapX, mapY, mapSize, mapSize, Math.max(12, mapSize * 0.14), 'rgba(0, 229, 255, 0.9)');
+
+  // 顶边能量刻度(随时间流动点亮),与底部状态栏风格一致
+  const tickCount = Math.max(6, Math.round(mapSize / 20));
+  const tickSpan = (mapSize - cut * 2) / tickCount;
+  const flowIndex = Math.floor(time * 8) % tickCount;
+  CtxUi.save();
+  for (let i = 0; i < tickCount; i++) {
+    const on = i === flowIndex;
+    CtxUi.strokeStyle = on ? 'rgba(200, 255, 255, 0.95)' : 'rgba(0, 229, 255, 0.22)';
+    CtxUi.lineWidth = on ? 2 : 1;
+    CtxUi.beginPath();
+    CtxUi.moveTo(mapX + cut + i * tickSpan + 2, mapY + 1);
+    CtxUi.lineTo(mapX + cut + i * tickSpan + 2, mapY + (on ? 9 : 4));
+    CtxUi.stroke();
+  }
+  CtxUi.restore();
+};
+
+/** 绘制单个小地图缩放按钮(机械切角风格,不可用时置灰) */
+const H_drawMiniMapZoomButton = (
+  CtxUi: CanvasRenderingContext2D,
+  rect: { x: number; y: number; width: number; height: number },
+  kind: 'in' | 'out',
+  enabled: boolean,
+  hovered: boolean,
+  mapScale: number
+) => {
+  const cut = Math.max(2, Math.min(rect.width, rect.height) * 0.24);
+  const accent = enabled
+    ? (hovered ? 'rgba(200, 255, 255, 0.98)' : 'rgba(0, 229, 255, 0.9)')
+    : 'rgba(120, 160, 180, 0.4)';
+
+  CtxUi.save();
+  // 底板
+  createChamferRect(CtxUi, rect.x, rect.y, rect.width, rect.height, cut);
+  const grad = CtxUi.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height);
+  grad.addColorStop(0, enabled ? 'rgba(14, 44, 60, 0.85)' : 'rgba(10, 22, 30, 0.7)');
+  grad.addColorStop(1, 'rgba(3, 12, 20, 0.72)');
+  CtxUi.fillStyle = grad;
+  CtxUi.fill();
+
+  // 边框
+  CtxUi.strokeStyle = accent;
+  CtxUi.lineWidth = hovered && enabled ? 1.6 : 1;
+  if (enabled && hovered) {
+    CtxUi.shadowColor = accent;
+    CtxUi.shadowBlur = 8 * mapScale;
+  }
+  createChamferRect(CtxUi, rect.x + 0.7, rect.y + 0.7, rect.width - 1.4, rect.height - 1.4, cut);
+  CtxUi.stroke();
+  CtxUi.shadowBlur = 0;
+
+  // 符号(− / +)
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  const arm = rect.width * 0.24;
+  CtxUi.strokeStyle = accent;
+  CtxUi.lineWidth = Math.max(1.4, rect.width * 0.13);
+  CtxUi.lineCap = 'round';
+  CtxUi.beginPath();
+  CtxUi.moveTo(cx - arm, cy);
+  CtxUi.lineTo(cx + arm, cy);
+  if (kind === 'in') {
+    CtxUi.moveTo(cx, cy - arm);
+    CtxUi.lineTo(cx, cy + arm);
+  }
+  CtxUi.stroke();
+  CtxUi.restore();
+};
+
+/** 绘制小地图底部条:渐变底托 + 左右缩放按钮 + 中间档位标签 */
+const H_drawMiniMapZoomControls = (
+  CtxUi: CanvasRenderingContext2D,
+  mapX: number,
+  mapY: number,
+  mapSize: number,
+  mapScale: number
+) => {
+  const cut = Math.max(5, mapSize * 0.055);
+  const controls = H_getMiniMapZoomControls(mapX, mapY, mapSize);
+  const canZoomOut = minimapZoomLevel > 1;
+  const canZoomIn = minimapZoomLevel < MINIMAP_ZOOM_WORLD_HALVES.length;
+
+  // 底部渐变底托(裁剪在切角形状内):让按钮与文字在实体圆点之上依旧清晰
+  CtxUi.save();
+  createChamferRect(CtxUi, mapX, mapY, mapSize, mapSize, cut);
+  CtxUi.clip();
+  const stripTop = controls.zoomOut.y - controls.inset * 1.4;
+  const stripGrad = CtxUi.createLinearGradient(0, stripTop, 0, mapY + mapSize);
+  stripGrad.addColorStop(0, 'rgba(2, 8, 14, 0)');
+  stripGrad.addColorStop(1, 'rgba(2, 8, 14, 0.78)');
+  CtxUi.fillStyle = stripGrad;
+  CtxUi.fillRect(mapX, stripTop, mapSize, mapY + mapSize - stripTop);
+  CtxUi.restore();
+
+  // 左右两个缩放按钮
+  H_drawMiniMapZoomButton(CtxUi, controls.zoomOut, 'out', canZoomOut,
+    hoveredArea?.id === `${MINIMAP_ZOOM_EVENT_PREFIX}out`, mapScale);
+  H_drawMiniMapZoomButton(CtxUi, controls.zoomIn, 'in', canZoomIn,
+    hoveredArea?.id === `${MINIMAP_ZOOM_EVENT_PREFIX}in`, mapScale);
+
+  // 中间档位标签:1 档为全图,其余显示档位与当前显示的世界范围
+  const label = minimapZoomLevel === 1
+    ? '全图'
+    : `L${minimapZoomLevel} · ${Math.round(H_getMiniMapWorldHalf() * 2)}px`;
+  CtxUi.save();
+  CtxUi.font = `bold ${Math.max(9, mapSize * 0.052)}px Consolas, "Courier New", monospace`;
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.fillStyle = 'rgba(224, 253, 255, 0.92)';
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.75)';
+  CtxUi.shadowBlur = 6 * mapScale;
+  CtxUi.fillText(label, controls.labelCenterX, controls.centerY);
+  CtxUi.restore();
 };
 
 const H_getCanvasCssSize = (canvas: HTMLCanvasElement) => {
@@ -744,7 +957,20 @@ const H_deleteEntityRenderState = (id: number): void => {
 
 const H_hydrateEntitySnapshot = <T extends Entity>(entity: T, snapshot: T): T => {
   const texture = entity.texture;
-  Object.assign(entity, snapshot);
+  const texturePath = entity.texturePath;
+  // 只覆盖快照中"有定义"的字段:避免快照里显式的 undefined 把实体构造器中的默认值覆盖掉
+  // (例如 PlayerDynamicEntity.playerRule / inventory),否则渲染层读取默认属性会报错。
+  // Worker 通道的快照来自类实例,WebSocket 通道来自 Java 服务端协议映射,两者都适用。
+  const source = snapshot as unknown as Record<string, unknown>;
+  const target = entity as unknown as Record<string, unknown>;
+  for (const key of Object.keys(source)) {
+    const value = source[key];
+    if (value === undefined) continue;
+    target[key] = value;
+  }
+  // 贴图属于客户端资源(由实体类静态常量提供),服务端协议里不含贴图路径。
+  // 若快照带的空字符串覆盖了它,loadTexture() 会因路径为空直接返回,实体将永远退化为纯色矩形。
+  entity.texturePath = texturePath;
   entity.texture = texture;
   entity.updateCollisionBox();
   return entity;
@@ -1012,6 +1238,7 @@ const startSetting = () => {
   bulletEntityList = [];
   grenadeEntityList = [];
   itemEntityList = [];
+  otherPlayerEntityList = [];
   renderEntityList = [];
   playerFireMode = false;
   effectManager?.reset();
@@ -1484,12 +1711,42 @@ const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
 };
 
 /**
+ * 在小地图上绘制一个玩家(等边三角形,顶点指向玩家朝向)
+ * 已死亡/无血量的玩家不绘制,避免图标残留在小地图上
+ */
+const H_drawMiniMapPlayer = (
+  CtxUi: CanvasRenderingContext2D,
+  entity: PlayerDynamicEntity,
+  worldToMap: (x: number, y: number) => { x: number; y: number },
+  isInsideMap: (p: { x: number; y: number }) => boolean,
+  mapScale: number,
+  color: string
+): void => {
+  if (entity.isDead || !(entity.health > 0)) return;
+  const p = worldToMap(entity.position.x, entity.position.y);
+  if (!isInsideMap(p)) return;
+  const r = Math.max(3, 4.5 * mapScale); // 三角形外接圆半径
+  const angle = Math.atan2(entity.facingDirection.x, entity.facingDirection.y);
+  CtxUi.save();
+  CtxUi.translate(p.x, p.y);
+  CtxUi.rotate(angle);
+  CtxUi.fillStyle = color;
+  CtxUi.beginPath();
+  CtxUi.moveTo(0, -r);
+  CtxUi.lineTo(-r * 0.866, r * 0.5);
+  CtxUi.lineTo(r * 0.866, r * 0.5);
+  CtxUi.closePath();
+  CtxUi.fill();
+  CtxUi.restore();
+};
+
+/**
  * 绘制小地图(左上角正方形地图,渲染在 canvas-ui 层)
- * - 尺寸随页面尺寸动态等比缩放(以设计稿短边为基准)
- * - 圆点表示 NPC
- * - 等边三角形表示玩家(顶点指向玩家朝向)
- * - 正方形表示静态实体
+ * - 尺寸随页面尺寸动态等比缩放(以设计稿短边为基准),缩放档位只改变显示范围,不改变地图尺寸
+ * - 1 档显示整张地图;2~5 档以相机视角中心为中心显示局部(5 档为 500×500px),并跟随相机移动
+ * - 圆点表示 NPC,等边三角形表示玩家(顶点指向玩家朝向),正方形表示静态实体
  * - 颜色依据实体的 mapColor 属性,undefined 时使用白色
+ * - 底部左右两个按钮用于调整缩放档位
  */
 const drawMiniMap = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   if (!CtxUi || !CANVAS) return;
@@ -1498,27 +1755,32 @@ const drawMiniMap = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement)
   const { size: mapSize, margin: mapMargin, scale: mapScale } = H_getMiniMapMetrics(canvasWidth, canvasHeight);
   const mapX = mapMargin;
   const mapY = mapMargin;
-  const worldRange = MINIMAP_WORLD_HALF * 2;
+  const cut = Math.max(5, mapSize * 0.055);
+
+  // 1 档以世界原点为中心显示整张地图;其余档位跟随相机视角中心
+  const worldHalf = H_getMiniMapWorldHalf();
+  const center = minimapZoomLevel === 1 ? { x: 0, y: 0 } : H_getCameraWorldCenter();
+  const worldRange = worldHalf * 2;
 
   // 世界坐标 -> 小地图坐标(世界 y 轴向上,小地图 y 轴向下,需翻转)
   const worldToMap = (wx: number, wy: number): { x: number; y: number } => ({
-    x: mapX + ((wx + MINIMAP_WORLD_HALF) / worldRange) * mapSize,
-    y: mapY + ((MINIMAP_WORLD_HALF - wy) / worldRange) * mapSize,
+    x: mapX + ((wx - center.x + worldHalf) / worldRange) * mapSize,
+    y: mapY + ((center.y + worldHalf - wy) / worldRange) * mapSize,
   });
 
   const isInsideMap = (p: { x: number; y: number }): boolean =>
     p.x >= mapX && p.x <= mapX + mapSize && p.y >= mapY && p.y <= mapY + mapSize;
 
+  const time = performance.now() / 1000;
+
+  // ---- 地图内容(裁剪在切角边框内) ----
   CtxUi.save();
+  createChamferRect(CtxUi, mapX, mapY, mapSize, mapSize, cut);
+  CtxUi.clip();
 
   // 背景
   CtxUi.fillStyle = 'rgba(8, 12, 22, 0.78)';
   CtxUi.fillRect(mapX, mapY, mapSize, mapSize);
-
-  // 边框(参考设计稿:灰色边框)
-  CtxUi.strokeStyle = 'rgba(76, 76, 76, 1)';
-  CtxUi.lineWidth = Math.max(1, 1.5 * mapScale);
-  CtxUi.strokeRect(mapX + 0.75, mapY + 0.75, mapSize - 1.5, mapSize - 1.5);
 
   // 绘制静态实体(正方形)
   const staticSize = Math.max(2, 3 * mapScale);
@@ -1540,29 +1802,43 @@ const drawMiniMap = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement)
     CtxUi.fill();
   }
 
-  // 绘制玩家(等边三角形,顶点指向玩家朝向)
-  // 注意:玩家死亡后服务端仍保留该实体快照以便重生,因此需跳过已死亡的玩家,避免其图标残留在小地图上
-  if (playerEntity && !playerEntity.isDead && playerEntity.health > 0) {
-    const p = worldToMap(playerEntity.position.x, playerEntity.position.y);
-    const r = Math.max(3, 4.5 * mapScale); // 三角形外接圆半径
-    const angle = Math.atan2(playerEntity.facingDirection.x, playerEntity.facingDirection.y);
-    CtxUi.save();
-    CtxUi.translate(p.x, p.y);
-    CtxUi.rotate(angle);
-    CtxUi.fillStyle = playerEntity.mapColor ?? MINIMAP_DEFAULT_COLOR;
-    if(playerEntity.getIsme() && playerEntity.mapColor === undefined){
-      CtxUi.fillStyle = 'rgba(0, 255, 255, 0.9)'; // 玩家本人显示青色
-    }
-    CtxUi.beginPath();
-    CtxUi.moveTo(0, -r);
-    CtxUi.lineTo(-r * 0.866, r * 0.5);
-    CtxUi.lineTo(r * 0.866, r * 0.5);
-    CtxUi.closePath();
-    CtxUi.fill();
-    CtxUi.restore();
+  // 绘制其他玩家(多人模式,橙色三角形与本人区分)
+  for (const entity of otherPlayerEntityList) {
+    H_drawMiniMapPlayer(CtxUi, entity, worldToMap, isInsideMap, mapScale, entity.mapColor ?? 'rgba(255, 170, 0, 0.95)');
+  }
+
+  // 绘制玩家本人(青色三角形,顶点指向朝向)
+  if (playerEntity) {
+    H_drawMiniMapPlayer(CtxUi, playerEntity, worldToMap, isInsideMap, mapScale, playerEntity.mapColor ?? 'rgba(0, 255, 255, 0.9)');
   }
 
   CtxUi.restore();
+
+  // ---- 炫酷外边框 + 缩放控件 ----
+  H_drawMiniMapFrame(CtxUi, mapX, mapY, mapSize, mapScale, time);
+  H_drawMiniMapZoomControls(CtxUi, mapX, mapY, mapSize, mapScale);
+
+  // ---- 注册缩放按钮事件区域(每帧按前缀清理后重建,与重生界面同一套机制) ----
+  eventArea = eventArea.filter(area => !area.id.startsWith(MINIMAP_ZOOM_EVENT_PREFIX));
+  const controls = H_getMiniMapZoomControls(mapX, mapY, mapSize);
+  if (minimapZoomLevel > 1) {
+    eventArea.push({
+      id: `${MINIMAP_ZOOM_EVENT_PREFIX}out`,
+      rect: controls.zoomOut,
+      type: 'button',
+      cursor: 'pointer',
+      onClick: () => { setMiniMapZoomLevel(minimapZoomLevel - 1); }
+    });
+  }
+  if (minimapZoomLevel < MINIMAP_ZOOM_WORLD_HALVES.length) {
+    eventArea.push({
+      id: `${MINIMAP_ZOOM_EVENT_PREFIX}in`,
+      rect: controls.zoomIn,
+      type: 'button',
+      cursor: 'pointer',
+      onClick: () => { setMiniMapZoomLevel(minimapZoomLevel + 1); }
+    });
+  }
 };
 
 /**
@@ -3647,6 +3923,25 @@ const drawEntities = () => {
       entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
     }
   }
+  // 绘制其他玩家(多人模式;玩家本人由下方单独绘制,以支持"死亡后不渲染")
+  for (const entity of otherPlayerEntityList) {
+    if (entity.isDead) continue;
+    if (!entity.isInViewport(worldToScreen, canvasSize, margin)) continue;
+    entity.draw(ctxEntity, worldToScreen, canvasSize, undefined);
+    // 橙色外框用于区分其他玩家与自己
+    const screenPos = worldToScreen(entity.position.x, entity.position.y);
+    ctxEntity.save();
+    ctxEntity.strokeStyle = 'rgba(255, 170, 0, 0.9)';
+    ctxEntity.lineWidth = 2;
+    ctxEntity.strokeRect(
+      screenPos.x - entity.width / 2 - 1.5,
+      screenPos.y - entity.height / 2 - 1.5,
+      entity.width + 3,
+      entity.height + 3
+    );
+    ctxEntity.restore();
+  }
+
   // 绘制玩家实体(死亡后不渲染,等待重生)
   if (playerEntity && !playerEntity.isDead) {
     if (playerEntity.isInViewport(worldToScreen, canvasSize, margin)) {
@@ -4737,8 +5032,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  // 关闭服务端
-  serviceWorker.terminate();
+  // 关闭服务端连接(Worker 或 WebSocket)
+  serviceTransport.dispose();
 
   if (UI_CANVAS.value) {
     UI_CANVAS.value.removeEventListener('mousedown', onMousedown);

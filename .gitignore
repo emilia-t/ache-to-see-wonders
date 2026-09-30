@@ -32,6 +32,7 @@ __pycache__
 *.njsproj
 *.sln
 *.sw?
+*.iml
 
 *.tsbuildinfo
 
@@ -53,3 +54,8 @@ testCover01.jpg
 testCover02.jpg
 testCover03.jpg
 default.mp4
+
+#java
+.gradle/
+atswsite/src/components/pixel_war/java/build/
+!gradle/wrapper/gradle-wrapper.jar

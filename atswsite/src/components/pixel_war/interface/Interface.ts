@@ -240,7 +240,7 @@ export interface GameConfig {
   itemSpawnMaxAttempts:number;
   itemSpawnPadding:number;
 
-  singleplayerMode:boolean;
+  singlePlayerMode:boolean;
 
   setRandomTargetMaxAttempts:number;
 

@@ -1,0 +1,48 @@
+server:
+  port: 8080
+  compression:
+    enabled: false
+
+spring:
+  application:
+    name: pixel-war-server
+  jackson:
+    # 快照 DTO 中大量可选字段为 null,序列化时直接忽略以减小体积
+    default-property-inclusion: non_null
+
+logging:
+  level:
+    root: info
+    top.atsw.pixelwar: info
+
+# pixel_war 服务端参数(与前端 TS 版 Service.ts 的 GCFG / TICK_TIMER 对应)
+pixel-war:
+  # 主循环间隔(毫秒),对应 TS 版 TICK_TIMER.interval
+  tick-interval-ms: 20
+  # 单个房间最大玩家数
+  max-players-per-room: 16
+  # 快照中动态实体的视野裁剪半径(px),超出该半径的实体不下发,降低多人带宽
+  # 注意:客户端可见区域只有约 530×368 CSS px(半宽约 265px),当前值远大于实际可视范围
+  snapshot-view-radius: 1280
+  # 每多少个 tick 向客户端下发一次快照(世界仍然每帧推进,只是减少发包频率)。
+  # 2 表示 50Hz 模拟 / 25Hz 下行;设为 1 则回到“每帧都发”。
+  snapshot-interval-ticks: 1
+  # 空闲房间(无玩家连接)存活时间(毫秒),超时回收
+  room-idle-timeout-ms: 60000
+  # 新玩家出生点是否靠近房间内已有玩家(便于多人立刻会合;视野半径内可见)
+  spawn-near-players: true
+  # 靠近已有玩家时的出生距离上限(px),实际出生距离在 150 ~ 该值之间随机
+  # 注意:该值应明显小于客户端画面可视半径(约 530×368px),否则新玩家进房看不到对方
+  spawn-near-players-radius: 500
+  # 世界尺寸配置
+  world:
+    size: 20000
+    min-x: -10000
+    max-x: 10000
+    min-y: -10000
+    max-y: 10000
+  # 健康检查上报间隔(毫秒)。每轮向终端输出:
+  #   进程级 —— 运行时长、房间/在线玩家数、堆与非堆内存、线程数、GC 次数与停顿、CPU、物理内存;
+  #   房间级 —— 实际 tick 频率(对比目标)、每帧平均/最大/P95 耗时、世界推进与快照下发耗时拆分、
+  #             超预算帧数、平均下行字节数、世界内实体构成
+  health-report-interval-ms: 5000

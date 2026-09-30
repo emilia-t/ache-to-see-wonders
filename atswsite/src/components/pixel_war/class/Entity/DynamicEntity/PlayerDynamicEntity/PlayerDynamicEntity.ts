@@ -51,6 +51,7 @@ class PlayerDynamicEntity extends DynamicEntity {
   public static readonly HEIGHT = 25;
   public static readonly MOVE_SPEED = 410;
   public static readonly MIN_MOVE_SPEED = 50;
+  public static readonly HEALTH_MAX = 100;// 玩家生命值上限
   public static readonly PLAYER_MOTION_DAMPING = 8.5;// 玩家移动阻尼，值越大松手后减速越快
   public static readonly PLAYER_MOTION_TURN_RESPONSE = 10.5;// 玩家转向响应，值越大移动转向越跟手
   public static readonly playerMoveState = {W: false,A: false,S: false,D: false,Shift: false};
@@ -125,8 +126,8 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.motionTurnResponsiveness = PlayerDynamicEntity.PLAYER_MOTION_TURN_RESPONSE;
     this.wanderRange = 0;
     this.perceptionRange = 0;
-    this.health = 10000;
-    this.healthMax = 10000;
+    this.health = PlayerDynamicEntity.HEALTH_MAX;
+    this.healthMax = PlayerDynamicEntity.HEALTH_MAX;
     this.movementPassion = 1;
     this.teamId = teamId;
     this.player_score = 0;
