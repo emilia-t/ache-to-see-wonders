@@ -24,6 +24,7 @@ import {
   WhitePixelVa2Entity,
   RedPixelEntity,
   SkyBluePixelEntity,
+  PurpleShieldEntity,
   HealingGemItemEntity,
   GrenadeDynamicEntity,
   ExpOrbDynamicEntity,
@@ -68,7 +69,8 @@ const SPAWNABLE_NPC_CLASSES = [
   RedPixelEntity,
   WhitePixelEntity,
   WhitePixelVa2Entity,
-  SkyBluePixelEntity
+  SkyBluePixelEntity,
+  PurpleShieldEntity
   // more
 ] as const;
 

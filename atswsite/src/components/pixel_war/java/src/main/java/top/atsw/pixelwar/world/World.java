@@ -10,6 +10,7 @@ import top.atsw.pixelwar.entity.dynamicEntity.ExpOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.SkillOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.PurpleShieldNpc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.RedPixelNpc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.SkyBluePixelNpc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.WhitePixelNpc;
@@ -824,10 +825,10 @@ public final class World implements WorldView {
 
     /**
      * 按权重随机创建一个 NPC。
-     * 权重与 TS 版一致:白像素 0.8、va2 0.4、天蓝像素 0.2、红像素 0.1。
+     * 权重与 TS 版一致:白像素 0.8、va2 0.4、天蓝像素 0.2、红像素 0.1、紫盾 0.08。
      */
     private NpcEntity createRandomNpc(Geometry.Vec2 position) {
-        double total = 0.2 + 0.1 + 0.4 + 0.8;
+        double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08;
         double random = Math.random() * total;
         if (random < 0.8) {
             return new WhitePixelNpc(position, null, null);
@@ -840,7 +841,11 @@ public final class World implements WorldView {
         if (random < 0.2) {
             return new SkyBluePixelNpc(position, null, null);
         }
-        return new RedPixelNpc(position, null, null);
+        random -= 0.2;
+        if (random < 0.1) {
+            return new RedPixelNpc(position, null, null);
+        }
+        return new PurpleShieldNpc(position, null, null);
     }
 
     /** 环形范围内的随机点(面积均匀) */

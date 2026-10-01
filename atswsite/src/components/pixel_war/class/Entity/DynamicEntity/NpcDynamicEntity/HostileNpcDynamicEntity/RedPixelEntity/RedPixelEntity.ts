@@ -151,8 +151,8 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     debugFlags?: EntityDebugFlags
   ): void {
     const screenPos = worldToScreen(this.position.x, this.position.y);
-    const halfW = this.width / 2;
-    const halfH = this.height / 2;
+    const halfW = this.renderWidth / 2;
+    const halfH = this.renderHeight / 2;
     const left = screenPos.x - halfW;
     const top = screenPos.y - halfH;
 
@@ -165,9 +165,9 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     }
 
     ctx.fillStyle = fill;
-    ctx.fillRect(left, top, this.width, this.height);
+    ctx.fillRect(left, top, this.renderWidth, this.renderHeight);
     ctx.strokeStyle = this.strokeColor || '#555';
-    ctx.strokeRect(left, top, this.width, this.height);
+    ctx.strokeRect(left, top, this.renderWidth, this.renderHeight);
 
     // 受伤闪烁
     if (this.damageFlashTimer > 0) {
@@ -175,7 +175,7 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
       ctx.save();
       ctx.globalCompositeOperation = 'source-atop';
       ctx.fillStyle = `rgba(255, 0, 0, ${0.45 * intensity})`;
-      ctx.fillRect(left, top, this.width, this.height);
+      ctx.fillRect(left, top, this.renderWidth, this.renderHeight);
       ctx.restore();
     }
 

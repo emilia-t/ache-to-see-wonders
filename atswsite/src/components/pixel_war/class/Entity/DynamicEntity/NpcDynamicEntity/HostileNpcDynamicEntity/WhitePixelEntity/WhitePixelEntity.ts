@@ -239,16 +239,19 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     debugFlags?: EntityDebugFlags
   ): void {
     const screenPos = worldToScreen(this.position.x, this.position.y);
-    const halfW = this.width / 2;
-    const halfH = this.height / 2;
+    // 绘制使用渲染尺寸(仅视觉);碰撞与战斗判定仍使用 this.width / this.height
+    const drawW = this.renderWidth;
+    const drawH = this.renderHeight;
+    const halfW = drawW / 2;
+    const halfH = drawH / 2;
     const left = screenPos.x - halfW;
     const top = screenPos.y - halfH;
 
     // 白色矩形
     ctx.fillStyle = this.fillColor || '#999';
-    ctx.fillRect(left, top, this.width, this.height);
+    ctx.fillRect(left, top, drawW, drawH);
     ctx.strokeStyle = this.strokeColor || '#000';
-    ctx.strokeRect(left, top, this.width, this.height);
+    ctx.strokeRect(left, top, drawW, drawH);
 
     // 受伤闪烁
     if (this.damageFlashTimer > 0) {
@@ -256,7 +259,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
       ctx.save();
       ctx.globalCompositeOperation = 'source-atop';
       ctx.fillStyle = `rgba(255, 0, 0, ${0.45 * intensity})`;
-      ctx.fillRect(left, top, this.width, this.height);
+      ctx.fillRect(left, top, drawW, drawH);
       ctx.restore();
     }
     

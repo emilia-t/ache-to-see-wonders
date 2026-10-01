@@ -17,6 +17,7 @@ abstract class NpcDynamicEntity extends DynamicEntity {
 
   public static readonly WIDTH = 25;
   public static readonly HEIGHT = 25;
+  public static readonly RENDER_SIZE = 21;// 身体渲染边长(仅视觉,碰撞体积仍为 WIDTH × HEIGHT)
   public static GENERATE_WEIGHT = 1;//随机刷新的权重 (0,1]
 
   public ownerId: number | null;  // 拥有者ID，null表示无主
@@ -38,6 +39,9 @@ abstract class NpcDynamicEntity extends DynamicEntity {
     tag: string
   ) {
     super(position, NpcDynamicEntity.WIDTH, NpcDynamicEntity.HEIGHT, texturePath, name, 'npc', tag);
+    // 身体显示面积缩小为 RENDER_SIZE × RENDER_SIZE,碰撞箱保持 WIDTH × HEIGHT
+    this.renderWidth = NpcDynamicEntity.RENDER_SIZE;
+    this.renderHeight = NpcDynamicEntity.RENDER_SIZE;
     this.attitude = attitude;
     this.pickupRange = pickupRange;
     this.ownerId = ownerId;

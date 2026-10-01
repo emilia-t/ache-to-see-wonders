@@ -45,6 +45,7 @@ import {
   WhitePixelVa2Entity,
   RedPixelEntity,
   SkyBluePixelEntity,
+  PurpleShieldEntity,
   BulletDynamicEntity,
   BuckshotBulletDynamicEntity,
   SniperBulletDynamicEntity,
@@ -192,6 +193,9 @@ const handleWorkerMessage = (event: MessageEvent) => {
       }
     }
   }
+
+  // 检测从者吸附(ownerId 由无主变为本玩家)并播放吸附特效
+  H_detectServantAbsorb();
 };
 
 const handleVisibilityChange = () => {
@@ -244,6 +248,38 @@ const syncCameraToPlayerIfNeeded = () => {
     resetCameraToPlayer();
   }
   prevPlayerIsDead = isDead;
+};
+
+/**
+ * 检测"从者吸附成功"并播放吸附特效
+ * - 判定依据:某 NPC 的 ownerId 由"无主"变为"本玩家"
+ * - 拖尾方向由"玩家位置 → 被吸附从者所在格子位置"决定(由 EffectManager 吸附到 8 个方向之一),
+ *   即朝玩家被吸附的那一面向外拖出,而不是朝 NPC 的来向
+ * - 特效锚点每帧跟随被吸附的从者实体,无需等待位置落到网格
+ */
+const H_detectServantAbsorb = () => {
+  const player = playerEntity;
+  const aliveIds = new Set<number>();
+
+  for (const npc of npcEntityList) {
+    aliveIds.add(npc.id);
+    const prevOwner = prevNpcAbsorbStates.get(npc.id);
+    // 归属由"无主"变为"本玩家"即视为吸附成功(首次见到该 NPC 时 prevOwner 为 undefined,不触发)
+    if (prevOwner === null && npc.ownerId !== null && player && npc.ownerId === player.id) {
+      effectManager?.emitServantAbsorb(
+        npc.id,
+        player.position,
+        npc.position,
+        npc.fillColor ?? ''
+      );
+    }
+    prevNpcAbsorbStates.set(npc.id, npc.ownerId);
+  }
+
+  // 清理已消失 NPC 的记录(视野外/已被击杀)
+  for (const id of Array.from(prevNpcAbsorbStates.keys())) {
+    if (!aliveIds.has(id)) prevNpcAbsorbStates.delete(id);
+  }
 };
 
 const applyMapDataSnapshot = (mapData: MapData) => {
@@ -577,6 +613,8 @@ let minimapZoomLevel = 1; // 小地图缩放档位(1..5):1=整张地图,5=500×5
 let prevHealthMap = new Map<number, number>();
 let entityInterpolationMap = new Map<number, EntityInterpolationState>();
 let entitySnapshotTimeMap = new Map<number, number>();
+// 上一帧 NPC 归属快照,用于检测从者"吸附成功"(ownerId 由无主变为本玩家)
+let prevNpcAbsorbStates = new Map<number, number | null>();
 
 ////////////////////
 //<--变量区
@@ -1038,6 +1076,12 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.ownerId,
           snapshot.teamId
         );
+      case 'purple_shield':
+        return new PurpleShieldEntity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
     }
   }
   else if(kind === 'player'){
@@ -1227,6 +1271,11 @@ const startSetting = () => {
       },
       worldToScreen: TOcanvas2Screen,
       getCanvasCssSize: H_getCanvasCssSize,
+      // 吸附特效锚点每帧跟随被吸附的从者实体(从者会随玩家一起移动)
+      resolveEntityPosition: (entityId: number) => {
+        const npc = npcEntityList.find((entity) => entity.id === entityId);
+        return npc ? { x: npc.position.x, y: npc.position.y } : null;
+      },
     });
   }
   effectManager.bindCanvas(EFFECTS_CANVAS.value);
@@ -3928,16 +3977,16 @@ const drawEntities = () => {
     if (entity.isDead) continue;
     if (!entity.isInViewport(worldToScreen, canvasSize, margin)) continue;
     entity.draw(ctxEntity, worldToScreen, canvasSize, undefined);
-    // 橙色外框用于区分其他玩家与自己
+    // 橙色外框用于区分其他玩家与自己(按身体渲染尺寸描边,而非碰撞体积)
     const screenPos = worldToScreen(entity.position.x, entity.position.y);
     ctxEntity.save();
     ctxEntity.strokeStyle = 'rgba(255, 170, 0, 0.9)';
     ctxEntity.lineWidth = 2;
     ctxEntity.strokeRect(
-      screenPos.x - entity.width / 2 - 1.5,
-      screenPos.y - entity.height / 2 - 1.5,
-      entity.width + 3,
-      entity.height + 3
+      screenPos.x - entity.renderWidth / 2 - 1.5,
+      screenPos.y - entity.renderHeight / 2 - 1.5,
+      entity.renderWidth + 3,
+      entity.renderHeight + 3
     );
     ctxEntity.restore();
   }

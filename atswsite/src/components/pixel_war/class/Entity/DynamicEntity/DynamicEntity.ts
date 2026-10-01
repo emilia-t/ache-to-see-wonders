@@ -5,6 +5,8 @@ import type { DynamicEntityKind } from '@/components/pixel_war/type/Type';
 
 abstract class DynamicEntity extends Entity {
   public kind: DynamicEntityKind;      // 动态实体类别
+  public renderWidth: number;          // 渲染宽度(仅影响绘制,不影响碰撞体积与所有逻辑判定)
+  public renderHeight: number;         // 渲染高度(仅影响绘制,不影响碰撞体积与所有逻辑判定)
   public nextTarget: Point;            // 下一刻要去的地点-世界坐标
   public healthMax: number;            // 最大生命值
   public health: number;               // 生命值
@@ -55,6 +57,9 @@ abstract class DynamicEntity extends Entity {
   ) {
     super('dynamic', position, width, height, texturePath, name, tag);
     this.kind = kind;
+    // 默认渲染尺寸与碰撞体积一致,子类可按需单独设置(如玩家/NPC 视觉缩小)
+    this.renderWidth = width;
+    this.renderHeight = height;
     const speedA = 10 + Math.random() * 190;
     const speedB = 10 + Math.random() * 190;
     this.minMoveSpeed = Math.min(speedA, speedB);

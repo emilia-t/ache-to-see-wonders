@@ -72,6 +72,7 @@ export {
 export { NpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
 export { SkyBluePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/SkyBluePixelEntity/SkyBluePixelEntity';
+export { PurpleShieldEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/PurpleShieldEntity/PurpleShieldEntity';
 // HostileNpcDynamicEntity and its subclasses
 export { HostileNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
 export { WhitePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelEntity';
@@ -116,7 +117,8 @@ export const PrototypeChain = {
       "SkillOrbDynamicEntity": "SkillOrbDynamicEntity",
       "NpcDynamicEntity": {
         "FriendlyNpcDynamicEntity": {
-          "SkyBluePixelEntity": "SkyBluePixelEntity"
+          "SkyBluePixelEntity": "SkyBluePixelEntity",
+          "PurpleShieldEntity": "PurpleShieldEntity"
         },
         "HostileNpcDynamicEntity": {
           "WhitePixelEntity": {

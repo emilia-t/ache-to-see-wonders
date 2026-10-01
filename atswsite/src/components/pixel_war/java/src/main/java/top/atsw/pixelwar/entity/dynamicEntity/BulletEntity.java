@@ -15,11 +15,13 @@ public final class BulletEntity extends DynamicEntity {
     public static final double WIDTH = 8;
     public static final double HEIGHT = 8;
     /** 子弹速度(px/s) */
-    public static final double MOVE_SPEED = 780;
+    //public static final double MOVE_SPEED = 780;
+    public static final double MOVE_SPEED = 320;
     /** 默认伤害 */
     public static final double DEFAULT_DAMAGE = 1;
     /** 最大存在时间(秒) */
-    public static final double MAX_LIFETIME = 1.8;
+    //public static final double MAX_LIFETIME = 1.8;
+    public static final double MAX_LIFETIME = 5.6;
 
     public final Geometry.Vec2 velocity;
     public Long ownerId;

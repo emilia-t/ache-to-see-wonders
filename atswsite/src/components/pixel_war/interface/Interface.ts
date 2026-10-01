@@ -113,6 +113,20 @@ export interface ActiveCanvasEffect {
   elapsed: number;
 };
 
+// 从者吸附特效(有方向的条状渐变拖尾 + 锚点处的吸附能量块/光晕)
+export interface ServantAbsorbEffect {
+  id: number;
+  entityId: number;  // 被吸附的从者实体 id(锚点每帧跟随该实体移动)
+  anchorX: number;   // 吸附落点(被吸附的从者格子)世界坐标 X
+  anchorY: number;   // 吸附落点世界坐标 Y
+  dirX: number;      // 拖尾方向(单位向量,8 方向之一,指向玩家吸附面向外)
+  dirY: number;      // 拖尾方向(单位向量)
+  length: number;    // 拖尾总长度(px)
+  cellSize: number;  // 网格单元边长(px)
+  color: string;     // 拖尾/格子基色(取自被吸附 NPC 的本体颜色)
+  elapsed: number;   // 已播放时长(秒)
+};
+
 export interface UserData {
     id: number; // ID
     anonymous_user: boolean; // 用户是否是匿名的

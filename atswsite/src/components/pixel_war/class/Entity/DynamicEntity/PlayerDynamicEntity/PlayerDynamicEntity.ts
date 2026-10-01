@@ -49,6 +49,7 @@ type PlayerDodgeAfterimage = {
 class PlayerDynamicEntity extends DynamicEntity {
   public static readonly WIDTH = 25;
   public static readonly HEIGHT = 25;
+  public static readonly RENDER_SIZE = 21;// 身体渲染边长(仅视觉,碰撞体积仍为 WIDTH × HEIGHT)
   public static readonly MOVE_SPEED = 410;
   public static readonly MIN_MOVE_SPEED = 50;
   public static readonly HEALTH_MAX = 100;// 玩家生命值上限
@@ -117,6 +118,9 @@ class PlayerDynamicEntity extends DynamicEntity {
     isme: boolean = false
   ) {
     super(position, PlayerDynamicEntity.WIDTH, PlayerDynamicEntity.HEIGHT, '', name, 'player', 'player');
+    // 身体显示面积缩小为 RENDER_SIZE × RENDER_SIZE,碰撞箱保持 WIDTH × HEIGHT
+    this.renderWidth = PlayerDynamicEntity.RENDER_SIZE;
+    this.renderHeight = PlayerDynamicEntity.RENDER_SIZE;
     this.isme = isme;
     this.fillColor = '#2d7ff9a1';
     this.minMoveSpeed = PlayerDynamicEntity.MOVE_SPEED;
@@ -763,8 +767,9 @@ class PlayerDynamicEntity extends DynamicEntity {
       const screenPos = worldToScreen(afterimage.position.x, afterimage.position.y);
       const alpha = 0.16 * lifeRatio * (1 - i * 0.08);
       const scale = 1 + (1 - lifeRatio) * 0.35;
-      const w = this.width * scale;
-      const h = this.height * scale;
+      // 拖影跟随身体显示尺寸(而非碰撞体积)
+      const w = this.renderWidth * scale;
+      const h = this.renderHeight * scale;
       ctx.fillStyle = `rgba(92, 220, 255, ${Math.max(0, alpha)})`;
       ctx.fillRect(screenPos.x - w / 2, screenPos.y - h / 2, w, h);
       ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(0, alpha * 1.4)})`;
@@ -774,7 +779,7 @@ class PlayerDynamicEntity extends DynamicEntity {
   }
 
   /**
-   * 绘制玩家与已连接从者的外轮廓
+   * 绘制玩家与已连接从者的外圈轮廓
    */
   private drawServantOutline(
     ctx: CanvasRenderingContext2D,
@@ -873,21 +878,24 @@ class PlayerDynamicEntity extends DynamicEntity {
     debugFlags?: EntityDebugFlags
   ): void {
     const screenPos = worldToScreen(this.position.x, this.position.y);
-    const halfW = this.width / 2;
-    const halfH = this.height / 2;
+    // 绘制使用渲染尺寸(仅视觉);碰撞、拾取等逻辑仍使用 this.width / this.height
+    const drawW = this.renderWidth;
+    const drawH = this.renderHeight;
+    const halfW = drawW / 2;
+    const halfH = drawH / 2;
     const left = screenPos.x - halfW;
     const top = screenPos.y - halfH;
 
-    this.drawServantOutline(ctx, worldToScreen);
+    //this.drawServantOutline(ctx, worldToScreen);
 
     // 绘制本体
     if (this.texture && this.texture.loaded) {
-      ctx.drawImage(this.texture.img, left, top, this.width, this.height);
+      ctx.drawImage(this.texture.img, left, top, drawW, drawH);
     } else {
       ctx.fillStyle = this.fillColor || '#2d7ff9a1';
-      ctx.fillRect(left, top, this.width, this.height);
+      ctx.fillRect(left, top, drawW, drawH);
       ctx.strokeStyle = this.strokeColor || 'rgba(1, 217, 255, 0.45)';
-      ctx.strokeRect(left, top, this.width, this.height);
+      ctx.strokeRect(left, top, drawW, drawH);
     }
 
     // 受伤闪烁
@@ -896,18 +904,20 @@ class PlayerDynamicEntity extends DynamicEntity {
       ctx.save();
       ctx.globalCompositeOperation = 'source-atop';
       ctx.fillStyle = `rgba(255, 0, 0, ${0.45 * intensity})`;
-      ctx.fillRect(left, top, this.width, this.height);
+      ctx.fillRect(left, top, drawW, drawH);
       ctx.restore();
     }
 
     // 玩家名称
-    ctx.font = '12px "Microsoft YaHei"';
-    ctx.fillStyle = '#ffffff';
-    ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 2;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(this.name, screenPos.x, screenPos.y + halfH + 6);
+    if(!this.isme){
+      ctx.font = '12px "Microsoft YaHei"';
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 2;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(this.name, screenPos.x, screenPos.y + halfH + 6);
+    }
 
     /////// 调试信息start
     if (debugFlags) {

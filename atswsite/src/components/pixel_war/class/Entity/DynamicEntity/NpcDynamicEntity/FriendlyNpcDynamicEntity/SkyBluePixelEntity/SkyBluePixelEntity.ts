@@ -165,21 +165,24 @@ class SkyBluePixelEntity extends FriendlyNpcDynamicEntity {
     debugFlags?: EntityDebugFlags
   ): void {
     const screenPos = worldToScreen(this.position.x, this.position.y);
-    const halfW = this.width / 2;
-    const halfH = this.height / 2;
+    // 绘制使用渲染尺寸(仅视觉);碰撞与战斗判定仍使用 this.width / this.height
+    const drawW = this.renderWidth;
+    const drawH = this.renderHeight;
+    const halfW = drawW / 2;
+    const halfH = drawH / 2;
     const left = screenPos.x - halfW;
     const top = screenPos.y - halfH;
 
     // 天蓝色主体
     ctx.fillStyle = this.fillColor || '#87ceeb';
-    ctx.fillRect(left, top, this.width, this.height);
+    ctx.fillRect(left, top, drawW, drawH);
     ctx.strokeStyle = this.strokeColor || '#4a8fb0';
-    ctx.strokeRect(left, top, this.width, this.height);
+    ctx.strokeRect(left, top, drawW, drawH);
 
     // 友好表情:两个眼睛 + 微笑
     ctx.fillStyle = '#ffffff';
-    const eyeOffset = this.width * 0.18;
-    const eyeRadius = Math.max(1.5, this.width * 0.09);
+    const eyeOffset = drawW * 0.18;
+    const eyeRadius = Math.max(1.5, drawW * 0.09);
     ctx.beginPath();
     ctx.arc(screenPos.x - eyeOffset, screenPos.y - 2, eyeRadius, 0, Math.PI * 2);
     ctx.arc(screenPos.x + eyeOffset, screenPos.y - 2, eyeRadius, 0, Math.PI * 2);
@@ -188,7 +191,7 @@ class SkyBluePixelEntity extends FriendlyNpcDynamicEntity {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(screenPos.x, screenPos.y + 3, this.width * 0.2, Math.PI * 0.15, Math.PI * 0.85);
+    ctx.arc(screenPos.x, screenPos.y + 3, drawW * 0.2, Math.PI * 0.15, Math.PI * 0.85);
     ctx.stroke();
 
     // 受伤闪烁
@@ -197,7 +200,7 @@ class SkyBluePixelEntity extends FriendlyNpcDynamicEntity {
       ctx.save();
       ctx.globalCompositeOperation = 'source-atop';
       ctx.fillStyle = `rgba(255, 0, 0, ${0.45 * intensity})`;
-      ctx.fillRect(left, top, this.width, this.height);
+      ctx.fillRect(left, top, drawW, drawH);
       ctx.restore();
     }
 
