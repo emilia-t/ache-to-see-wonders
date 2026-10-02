@@ -42,6 +42,16 @@ public abstract class Skill {
         }
     }
 
+    /**
+     * 技能触发方式(对应 TS 版 SkillTrigger)。
+     */
+    public enum Trigger {
+        /** 由开火(左键)触发,装配后决定玩家的开火方式 */
+        FIRE,
+        /** 由闪现(空格)触发,提供位移能力 */
+        DODGE
+    }
+
     private final String tag;
     private final String name;
     private final String shortName;
@@ -49,9 +59,16 @@ public abstract class Skill {
     private final String color;
     private final double cooldown;
     private final String icon;
+    /** 技能触发方式 */
+    private final Trigger trigger;
 
     protected Skill(String tag, String name, String shortName, String description,
                     String color, double cooldown, String icon) {
+        this(tag, name, shortName, description, color, cooldown, icon, Trigger.FIRE);
+    }
+
+    protected Skill(String tag, String name, String shortName, String description,
+                    String color, double cooldown, String icon, Trigger trigger) {
         this.tag = tag;
         this.name = name;
         this.shortName = shortName;
@@ -59,6 +76,7 @@ public abstract class Skill {
         this.color = color;
         this.cooldown = cooldown;
         this.icon = icon;
+        this.trigger = trigger;
     }
 
     public String tag() {
@@ -90,6 +108,13 @@ public abstract class Skill {
         return icon;
     }
 
+    /**
+     * 技能触发方式:决定该技能由哪个输入(开火/闪现)触发。
+     */
+    public Trigger trigger() {
+        return trigger;
+    }
+
     /** 释放技能 */
     public abstract void cast(CastContext context);
 
@@ -103,6 +128,8 @@ public abstract class Skill {
 
         static {
             register(new Va2ShootSkill());
+            register(new Xa4ShootSkill());
+            register(new DodgeSkill());
         }
 
         public Registry() {

@@ -21,8 +21,10 @@ export { ExpOrbDynamicEntity } from './Entity/DynamicEntity/ExpOrbDynamicEntity/
 export { SkillOrbDynamicEntity } from './Entity/DynamicEntity/SkillOrbDynamicEntity/SkillOrbDynamicEntity';
 // Skill(技能体系)
 export { Skill } from './Skill/Skill';
-export type { SkillTagType, SkillCastContext } from './Skill/Skill';
+export type { SkillTagType, SkillCastContext, SkillTrigger } from './Skill/Skill';
 export { Va2ShootSkill } from './Skill/Skills/Va2ShootSkill/Va2ShootSkill';
+export { Xa4ShootSkill } from './Skill/Skills/Xa4ShootSkill/Xa4ShootSkill';
+export { DodgeSkill } from './Skill/Skills/DodgeSkill/DodgeSkill';
 export { SKILL_REGISTRY, H_getSkillByTag, H_getAllSkills, H_isSkillTagValid } from './Skill/index';
 export {
   H_preloadSkillIconTextures,
@@ -78,6 +80,7 @@ export { HostileNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity
 export { WhitePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelEntity';
 export { WhitePixelVa2Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelVa2Entity/WhitePixelVa2Entity';
 export { RedPixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/RedPixelEntity/RedPixelEntity';
+export { GoldenDodgeXa4Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/GoldenDodgeXa4Entity/GoldenDodgeXa4Entity';
 // NeutralNpcDynamicEntity
 export { NeutralNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/NeutralNpcDynamicEntity';
 // PlayerDynamicEntity
@@ -124,7 +127,8 @@ export const PrototypeChain = {
           "WhitePixelEntity": {
             "WhitePixelVa2Entity":"WhitePixelVa2Entity"
           },
-          "RedPixelEntity": "RedPixelEntity"
+          "RedPixelEntity": "RedPixelEntity",
+          "GoldenDodgeXa4Entity": "GoldenDodgeXa4Entity"
         },
         "NeutralNpcDynamicEntity": "NeutralNpcDynamicEntity"
       },

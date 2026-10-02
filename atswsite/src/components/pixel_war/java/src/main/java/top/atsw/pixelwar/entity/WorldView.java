@@ -1,5 +1,6 @@
 package top.atsw.pixelwar.entity;
 
+import top.atsw.pixelwar.entity.dynamicEntity.BulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.DynamicEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
@@ -27,4 +28,7 @@ public interface WorldView {
 
     /** 当前 NPC 列表(用于伤害、吸附、掉落等系统) */
     List<DynamicEntity> npcEntities();
+
+    /** 当前子弹列表(用于 NPC 威胁預判等) */
+    List<BulletEntity> bullets();
 }

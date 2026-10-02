@@ -34,8 +34,6 @@ public final class Protocol {
         public static final String RESPAWN = "respawn";
         public static final String INVENTORY_UPDATE = "inventory_update";
         public static final String INVENTORY_USE_ITEM = "inventory_use_item";
-        public static final String SERVANT_EDITOR_DELETE = "servant_editor_delete";
-        public static final String SERVANT_EDITOR_ROTATE = "servant_editor_rotate";
         public static final String TICK_PAUSE = "tick_pause";
         public static final String PING = "ping";
 
@@ -123,10 +121,6 @@ public final class Protocol {
 
     /** 使用背包物品 */
     public record InventoryUseItem(String uid) {
-    }
-
-    /** 从者编辑器:目标 NPC */
-    public record ServantEditor(long npcId) {
     }
 
     /** 暂停开关,data 为 null 时服务端自行切换 */

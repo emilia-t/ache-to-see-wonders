@@ -1,5 +1,6 @@
 package top.atsw.pixelwar.entity.dynamicEntity.npc;
 
+import top.atsw.pixelwar.core.GameConfig;
 import top.atsw.pixelwar.core.Geometry;
 import top.atsw.pixelwar.entity.WorldView;
 import top.atsw.pixelwar.entity.dynamicEntity.BulletEntity;
@@ -40,13 +41,13 @@ public class WhitePixelNpc extends NpcEntity {
         if (ownerId == null) {
             // 普通情况下只能在移动时射击
             if (isDead || !isMoving) {
-                actionLoopRunning = false;
+                if (actionLoopRunning) {
+                    actionAfter(context);
+                }
                 return;
             }
             if (!actionLoopRunning) {
-                actionLoopRunning = true;
-                action(context);
-                actionCooldownRemaining = ACTION_INTERVAL;
+                actionBefore(context);
                 return;
             }
             actionCooldownRemaining -= context.deltaTime;
@@ -57,13 +58,13 @@ public class WhitePixelNpc extends NpcEntity {
         } else {
             // 被玩家吸附情况下不考虑移动的条件
             if (isDead) {
-                actionLoopRunning = false;
+                if (actionLoopRunning) {
+                    actionAfter(context);
+                }
                 return;
             }
             if (!actionLoopRunning) {
-                actionLoopRunning = true;
-                action(context);
-                actionCooldownRemaining = ACTION_INTERVAL;
+                actionBefore(context);
                 return;
             }
             actionCooldownRemaining -= context.deltaTime;
@@ -72,6 +73,19 @@ public class WhitePixelNpc extends NpcEntity {
                 actionCooldownRemaining += ACTION_INTERVAL;
             }
         }
+    }
+
+    /** 开始一轮行动循环:立即射击一次并重置冷却(对应 TS 版 actionBefore) */
+    public void actionBefore(ActionContext context) {
+        actionLoopRunning = true;
+        action(context);
+        actionCooldownRemaining = ACTION_INTERVAL;
+    }
+
+    /** 结束行动循环:清除运行标记与冷却(对应 TS 版 actionAfter) */
+    public void actionAfter(ActionContext context) {
+        actionLoopRunning = false;
+        actionCooldownRemaining = 0;
     }
 
     /** 沿当前朝向发射一颗子弹 */
@@ -93,15 +107,53 @@ public class WhitePixelNpc extends NpcEntity {
                 bulletColor));
     }
 
-    /** 每帧更新:有主时跟随主人,无主时按父类逻辑游走 */
+    /**
+     * 白像素只沿上下左右四个正交方向随机移动(对齐 TS 版 WhitePixelEntity.setTarget)。
+     *
+     * <p>忽略外部传入的 target,每次由内部重新生成一段 100~200px 的正交位移,
+     * 并以 preferStraight=true 走直线,避免父类的弯曲塑形导致朝向偏移。</p>
+     */
     @Override
-    public void update(double dt, WorldView world, top.atsw.pixelwar.core.GameConfig config) {
+    public boolean setTarget(Geometry.Vec2 target, WorldView world, boolean preferStraight) {
+        double[][] directions = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}};
+        double[] randomDir = directions[(int) (Math.random() * directions.length)];
+        double distance = 100 + Math.random() * 200;
+        Geometry.Vec2 newTarget = new Geometry.Vec2(
+                position.x + randomDir[0] * distance,
+                position.y + randomDir[1] * distance);
+        return super.setTarget(newTarget, world, true);
+    }
+
+    /**
+     * 每帧更新:有主时跟随主人,无主时在父类游走基础上缩短停留时间
+     * (对齐 TS 版 WhitePixelEntity.update)。
+     */
+    @Override
+    public void update(double dt, WorldView world, GameConfig config) {
         if (ownerId != null) {
+            // 被玩家吸附:直接跟随主人,不参与游走
             followOwner(world);
-            updateDamageEffect(dt);
-            updateDeathEffect(dt);
             return;
         }
+
+        boolean wasMoving = isMoving;
         super.update(dt, world, config);
+        if (isDead) {
+            return;
+        }
+
+        // 移动完成后缩短停留时间,停留结束后自动开始下一段正交移动
+        if (wasMoving && !isMoving && stayDurationRemaining > 0) {
+            stayDurationRemaining = 1 + Math.random() * 2;
+        }
+        if (!isMoving && stayDurationRemaining <= 0) {
+            setTarget(position, world, true);
+        }
+    }
+
+    /** 此行为由 actionLoop 接管,不需要无位移看门狗(对齐 TS 版) */
+    @Override
+    public boolean updateNoMovementWatchdog(double dt) {
+        return false;
     }
 }

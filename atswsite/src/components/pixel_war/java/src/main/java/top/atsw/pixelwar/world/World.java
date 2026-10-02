@@ -9,6 +9,7 @@ import top.atsw.pixelwar.entity.dynamicEntity.DynamicEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.ExpOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.SkillOrbEntity;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.GoldenDodgeXa4Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.PurpleShieldNpc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.RedPixelNpc;
@@ -17,6 +18,7 @@ import top.atsw.pixelwar.entity.dynamicEntity.npc.WhitePixelNpc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.WhitePixelVa2Npc;
 import top.atsw.pixelwar.entity.itemEntity.ItemEntity;
 import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
+import top.atsw.pixelwar.game.DodgeSkill;
 import top.atsw.pixelwar.game.Inventory;
 import top.atsw.pixelwar.game.Skill;
 
@@ -825,10 +827,10 @@ public final class World implements WorldView {
 
     /**
      * 按权重随机创建一个 NPC。
-     * 权重与 TS 版一致:白像素 0.8、va2 0.4、天蓝像素 0.2、红像素 0.1、紫盾 0.08。
+     * 权重与 TS 版一致:白像素 0.8、va2 0.4、天蓝像素 0.2、红像素 0.1、紫盾 0.08、金色闪避者 0.11。
      */
     private NpcEntity createRandomNpc(Geometry.Vec2 position) {
-        double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08;
+        double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08 + 0.11;
         double random = Math.random() * total;
         if (random < 0.8) {
             return new WhitePixelNpc(position, null, null);
@@ -844,6 +846,10 @@ public final class World implements WorldView {
         random -= 0.2;
         if (random < 0.1) {
             return new RedPixelNpc(position, null, null);
+        }
+        random -= 0.1;
+        if (random < 0.11) {
+            return new GoldenDodgeXa4Npc(position, null, null);
         }
         return new PurpleShieldNpc(position, null, null);
     }
@@ -1251,59 +1257,16 @@ public final class World implements WorldView {
         player.playerRule.fireCooldownNow = player.playerRule.fireCooldownMax;
     }
 
-    /** 玩家闪避 */
+    /** 玩家闪现:必须装备闪现技能后才能使用 */
     public void playerDodge(long playerId, Geometry.Vec2 direction) {
         if (paused) {
             return;
         }
         PlayerEntity player = getPlayerById(playerId);
-        if (player != null && !player.isDead) {
-            player.dodge(direction, this);
-        }
-    }
-
-    /** 从者编辑器:强制令某个从者死亡 */
-    public void servantEditorDelete(long playerId, long npcId) {
-        if (paused) {
+        if (player == null || player.isDead || !player.hasEquippedSkill(DodgeSkill.TAG)) {
             return;
         }
-        PlayerEntity player = getPlayerById(playerId);
-        NpcEntity npc = getNpcById(npcId);
-        if (player == null || npc == null || player.isDead || npc.isDead) {
-            return;
-        }
-        if (npc.ownerId == null || npc.ownerId != player.id) {
-            return;
-        }
-        if (player.selectServantByID(npc.id) == null) {
-            return;
-        }
-        npc.health = 0;
-        npc.triggerDeath();
-        resolvePlayerServantDead(npc);
-    }
-
-    /** 从者编辑器:旋转某个从者的朝向(仅用于展示) */
-    public void servantEditorRotate(long playerId, long npcId) {
-        if (paused) {
-            return;
-        }
-        PlayerEntity player = getPlayerById(playerId);
-        NpcEntity npc = getNpcById(npcId);
-        if (player == null || npc == null || player.isDead || npc.isDead) {
-            return;
-        }
-        if (npc.ownerId == null || npc.ownerId != player.id) {
-            return;
-        }
-        double x = npc.facingDirection.x;
-        double y = npc.facingDirection.y;
-        double len = Math.hypot(x, y);
-        if (len < 0.0001) {
-            npc.facingDirection = new Geometry.Vec2(1, 0);
-            return;
-        }
-        npc.facingDirection = new Geometry.Vec2(y / len, -x / len);
+        player.dodge(direction, this);
     }
 
     /** 构建 NPC 行动上下文 */

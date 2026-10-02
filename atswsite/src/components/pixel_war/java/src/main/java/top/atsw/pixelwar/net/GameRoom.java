@@ -217,18 +217,6 @@ public final class GameRoom {
                         world.playerUseItem(playerId, input.uid());
                     }
                 }
-                case Protocol.ClientType.SERVANT_EDITOR_DELETE -> {
-                    Protocol.ServantEditor input = mapper.treeToValue(data, Protocol.ServantEditor.class);
-                    if (input != null) {
-                        world.servantEditorDelete(playerId, input.npcId());
-                    }
-                }
-                case Protocol.ClientType.SERVANT_EDITOR_ROTATE -> {
-                    Protocol.ServantEditor input = mapper.treeToValue(data, Protocol.ServantEditor.class);
-                    if (input != null) {
-                        world.servantEditorRotate(playerId, input.npcId());
-                    }
-                }
                 case Protocol.ClientType.TICK_PAUSE -> {
                     Protocol.TickPause input = data == null ? null : mapper.treeToValue(data, Protocol.TickPause.class);
                     if (input == null || input.paused() == null) {

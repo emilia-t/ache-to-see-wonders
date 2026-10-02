@@ -101,6 +101,23 @@ public class WhitePixelVa2Npc extends WhitePixelNpc {
         nextTarget = position.copy();
     }
 
+    /**
+     * 变种体不允许修改移动目标,始终按初始锁定的水平方向移动(对齐 TS 版 WhitePixelVa2Entity.setTarget)。
+     *
+     * <p>父类 WhitePixelNpc 的正交随机游走会重写 setTarget,这里必须拦截,
+     * 否则生成时的 setTarget 调用会重新生成目标并重算速度,破坏水平单向移动。</p>
+     */
+    @Override
+    public boolean setTarget(Geometry.Vec2 target, WorldView world, boolean preferStraight) {
+        return false;
+    }
+
+    /** 禁用 Wander 机制,避免外部重新分配随机目标干扰水平移动(对齐 TS 版) */
+    @Override
+    public boolean canGetNewWanderTarget(double dt, WorldView world) {
+        return false;
+    }
+
     private boolean isBlockedByStatic(Geometry.Vec2 newPos, WorldView world) {
         double halfW = width / 2;
         double halfH = height / 2;

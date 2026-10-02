@@ -331,10 +331,6 @@ export const H_toJavaClientMessage = (instruct: InstructObject): JavaClientEnvel
       return { type: 'inventory_update', data: { inventory: data.inventory } };
     case 'inventory_use_item':
       return { type: 'inventory_use_item', data: { uid: data.uid } };
-    case 'servant_editor_delete':
-      return { type: 'servant_editor_delete', data: { npcId: data.npcId } };
-    case 'servant_editor_rotate':
-      return { type: 'servant_editor_rotate', data: { npcId: data.npcId } };
     case 'tick_pause':
       return { type: 'tick_pause', data: { paused: data.paused } };
     default:

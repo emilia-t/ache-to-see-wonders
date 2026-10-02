@@ -4,7 +4,14 @@ import type { Point } from '@/components/pixel_war/interface/Interface';
  * 技能标签
  * 新增技能时需在此登记,并在 class/Skill/index.ts 的技能注册表中实例化
  */
-export type SkillTagType = 'va2_shoot_skill';
+export type SkillTagType = 'va2_shoot_skill' | 'xa4_shoot_skill' | 'dodge_skill';
+
+/**
+ * 技能触发方式
+ * - 'fire' :由开火(左键)触发,装配后决定玩家的开火方式
+ * - 'dodge':由闪现(空格)触发,提供位移能力
+ */
+export type SkillTrigger = 'fire' | 'dodge';
 
 /**
  * 技能释放上下文
@@ -55,6 +62,8 @@ abstract class Skill {
   public readonly cooldown: number;
   /** 是否可以堆叠(技能恒为 false) */
   public readonly stackable: boolean = false;
+  /** 技能触发方式:决定该技能由哪个输入(开火/闪现)触发 */
+  public readonly trigger: SkillTrigger;
 
   constructor(
     tag: string,
@@ -63,7 +72,8 @@ abstract class Skill {
     description: string,
     color: string,
     cooldown: number,
-    icon: string
+    icon: string,
+    trigger: SkillTrigger = 'fire'
   ) {
     this.tag = tag;
     this.name = name;
@@ -72,6 +82,7 @@ abstract class Skill {
     this.color = color;
     this.cooldown = cooldown;
     this.icon = icon;
+    this.trigger = trigger;
   }
 
   /**

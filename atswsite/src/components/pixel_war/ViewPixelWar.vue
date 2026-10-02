@@ -46,6 +46,8 @@ import {
   RedPixelEntity,
   SkyBluePixelEntity,
   PurpleShieldEntity,
+  GoldenDodgeXa4Entity,
+  DodgeSkill,
   BulletDynamicEntity,
   BuckshotBulletDynamicEntity,
   SniperBulletDynamicEntity,
@@ -330,7 +332,6 @@ const applyMapDataSnapshot = (mapData: MapData) => {
   }
   
   refreshRenderEntityList();
-  H_ensureSelectedServantValid();
 
   for (const id of ENTITY_CACHE.keys()) {
     if (!aliveIds.has(id)) {
@@ -388,7 +389,6 @@ const applyDynamicMapDataSnapshot = (mapData: MapData) => {
   }
   
   refreshRenderEntityList();
-  H_ensureSelectedServantValid();
 
   for (const id of ENTITY_CACHE.keys()) {
     if (!aliveIds.has(id)) {
@@ -427,24 +427,6 @@ const sendPlayerDodgeInput = (direction: Point) => {
     Instruct.I_PlayerDodgeInput(
       direction,
       playerEntity ? playerEntity.id : -1
-    )
-  );
-};
-
-const sendServantEditorDelete = (npcId: number) => {
-  sendClientInstruct(
-    Instruct.I_ServantEditorDelete(
-      playerEntity ? playerEntity.id : -1,
-      npcId
-    )
-  );
-};
-
-const sendServantEditorRotate = (npcId: number) => {
-  sendClientInstruct(
-    Instruct.I_ServantEditorRotate(
-      playerEntity ? playerEntity.id : -1,
-      npcId
     )
   );
 };
@@ -495,6 +477,37 @@ const MINIMAP_DEFAULT_COLOR = '#ffffff'; // 小地图实体未设置mapColor时�
 // 除 1 档外,其余档位以相机视角中心为中心,并跟随相机移动。
 const MINIMAP_ZOOM_WORLD_HALVES = [MINIMAP_WORLD_HALF, 3000, 1500, 750, 250];
 const MINIMAP_ZOOM_EVENT_PREFIX = 'minimap_zoom_'; // 缩放按钮事件区域id前缀
+
+// ---- 键盘快捷键设置(左下角入口) ----
+/** 键盘设置事件区域id前缀 */
+const KEYBOARD_SETTINGS_EVENT_PREFIX = 'keyboard_settings_';
+/** 快捷键持久化存储键 */
+const KEY_BINDING_STORAGE_KEY = 'pixelWarKeyBindings';
+/** 快捷键功能分类 */
+type KeyBindingCategory = '功能' | '移动';
+/** 单个可自定义快捷键的功能描述 */
+type KeyBindingDef = {
+  id: string;              // 功能唯一标识
+  label: string;           // 面板中显示的功能名
+  hint: string;            // 功能作用简述
+  defaultKey: string;      // 默认按键(归一化后的键名)
+  category: KeyBindingCategory;
+};
+/** 所有可自定义快捷键的功能列表 */
+const KEY_BINDING_DEFS: KeyBindingDef[] = [
+  { id: 'toggleInventory', label: '背包', hint: '打开/关闭背包', defaultKey: 'e', category: '功能' },
+  { id: 'toggleFire', label: '开火模式', hint: '切换开火模式', defaultKey: 'f', category: '功能' },
+  { id: 'togglePerspective', label: '切换视角', hint: '第一/第三人称', defaultKey: '3', category: '功能' },
+  { id: 'toggleServantHealth', label: '从者血条', hint: '显示从者血量', defaultKey: 't', category: '功能' },
+  { id: 'toggleServantFacing', label: '从者朝向', hint: '显示从者朝向', defaultKey: 'y', category: '功能' },
+  { id: 'toggleDebugTerminal', label: '调试终端', hint: '打开/关闭终端', defaultKey: '`', category: '功能' },
+  { id: 'sprint', label: '疾跑', hint: '按住疾跑', defaultKey: 'shift', category: '功能' },
+  { id: 'dodge', label: '闪现', hint: '需装备闪现技能', defaultKey: ' ', category: '功能' },
+  { id: 'moveUp', label: '向上移动', hint: 'WASD 移动', defaultKey: 'w', category: '移动' },
+  { id: 'moveDown', label: '向下移动', hint: 'WASD 移动', defaultKey: 's', category: '移动' },
+  { id: 'moveLeft', label: '向左移动', hint: 'WASD 移动', defaultKey: 'a', category: '移动' },
+  { id: 'moveRight', label: '向右移动', hint: 'WASD 移动', defaultKey: 'd', category: '移动' }
+];
 ////////////////////
 //<--常量区
 ////////////////////
@@ -526,8 +539,6 @@ let isDragging   = false;  // 是否正在拖动画布
 let isMoveCanvas = false;  // 是否是通过拖动来移动画布
 let dragStartX = 0;        // 拖动起始X坐标
 let dragStartY = 0;        // 拖动起始Y坐标
-let dragTotalX = 0;        // 累计X方向拖动长度
-let dragTotalY = 0;        // 累计Y方向拖动长度
 let lastDragX  = 0;        // 上一次拖动的X位置
 let lastDragY  = 0;        // 上一次拖动的Y位置
 
@@ -603,11 +614,15 @@ let firstPersonMoveA = false;
 let firstPersonMoveS = false;
 let firstPersonMoveD = false;
 let playerFireMode = false;
-let servantGridEditorEnabled = false;
-let selectedServantNpcId: number | null = null;
 let showPlayerServantHealth = false;
 let showPlayerServantFacingDirection = false;
 let minimapZoomLevel = 1; // 小地图缩放档位(1..5):1=整张地图,5=500×500px
+
+// 键盘快捷键设置状态
+let keyBindings: Record<string, string> = {};      // 功能id -> 当前按键(归一化键名)
+let keyboardSettingsVisible = false;               // 键盘设置面板是否展开
+let keyboardSettingsAnim = 0;                      // 展开/收起动画进度(0..1)
+let keyboardSettingsListeningId: string | null = null; // 当前正在录制新键位的功能id
 
 // 健康值快照Map (用于生成数值浮层)
 let prevHealthMap = new Map<number, number>();
@@ -861,6 +876,110 @@ const H_getHitEventArea = (x: number, y: number): EventArea | null => {
   return null;
 };
 
+// ---- 键盘快捷键设置辅助函数 ----
+/** 默认键位表 */
+const H_defaultKeyBindings = (): Record<string, string> => {
+  const map: Record<string, string> = {};
+  for (const def of KEY_BINDING_DEFS) map[def.id] = def.defaultKey;
+  return map;
+};
+
+/** 归一化按键名:统一小写,并将 ~ 归并到 ` */
+const H_normalizeKey = (raw: string): string => {
+  if (raw === '~') return '`';
+  return raw.toLowerCase();
+};
+
+/** 按键名 -> 面板显示文本 */
+const H_formatKeyLabel = (key: string): string => {
+  if (!key) return '未设置';
+  if (key === ' ') return '空格';
+  const named: Record<string, string> = {
+    shift: 'Shift', control: 'Ctrl', alt: 'Alt', meta: 'Win',
+    arrowup: '↑', arrowdown: '↓', arrowleft: '←', arrowright: '→',
+    tab: 'Tab', enter: 'Enter', escape: 'Esc', backspace: 'Backspace', '`': '~'
+  };
+  return named[key] ?? key.toUpperCase();
+};
+
+/** 根据按键查找绑定的功能id(未绑定返回 null) */
+const H_findBindingIdByKey = (key: string): string | null => {
+  for (const def of KEY_BINDING_DEFS) {
+    if (keyBindings[def.id] === key) return def.id;
+  }
+  return null;
+};
+
+/** 持久化当前键位 */
+const H_saveKeyBindings = () => {
+  try {
+    localStorage.setItem(KEY_BINDING_STORAGE_KEY, JSON.stringify(keyBindings));
+  } catch {
+    // 忽略持久化失败(隐私模式等)
+  }
+};
+
+/** 读取本地键位(与默认值合并) */
+const H_loadKeyBindings = () => {
+  const map = H_defaultKeyBindings();
+  try {
+    const raw = localStorage.getItem(KEY_BINDING_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      for (const def of KEY_BINDING_DEFS) {
+        const value = parsed[def.id];
+        if (typeof value === 'string') map[def.id] = value;
+      }
+    }
+  } catch {
+    // 忽略读取失败,使用默认键位
+  }
+  keyBindings = map;
+};
+
+/** 设置某个功能的快捷键,若与其它功能冲突则互换 */
+const H_applyKeyBinding = (id: string, key: string) => {
+  const previous = keyBindings[id] ?? '';
+  const conflictId = H_findBindingIdByKey(key);
+  if (conflictId !== null && conflictId !== id) {
+    keyBindings[conflictId] = previous;
+  }
+  keyBindings[id] = key;
+  H_saveKeyBindings();
+};
+
+/** 恢复默认键位 */
+const H_resetKeyBindings = () => {
+  keyBindings = H_defaultKeyBindings();
+  H_saveKeyBindings();
+};
+
+/** 切换键盘设置面板展开状态 */
+const H_toggleKeyboardSettings = (visible?: boolean) => {
+  keyboardSettingsVisible = visible ?? !keyboardSettingsVisible;
+  if (!keyboardSettingsVisible) keyboardSettingsListeningId = null;
+  drawUI();
+};
+
+/** 根据绑定id更新玩家移动状态 */
+const H_setMoveStateForBinding = (bindingId: string, pressed: boolean) => {
+  const state = PlayerDynamicEntity.playerMoveState;
+  if (bindingId === 'moveUp') {
+    state.W = pressed;
+    if (perspectiveMode === 'first_person') firstPersonMoveW = pressed;
+  } else if (bindingId === 'moveDown') {
+    state.S = pressed;
+    if (perspectiveMode === 'first_person') firstPersonMoveS = pressed;
+  } else if (bindingId === 'moveLeft') {
+    state.A = pressed;
+    if (perspectiveMode === 'first_person') firstPersonMoveA = pressed;
+  } else if (bindingId === 'moveRight') {
+    state.D = pressed;
+    if (perspectiveMode === 'first_person') firstPersonMoveD = pressed;
+  }
+  sendPlayerMoveInput();
+};
+
 const H_getWorkerTickPackage = (instructs: InstructObject[]): DataPackage => {
   return {
     tick: {
@@ -871,41 +990,6 @@ const H_getWorkerTickPackage = (instructs: InstructObject[]): DataPackage => {
       instructs,
     },
   };
-};
-
-const H_clearSelectedServant = () => {
-  selectedServantNpcId = null;
-};
-
-const H_getNpcEntityById = (npcId: number): NpcDynamicEntity | null => {
-  return npcEntityList.find(entity => entity.id === npcId) || null;
-};
-
-const H_getSelectedServantEntity = (): NpcDynamicEntity | null => {
-  if (selectedServantNpcId === null) return null;
-  const entity = H_getNpcEntityById(selectedServantNpcId);
-  if (!entity || entity.isDead) return null;
-  if (!playerEntity || entity.ownerId !== playerEntity.id) return null;
-  if (playerEntity.selectServantByID(entity.id) === null) return null;
-  return entity;
-};
-
-const H_selectServantAtWorldPoint = (worldPoint: Point): boolean => {
-  if (!playerEntity) return false;
-  const cell = playerEntity.worldPositionToRowCol(worldPoint);
-  if (cell === null) return false;
-  const servant = playerEntity.selectServantByRC(cell.row, cell.col);
-  if (!servant || !servant.exist || servant.npcId === -1) return false;
-  const npc = H_getNpcEntityById(servant.npcId);
-  if (!npc || npc.isDead || npc.ownerId !== playerEntity.id) return false;
-  selectedServantNpcId = npc.id;
-  return true;
-};
-
-const H_ensureSelectedServantValid = () => {
-  if (selectedServantNpcId !== null && H_getSelectedServantEntity() === null) {
-    H_clearSelectedServant();
-  }
 };
 
 const H_isPlayerServantNpc = (entity: NpcDynamicEntity): boolean => {
@@ -1082,6 +1166,12 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.ownerId,
           snapshot.teamId
         );
+      case 'golden_dodge_xa4':
+        return new GoldenDodgeXa4Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
     }
   }
   else if(kind === 'player'){
@@ -1216,6 +1306,8 @@ const H_ensureStarsInViewport = () => {
 //初始化函数区-->
 ////////////////////
 const startSetting = () => {
+  // 读取玩家自定义的快捷键(与默认键位合并)
+  H_loadKeyBindings();
   onResizeCanvas();
 
   // 预加载技能图标贴图(resource/skill_icon 下的 100px × 100px PNG),避免首帧技能槽图标缺失
@@ -1728,10 +1820,9 @@ const TOcanvas2Screen = (canvasX: number, canvasY: number) => {
 const drawInstructions = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   if (!CtxUi || !CANVAS) return;
   const { width } = H_getCanvasCssSize(CANVAS);
-  const editorStatus = servantGridEditorEnabled ? 'ON' : 'OFF';
   const healthStatus = showPlayerServantHealth ? 'ON' : 'OFF';
   const facingStatus = showPlayerServantFacingDirection ? 'ON' : 'OFF';
-  const text = `F 开火 | 3 视角 | C 从者编辑:${editorStatus} | Q 删除 | R 旋转 | T 从者血条:${healthStatus} | Y 从者朝向:${facingStatus}`;
+  const text = `F 开火 | 3 视角 | T 从者血条:${healthStatus} | Y 从者朝向:${facingStatus}`;
   CtxUi.save();
   CtxUi.font = '14px "Microsoft YaHei", Arial, sans-serif';
   CtxUi.fillStyle = 'rgba(78,78,78,0.9)';
@@ -1888,6 +1979,310 @@ const drawMiniMap = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement)
       onClick: () => { setMiniMapZoomLevel(minimapZoomLevel + 1); }
     });
   }
+};
+
+/**
+ * 绘制键盘图标(键盘设置入口按钮)
+ */
+const H_drawKeyboardIcon = (
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string
+) => {
+  const w = size;
+  const h = size * 0.66;
+  const x = cx - w / 2;
+  const y = cy - h / 2;
+  const r = size * 0.14;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(1.2, size * 0.09);
+  ctx.lineJoin = 'round';
+  // 键盘外框
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.stroke();
+  // 键位点阵
+  const rows = 2;
+  const cols = 4;
+  const dot = Math.max(1, size * 0.09);
+  const innerW = w * 0.68;
+  const innerH = h * 0.42;
+  const startX = cx - innerW / 2 + dot;
+  const startY = cy - innerH / 2 + dot;
+  const gapX = innerW / (cols - 1);
+  const gapY = innerH / (rows - 1 || 1);
+  for (let rr = 0; rr < rows; rr++) {
+    for (let cc = 0; cc < cols; cc++) {
+      ctx.beginPath();
+      ctx.arc(startX + cc * gapX, startY + rr * gapY, dot * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // 空格条
+  ctx.fillRect(cx - w * 0.16, y + h - h * 0.26, w * 0.32, Math.max(1, size * 0.055));
+  ctx.restore();
+};
+
+/**
+ * 键盘设置入口按钮与展开面板的布局(绘制与命中检测共用)
+ */
+const H_getKeyboardSettingsLayout = (canvasHeight: number) => {
+  const buttonSize = 44;
+  const margin = 12;
+  // 调试终端也位于左下角,终端展开时把入口按钮上移,避免遮挡
+  const terminalOffset = debugTerminalVisible ? 240 : 0;
+  const buttonX = margin;
+  const buttonY = canvasHeight - margin - buttonSize - terminalOffset;
+
+  const panelWidth = 380;
+  const padding = 12;
+  const columnGap = 10;
+  const columns = 2;
+  const itemHeight = 24;
+  const rows = Math.ceil(KEY_BINDING_DEFS.length / columns);
+  const headerHeight = 40;
+  const footerHeight = 36;
+  const panelHeight = headerHeight + rows * itemHeight + footerHeight;
+  const panelX = margin;
+  const panelY = Math.max(8, buttonY - 10 - panelHeight);
+  const itemWidth = (panelWidth - padding * 2 - columnGap * (columns - 1)) / columns;
+
+  return {
+    buttonSize, buttonX, buttonY,
+    panelX, panelY, panelWidth, panelHeight,
+    padding, columnGap, columns, itemWidth, itemHeight, rows,
+    headerHeight, footerHeight
+  };
+};
+
+/** 键盘设置面板中第 index 个功能行的矩形(带展开动画偏移) */
+const H_getKeyboardSettingItemRect = (
+  layout: ReturnType<typeof H_getKeyboardSettingsLayout>,
+  index: number,
+  offsetY: number
+) => {
+  const col = index % layout.columns;
+  const row = Math.floor(index / layout.columns);
+  return {
+    x: layout.panelX + layout.padding + col * (layout.itemWidth + layout.columnGap),
+    y: layout.panelY + offsetY + layout.headerHeight + row * layout.itemHeight,
+    width: layout.itemWidth,
+    height: layout.itemHeight - 3
+  };
+};
+
+/**
+ * 绘制左下角"键盘设置"入口按钮与展开面板(UI层)
+ * - 按钮始终显示(背包打开时隐藏),点击后以动画向上展开
+ * - 面板列出各功能当前快捷键,点击功能行后再按新键位即可修改(自动持久化)
+ */
+const drawKeyboardSettingsPanel = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
+  // 每帧先清理上一次注册的键盘设置事件区域
+  eventArea = eventArea.filter(area => !area.id.startsWith(KEYBOARD_SETTINGS_EVENT_PREFIX));
+
+  const { height } = H_getCanvasCssSize(CANVAS);
+
+  // 推进展开/收起动画
+  const target = keyboardSettingsVisible ? 1 : 0;
+  keyboardSettingsAnim += (target - keyboardSettingsAnim) * 0.22;
+  if (Math.abs(target - keyboardSettingsAnim) < 0.002) keyboardSettingsAnim = target;
+  const eased = keyboardSettingsAnim * keyboardSettingsAnim * (3 - 2 * keyboardSettingsAnim);
+
+  const layout = H_getKeyboardSettingsLayout(height);
+  const hidden = inventoryVisible;
+
+  // ---- 入口按钮 ----
+  CtxUi.save();
+  CtxUi.globalAlpha = hidden ? 0 : 1;
+  const btnCut = Math.max(4, layout.buttonSize * 0.24);
+  const btnAreaId = `${KEYBOARD_SETTINGS_EVENT_PREFIX}toggle`;
+  const btnHovered = hoveredArea?.id === btnAreaId;
+  createChamferRect(CtxUi, layout.buttonX, layout.buttonY, layout.buttonSize, layout.buttonSize, btnCut);
+  const btnGrad = CtxUi.createLinearGradient(layout.buttonX, layout.buttonY, layout.buttonX, layout.buttonY + layout.buttonSize);
+  btnGrad.addColorStop(0, btnHovered ? 'rgba(20, 60, 82, 0.95)' : 'rgba(12, 38, 54, 0.85)');
+  btnGrad.addColorStop(1, 'rgba(3, 12, 20, 0.8)');
+  CtxUi.fillStyle = btnGrad;
+  CtxUi.fill();
+  const btnAccent = keyboardSettingsVisible ? 'rgba(200, 255, 255, 0.98)' : 'rgba(0, 229, 255, 0.92)';
+  CtxUi.strokeStyle = btnAccent;
+  CtxUi.lineWidth = btnHovered || keyboardSettingsVisible ? 1.8 : 1.2;
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.75)';
+  CtxUi.shadowBlur = btnHovered || keyboardSettingsVisible ? 12 : 6;
+  createChamferRect(CtxUi, layout.buttonX + 0.7, layout.buttonY + 0.7, layout.buttonSize - 1.4, layout.buttonSize - 1.4, btnCut);
+  CtxUi.stroke();
+  CtxUi.shadowBlur = 0;
+  H_drawKeyboardIcon(CtxUi, layout.buttonX + layout.buttonSize / 2, layout.buttonY + layout.buttonSize / 2, layout.buttonSize * 0.62, btnAccent);
+  CtxUi.restore();
+
+  if (!hidden) {
+    eventArea.push({
+      id: btnAreaId,
+      rect: { x: layout.buttonX, y: layout.buttonY, width: layout.buttonSize, height: layout.buttonSize },
+      type: 'button',
+      cursor: 'pointer',
+      onClick: () => { H_toggleKeyboardSettings(); }
+    });
+  }
+
+  // ---- 展开面板 ----
+  if (hidden || eased <= 0.01) return;
+
+  const offsetY = (1 - eased) * 16;
+  const panelBottom = layout.panelY + offsetY + layout.panelHeight;
+  const cut = Math.max(6, layout.panelHeight * 0.05);
+
+  CtxUi.save();
+  CtxUi.globalAlpha = eased;
+  CtxUi.textAlign = 'left';
+  CtxUi.textBaseline = 'middle';
+
+  // 底板
+  createChamferRect(CtxUi, layout.panelX, layout.panelY + offsetY, layout.panelWidth, layout.panelHeight, cut);
+  const panelGrad = CtxUi.createLinearGradient(layout.panelX, layout.panelY + offsetY, layout.panelX, panelBottom);
+  panelGrad.addColorStop(0, 'rgba(14, 40, 60, 0.95)');
+  panelGrad.addColorStop(0.5, 'rgba(7, 22, 34, 0.92)');
+  panelGrad.addColorStop(1, 'rgba(3, 10, 18, 0.9)');
+  CtxUi.fillStyle = panelGrad;
+  CtxUi.fill();
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.5)';
+  CtxUi.shadowBlur = 14;
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.85)';
+  CtxUi.lineWidth = 1.4;
+  createChamferRect(CtxUi, layout.panelX + 0.8, layout.panelY + offsetY + 0.8, layout.panelWidth - 1.6, layout.panelHeight - 1.6, cut);
+  CtxUi.stroke();
+  CtxUi.shadowBlur = 0;
+  drawHudCornerBrackets(
+    CtxUi,
+    layout.panelX,
+    layout.panelY + offsetY,
+    layout.panelWidth,
+    layout.panelHeight,
+    Math.max(10, layout.panelHeight * 0.09),
+    'rgba(0, 229, 255, 0.9)'
+  );
+
+  // 标题
+  const titleY = layout.panelY + offsetY + layout.headerHeight / 2 + 2;
+  CtxUi.font = 'bold 14px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.fillStyle = '#eafdff';
+  CtxUi.shadowColor = 'rgba(0, 229, 255, 0.8)';
+  CtxUi.shadowBlur = 8;
+  CtxUi.fillText('键盘设置', layout.panelX + layout.padding, titleY);
+  CtxUi.shadowBlur = 0;
+  CtxUi.font = '10px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.fillStyle = 'rgba(122, 214, 240, 0.85)';
+  CtxUi.fillText('点击功能后按下新键位 · Esc 取消', layout.panelX + layout.padding + 62, titleY);
+
+  // 标题下分割线
+  const headerLineY = layout.panelY + offsetY + layout.headerHeight - 8;
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.28)';
+  CtxUi.lineWidth = 1;
+  CtxUi.beginPath();
+  CtxUi.moveTo(layout.panelX + layout.padding, headerLineY);
+  CtxUi.lineTo(layout.panelX + layout.panelWidth - layout.padding, headerLineY);
+  CtxUi.stroke();
+
+  // 功能行
+  for (let i = 0; i < KEY_BINDING_DEFS.length; i++) {
+    const def = KEY_BINDING_DEFS[i];
+    const rect = H_getKeyboardSettingItemRect(layout, i, offsetY);
+    const itemAreaId = `${KEYBOARD_SETTINGS_EVENT_PREFIX}bind_${def.id}`;
+    const isHovered = hoveredArea?.id === itemAreaId;
+    const isListening = keyboardSettingsListeningId === def.id;
+
+    createChamferRect(CtxUi, rect.x, rect.y, rect.width, rect.height, Math.max(2, rect.height * 0.28));
+    const rowGrad = CtxUi.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height);
+    const highlight = isListening ? 'rgba(0, 229, 255, 0.28)' : (isHovered ? 'rgba(0, 229, 255, 0.16)' : 'rgba(8, 24, 36, 0.5)');
+    rowGrad.addColorStop(0, highlight);
+    rowGrad.addColorStop(1, 'rgba(4, 14, 24, 0.4)');
+    CtxUi.fillStyle = rowGrad;
+    CtxUi.fill();
+    CtxUi.strokeStyle = isListening ? 'rgba(200, 255, 255, 0.95)' : (isHovered ? 'rgba(0, 229, 255, 0.7)' : 'rgba(0, 229, 255, 0.22)');
+    CtxUi.lineWidth = isListening || isHovered ? 1.3 : 1;
+    createChamferRect(CtxUi, rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1, Math.max(2, rect.height * 0.28));
+    CtxUi.stroke();
+
+    // 功能名
+    CtxUi.font = '11px "Microsoft YaHei", Arial, sans-serif';
+    CtxUi.fillStyle = def.category === '移动' ? 'rgba(200, 236, 255, 0.92)' : '#eafdff';
+    CtxUi.textAlign = 'left';
+    CtxUi.fillText(def.label, rect.x + 8, rect.y + rect.height / 2 + 0.5);
+
+    // 快捷键标签
+    const chipW = 56;
+    const chipRect = { x: rect.x + rect.width - chipW - 4, y: rect.y + 2, width: chipW, height: rect.height - 4 };
+    createChamferRect(CtxUi, chipRect.x, chipRect.y, chipRect.width, chipRect.height, Math.max(2, chipRect.height * 0.3));
+    CtxUi.fillStyle = isListening ? 'rgba(0, 229, 255, 0.35)' : 'rgba(6, 18, 28, 0.85)';
+    CtxUi.fill();
+    CtxUi.strokeStyle = isListening ? 'rgba(200, 255, 255, 0.95)' : 'rgba(0, 229, 255, 0.45)';
+    CtxUi.lineWidth = 1;
+    createChamferRect(CtxUi, chipRect.x + 0.5, chipRect.y + 0.5, chipRect.width - 1, chipRect.height - 1, Math.max(2, chipRect.height * 0.3));
+    CtxUi.stroke();
+    CtxUi.font = 'bold 11px Consolas, "Courier New", monospace';
+    CtxUi.textAlign = 'center';
+    CtxUi.fillStyle = isListening ? '#ffffff' : '#cdefff';
+    CtxUi.fillText(
+      isListening ? '按键…' : H_formatKeyLabel(keyBindings[def.id] ?? ''),
+      chipRect.x + chipRect.width / 2,
+      chipRect.y + chipRect.height / 2 + 0.5
+    );
+    CtxUi.textAlign = 'left';
+
+    eventArea.push({
+      id: itemAreaId,
+      rect,
+      type: 'button',
+      cursor: 'pointer',
+      onClick: () => {
+        keyboardSettingsListeningId = def.id;
+        drawUI();
+      }
+    });
+  }
+
+  // 底部:重置按钮 + 说明
+  const footerY = layout.panelY + offsetY + layout.headerHeight + layout.rows * layout.itemHeight + 6;
+  const resetRect = { x: layout.panelX + layout.padding, y: footerY, width: 92, height: 22 };
+  const resetAreaId = `${KEYBOARD_SETTINGS_EVENT_PREFIX}reset`;
+  const resetHovered = hoveredArea?.id === resetAreaId;
+  createChamferRect(CtxUi, resetRect.x, resetRect.y, resetRect.width, resetRect.height, 5);
+  CtxUi.fillStyle = resetHovered ? 'rgba(0, 229, 255, 0.28)' : 'rgba(8, 24, 36, 0.7)';
+  CtxUi.fill();
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.6)';
+  CtxUi.lineWidth = 1;
+  createChamferRect(CtxUi, resetRect.x + 0.5, resetRect.y + 0.5, resetRect.width - 1, resetRect.height - 1, 5);
+  CtxUi.stroke();
+  CtxUi.font = '11px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.textAlign = 'center';
+  CtxUi.fillStyle = '#cdefff';
+  CtxUi.fillText('恢复默认', resetRect.x + resetRect.width / 2, resetRect.y + resetRect.height / 2 + 0.5);
+  CtxUi.textAlign = 'left';
+  CtxUi.font = '10px Consolas, "Courier New", monospace';
+  CtxUi.fillStyle = 'rgba(122, 214, 240, 0.8)';
+  CtxUi.fillText('已自动保存到本地', resetRect.x + resetRect.width + 10, resetRect.y + resetRect.height / 2 + 0.5);
+
+  eventArea.push({
+    id: resetAreaId,
+    rect: resetRect,
+    type: 'button',
+    cursor: 'pointer',
+    onClick: () => { H_resetKeyBindings(); drawUI(); }
+  });
+
+  CtxUi.restore();
 };
 
 /**
@@ -2490,32 +2885,6 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
       cooldownNow: 0,
       cooldownMax: 1,
       active: playerEntity?.isSprinting ?? false
-    },
-    {
-      key: 'SP',
-      title: 'DASH',
-      subtitle: 'DODGE',
-      color: '#b381ff',
-      cooldownNow: playerEntity?.playerRule.dodgeCooldownNow ?? 0,
-      cooldownMax: playerEntity?.playerRule.dodgeCooldownMax ?? 1
-    },
-    {
-      key: 'C',
-      title: 'GRID',
-      subtitle: servantGridEditorEnabled ? 'EDIT' : 'SERV',
-      color: servantGridEditorEnabled ? '#64ff9d' : '#7ce8ff',
-      cooldownNow: 0,
-      cooldownMax: 1,
-      active: servantGridEditorEnabled
-    },
-    {
-      key: '3',
-      title: 'VIEW',
-      subtitle: perspectiveMode === 'first_person' ? '1P' : '3P',
-      color: '#63f2ff',
-      cooldownNow: 0,
-      cooldownMax: 1,
-      active: perspectiveMode === 'first_person'
     }
   ];
 
@@ -3887,40 +4256,6 @@ const drawGraphics = () => {
 
 };
 
-const drawSelectedServantHighlight = (
-  ctx: CanvasRenderingContext2D,
-  worldToScreen: (x: number, y: number) => { x: number; y: number }
-) => {
-  if (!servantGridEditorEnabled || !playerEntity) return;
-  const servant = H_getSelectedServantEntity();
-  if (!servant) return;
-  const cell = playerEntity.selectServantByID(servant.id);
-  if (!cell) return;
-  const center = playerEntity.rowColToWorldPosition(cell.row, cell.col);
-  if (!center) return;
-
-  const screenPos = worldToScreen(center.x, center.y);
-  const size = Math.max(servant.width, servant.height, 25) + 8;
-  const left = screenPos.x - size / 2;
-  const top = screenPos.y - size / 2;
-
-  ctx.save();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#ffd54a';
-  ctx.fillStyle = 'rgba(255, 213, 74, 0.14)';
-  ctx.setLineDash([6, 4]);
-  ctx.fillRect(left, top, size, size);
-  ctx.strokeRect(left, top, size, size);
-  ctx.setLineDash([]);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(left - 2, top - 2, size + 4, size + 4);
-  ctx.restore();
-};
-
-/**
- * 绘制所有实体到 canvas-entity
- */
 const drawEntities = () => {
   if (!ctxEntity || !ENTITY_CANVAS.value) return;
   const { width, height } = H_getCanvasCssSize(ENTITY_CANVAS.value);
@@ -3997,8 +4332,6 @@ const drawEntities = () => {
       playerEntity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
     }
   }
-
-  drawSelectedServantHighlight(ctxEntity, worldToScreen);
 };
 
 /**
@@ -4162,6 +4495,7 @@ const drawUI = () => {
   drawDebugBoard(ctxUi, UI_CANVAS.value);
   drawInventoryPanel(ctxUi, UI_CANVAS.value);
   drawDebugTerminal(ctxUi, UI_CANVAS.value);
+  drawKeyboardSettingsPanel(ctxUi, UI_CANVAS.value);
   drawDeathOverlay(ctxUi, UI_CANVAS.value);
 };
 
@@ -4557,8 +4891,31 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
  * 全局键盘快捷键处理
  */
 const onGlobalKeyDown = (e: KeyboardEvent) => {
-  // E 键打开/关闭背包(调试终端未打开时生效)
-  if (!debugTerminalVisible && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'e' && !e.repeat) {
+  const key = H_normalizeKey(e.key);
+  const bindingId = H_findBindingIdByKey(key);
+  const noModifier = !e.ctrlKey && !e.metaKey && !e.altKey;
+
+  // 键盘设置正在录制新键位:优先拦截,避免误触发游戏操作
+  if (keyboardSettingsListeningId !== null) {
+    e.preventDefault();
+    if (key === 'escape') {
+      keyboardSettingsListeningId = null;
+      drawUI();
+      return;
+    }
+    // 忽略单独的修饰键,等待真正的按键
+    if (key === 'shift' || key === 'control' || key === 'alt' || key === 'meta') {
+      return;
+    }
+    const targetId = keyboardSettingsListeningId;
+    keyboardSettingsListeningId = null;
+    H_applyKeyBinding(targetId, key);
+    drawUI();
+    return;
+  }
+
+  // 背包(调试终端未打开时生效)
+  if (!debugTerminalVisible && noModifier && bindingId === 'toggleInventory' && !e.repeat) {
     e.preventDefault();
     if (!playerEntity) {
       pushDebugTerminalLog('[WARN] Player not ready, cannot open inventory.');
@@ -4569,14 +4926,14 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
   }
 
   // 背包打开时,ESC 关闭背包
-  if (inventoryVisible && e.key === 'Escape') {
+  if (inventoryVisible && key === 'escape') {
     e.preventDefault();
     toggleInventory(false);
     return;
   }
 
-  // ~ 统一用于打开/关闭调试终端
-  if (e.key === '`' || e.key === '~') {
+  // 调试终端开关
+  if (noModifier && bindingId === 'toggleDebugTerminal') {
     e.preventDefault();
     debugTerminalVisible = !debugTerminalVisible;
     if (debugTerminalVisible) {
@@ -4661,61 +5018,40 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
     return;
   }
 
-  // 单个按键
-  if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-    const key = e.key.toLowerCase();
-    if (key === 'c' && !e.repeat) {
+  // 其它功能/移动快捷键(仅无修饰键)
+  if (!noModifier) return;
+
+  switch (bindingId) {
+    case 'toggleFire': {
+      if (e.repeat) return;
       e.preventDefault();
-      servantGridEditorEnabled = !servantGridEditorEnabled;
-      if (!servantGridEditorEnabled) {
-        H_clearSelectedServant();
-      }
-      drawEntities();
+      playerFireMode = !playerFireMode;
       drawUI();
       return;
     }
-    if (key === 't' && !e.repeat) {
+    case 'togglePerspective': {
+      if (e.repeat) return;
+      e.preventDefault();
+      setPerspectiveMode(perspectiveMode === 'first_person' ? 'third_person' : 'first_person');
+      return;
+    }
+    case 'toggleServantHealth': {
+      if (e.repeat) return;
       e.preventDefault();
       showPlayerServantHealth = !showPlayerServantHealth;
       drawEntities();
       drawUI();
       return;
     }
-    if (key === 'y' && !e.repeat) {
+    case 'toggleServantFacing': {
+      if (e.repeat) return;
       e.preventDefault();
       showPlayerServantFacingDirection = !showPlayerServantFacingDirection;
       drawEntities();
       drawUI();
       return;
     }
-    if (key === 'q' && !e.repeat && servantGridEditorEnabled && selectedServantNpcId !== null) {
-      e.preventDefault();
-      sendServantEditorDelete(selectedServantNpcId);
-      H_clearSelectedServant();
-      drawEntities();
-      return;
-    }
-    if (key === 'r' && !e.repeat && servantGridEditorEnabled && selectedServantNpcId !== null) {
-      e.preventDefault();
-      sendServantEditorRotate(selectedServantNpcId);
-      return;
-    }
-    if (key === 'f' && !e.repeat) {// 切换开火模式
-      e.preventDefault();
-      playerFireMode = !playerFireMode;
-      drawUI();
-      return;
-    }
-    if (key === '3' && !e.repeat) {// 切换视角模式
-      if(perspectiveMode === 'first_person'){
-        setPerspectiveMode('third_person');
-      }
-      else{
-        setPerspectiveMode('first_person');
-      }
-      return;
-    }
-    if (key === 'shift') {// 疾跑(按住左Shift,须在移动过程中生效)
+    case 'sprint': {// 疾跑(按住,需在移动过程中生效)
       e.preventDefault();
       if (!PlayerDynamicEntity.playerMoveState.Shift) {
         PlayerDynamicEntity.playerMoveState.Shift = true;
@@ -4723,52 +5059,39 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
       }
       return;
     }
-    if (key === 'w' || key === 'a' || key === 's' || key === 'd') {// 移动
+    case 'dodge': {// 闪现:仅在装备了闪现技能时可用
       e.preventDefault();
-      if (key === 'w') PlayerDynamicEntity.playerMoveState.W = true;
-      if (key === 'a') PlayerDynamicEntity.playerMoveState.A = true;
-      if (key === 's') PlayerDynamicEntity.playerMoveState.S = true;
-      if (key === 'd') PlayerDynamicEntity.playerMoveState.D = true;
-      if (perspectiveMode === 'first_person') {
-        if (key === 'w') firstPersonMoveW = true;
-        if (key === 'a') firstPersonMoveA = true;
-        if (key === 's') firstPersonMoveS = true;
-        if (key === 'd') firstPersonMoveD = true;
+      if (!playerEntity || !playerEntity.hasEquippedSkill(DodgeSkill.TAG)) {
+        return;
       }
-      sendPlayerMoveInput();
+      sendPlayerDodgeInput(playerEntity.facingDirection);
       return;
     }
-    if (key === ' ') {// 闪避
+    case 'moveUp':
+    case 'moveDown':
+    case 'moveLeft':
+    case 'moveRight': {// 移动
       e.preventDefault();
-      sendPlayerDodgeInput(playerEntity ? playerEntity?.facingDirection : { x: 0, y: 0 });
+      H_setMoveStateForBinding(bindingId, true);
+      return;
+    }
+    default: {
       return;
     }
   }
-
-  // 多个按键
-  // if (e.ctrlKey || e.metaKey) {
-  //   switch (e.key.toLowerCase()) {
-      
-  //   }
-  // }
 };
 
 const onGlobalKeyUp = (e: KeyboardEvent) => {
-  const key = e.key.toLowerCase();
-  if (key === 'w') firstPersonMoveW = false;
-  if (key === 'a') firstPersonMoveA = false;
-  if (key === 's') firstPersonMoveS = false;
-  if (key === 'd') firstPersonMoveD = false;
-  if (key === 'w') PlayerDynamicEntity.playerMoveState.W = false;
-  if (key === 'a') PlayerDynamicEntity.playerMoveState.A = false;
-  if (key === 's') PlayerDynamicEntity.playerMoveState.S = false;
-  if (key === 'd') PlayerDynamicEntity.playerMoveState.D = false;
-  if (key === 'shift') {
+  const key = H_normalizeKey(e.key);
+  const bindingId = H_findBindingIdByKey(key);
+  if (bindingId === 'sprint') {
     PlayerDynamicEntity.playerMoveState.Shift = false;
     sendPlayerMoveInput();
+    return;
   }
-  if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
-    sendPlayerMoveInput();
+  if (bindingId === 'moveUp' || bindingId === 'moveDown'
+      || bindingId === 'moveLeft' || bindingId === 'moveRight') {
+    H_setMoveStateForBinding(bindingId, false);
   }
 };
 
@@ -4792,21 +5115,6 @@ const onCanvasClick = (e: MouseEvent) => {
     e.stopPropagation();
     return;
   }
-
-  if (servantGridEditorEnabled) {
-    if (dragTotalX < 4 && dragTotalY < 4) {
-      const selected = H_selectServantAtWorldPoint(TOscreen2Canvas(screenX, screenY));
-      if (!selected) {
-        H_clearSelectedServant();
-      }
-      drawEntities();
-    }
-    e.stopPropagation();
-    return;
-  }
-
-  dragTotalX = 0;
-  dragTotalY = 0;
 };
 
 const onCanvasDoubleClick = (e: MouseEvent) => {
@@ -4939,19 +5247,6 @@ const onMousedown = (e: MouseEvent) => {
 
   if (H_getHitEventArea(screenX, screenY)) return;
 
-  if (e.button === 0 && servantGridEditorEnabled) {
-    const canvasPos = TOscreen2Canvas(screenX, screenY);
-    dragStartX = canvasPos.x;
-    dragStartY = canvasPos.y;
-    lastDragX = e.clientX;
-    lastDragY = e.clientY;
-    dragTotalX = 0;
-    dragTotalY = 0;
-    isDragging = true;
-    isMoveCanvas = true;
-    return;
-  }
-
   if (e.button === 0 && playerFireMode) {
     e.preventDefault();
     sendPlayerFireInput(TOscreen2Canvas(screenX, screenY));
@@ -4998,8 +5293,6 @@ const onMouseMove = (e: MouseEvent) => {
   } else {
     if (isMoveCanvas) {
       cursorManager?.setNowCursorType('move');
-    } else if (servantGridEditorEnabled) {
-      cursorManager?.setNowCursorType('pointer');
     } else if (playerFireMode) {
       cursorManager?.setNowCursorType('crosshair');
     } else {
@@ -5011,8 +5304,6 @@ const onMouseMove = (e: MouseEvent) => {
 
   const deltaX = e.clientX - lastDragX;
   const deltaY = e.clientY - lastDragY;
-  dragTotalX += Math.abs(deltaX);
-  dragTotalY += Math.abs(deltaY);
   offsetXX += deltaX;
   offsetYY += deltaY;
   lastDragX = e.clientX;
@@ -5036,7 +5327,7 @@ const onMouseUp = () => {
   }
   isDragging = false;
   isMoveCanvas = false;
-  cursorManager?.setNowCursorType(servantGridEditorEnabled ? 'pointer' : (playerFireMode ? 'crosshair' : 'default'));
+  cursorManager?.setNowCursorType(playerFireMode ? 'crosshair' : 'default');
 };
 
 /**

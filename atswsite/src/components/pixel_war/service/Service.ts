@@ -25,6 +25,8 @@ import {
   RedPixelEntity,
   SkyBluePixelEntity,
   PurpleShieldEntity,
+  GoldenDodgeXa4Entity,
+  DodgeSkill,
   HealingGemItemEntity,
   GrenadeDynamicEntity,
   ExpOrbDynamicEntity,
@@ -70,7 +72,8 @@ const SPAWNABLE_NPC_CLASSES = [
   WhitePixelEntity,
   WhitePixelVa2Entity,
   SkyBluePixelEntity,
-  PurpleShieldEntity
+  PurpleShieldEntity,
+  GoldenDodgeXa4Entity
   // more
 ] as const;
 
@@ -278,41 +281,6 @@ const refreshPlayerMoveState = (moveState: Partial<typeof PlayerDynamicEntity.pl
     player.moveState.D = moveState.D === true;
     player.moveState.Shift = moveState.Shift === true;
   }
-};
-
-const getEditableServantPair = (
-  playerId: number,
-  npcId: number
-): { player: PlayerDynamicEntity; npc: NpcDynamicEntity } | null => {
-  const player = getPlayerDynamicEntityById(playerId);
-  const npc = getNpcDynamicEntityById(npcId);
-  if (!player || !npc || player.isDead || npc.isDead) return null;
-  if (npc.ownerId !== player.id) return null;
-  if (player.selectServantByID(npc.id) === null) return null;
-  return { player, npc };
-};
-
-const killServantByEditor = (playerId: number, npcId: number): void => {
-  const pair = getEditableServantPair(playerId, npcId);
-  if (!pair) return;
-  pair.npc.health = 0;
-  pair.npc.triggerDeath();
-  resolvePlayerServantDead(pair.npc);
-};
-
-const rotateServantByEditor = (playerId: number, npcId: number): void => {
-  const pair = getEditableServantPair(playerId, npcId);
-  if (!pair) return;
-  const { x, y } = pair.npc.facingDirection;
-  const len = Math.hypot(x, y);
-  if (len < 0.0001) {
-    pair.npc.facingDirection = { x: 1, y: 0 };
-    return;
-  }
-  pair.npc.facingDirection = {
-    x: y / len,
-    y: -x / len
-  };
 };
 
 /**
@@ -1513,7 +1481,8 @@ const handleInstruct = (instruct: InstructObject) => {
     case 'player_dodge_input': {
       if (gamePaused) break;
       const playerEntity = getPlayerDynamicEntityById(instruct.data.playerId as number);
-      if (playerEntity && !playerEntity.isDead) {
+      // 必须装备闪现技能后才能使用闪现(空格)能力
+      if (playerEntity && !playerEntity.isDead && playerEntity.hasEquippedSkill(DodgeSkill.TAG)) {
         playerEntity.dodge(instruct.data.direction as Point, MAP_DATA.staticEntities);
       }
       break;
@@ -1524,24 +1493,6 @@ const handleInstruct = (instruct: InstructObject) => {
       break;
     }
 
-    case 'servant_editor_delete': {
-      if (gamePaused) break;
-      killServantByEditor(
-        instruct.data.playerId as number,
-        instruct.data.npcId as number
-      );
-      break;
-    }
-
-    case 'servant_editor_rotate': {
-      if (gamePaused) break;
-      rotateServantByEditor(
-        instruct.data.playerId as number,
-        instruct.data.npcId as number
-      );
-      break;
-    }
-    
     case 'tick_pause': {
       const { paused } = instruct.data as { paused?: boolean };
       if (paused !== undefined) {

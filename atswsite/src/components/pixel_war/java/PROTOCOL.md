@@ -17,8 +17,6 @@
 | `respawn` | `{}` | 死亡后请求重生（服务端随机出生点） |
 | `inventory_update` | `{ inventory: { entries, equippedSkills } }` | 客户端背包变更后提交完整背包（服务端会规范化） |
 | `inventory_use_item` | `{ uid }` | 使用背包物品 |
-| `servant_editor_delete` | `{ npcId }` | 从者编辑器：令指定从者死亡 |
-| `servant_editor_rotate` | `{ npcId }` | 从者编辑器：旋转从者朝向 |
 | `tick_pause` | `{ paused?: boolean }` | 暂停/恢复；不传 `paused` 时服务端自行切换 |
 | `ping` | `{ clientTime }` | 心跳，服务端回 `pong` |
 

@@ -1,4 +1,6 @@
 import { Va2ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Va2ShootSkill/Va2ShootSkill';
+import { Xa4ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Xa4ShootSkill/Xa4ShootSkill';
+import { DodgeSkill } from '@/components/pixel_war/class/Skill/Skills/DodgeSkill/DodgeSkill';
 import type { Skill } from '@/components/pixel_war/class/Skill/Skill';
 
 /**
@@ -6,7 +8,9 @@ import type { Skill } from '@/components/pixel_war/class/Skill/Skill';
  * 新增技能时只需在此登记,战利品掉落、背包显示、技能释放会统一按 tag 查找。
  */
 const SKILL_REGISTRY: ReadonlyMap<string, Skill> = new Map<string, Skill>([
-  [Va2ShootSkill.TAG, new Va2ShootSkill()]
+  [Va2ShootSkill.TAG, new Va2ShootSkill()],
+  [Xa4ShootSkill.TAG, new Xa4ShootSkill()],
+  [DodgeSkill.TAG, new DodgeSkill()]
 ]);
 
 /**
@@ -34,8 +38,10 @@ const H_isSkillTagValid = (tag: string): boolean => {
 
 export { SKILL_REGISTRY, H_getSkillByTag, H_getAllSkills, H_isSkillTagValid };
 export { Skill } from '@/components/pixel_war/class/Skill/Skill';
-export type { SkillTagType, SkillCastContext } from '@/components/pixel_war/class/Skill/Skill';
+export type { SkillTagType, SkillCastContext, SkillTrigger } from '@/components/pixel_war/class/Skill/Skill';
 export { Va2ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Va2ShootSkill/Va2ShootSkill';
+export { Xa4ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Xa4ShootSkill/Xa4ShootSkill';
+export { DodgeSkill } from '@/components/pixel_war/class/Skill/Skills/DodgeSkill/DodgeSkill';
 // 技能图标贴图(resource/skill_icon 下的 100px × 100px PNG)
 export {
   H_getSkillIconTexture,

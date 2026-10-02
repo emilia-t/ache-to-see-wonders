@@ -212,6 +212,19 @@ public final class PlayerEntity extends DynamicEntity {
         return Inventory.hasSkill(inventory, skillTag);
     }
 
+    /** 是否已装备该技能(仅看技能装配区) */
+    public boolean hasEquippedSkill(String skillTag) {
+        if (skillTag == null) {
+            return false;
+        }
+        for (String tag : inventory.equippedSkills) {
+            if (skillTag.equals(tag)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 当前生效的开火技能:取技能装配区中第一个已装配的技能 */
     public Skill getActiveFireSkill(Skill.Provider skills) {
         for (String tag : inventory.equippedSkills) {
@@ -219,7 +232,8 @@ public final class PlayerEntity extends DynamicEntity {
                 continue;
             }
             Skill skill = skills.byTag(tag);
-            if (skill != null) {
+            // 仅开火技能决定开火方式(闪现技能由空格触发,不参与)
+            if (skill != null && skill.trigger() == Skill.Trigger.FIRE) {
                 return skill;
             }
         }

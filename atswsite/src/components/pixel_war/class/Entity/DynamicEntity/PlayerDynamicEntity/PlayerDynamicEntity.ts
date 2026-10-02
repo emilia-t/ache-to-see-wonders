@@ -427,12 +427,17 @@ class PlayerDynamicEntity extends DynamicEntity {
    * 当前生效的开火技能:取技能装配区中第一个已装配的技能
    * @returns 技能实例,未装配任何技能时返回 null
    */
+  /**
+   * 当前生效的开火技能:取技能装配区中第一个由"开火"触发的技能
+   * @returns 技能实例,未装配开火技能时返回 null
+   */
   public getActiveFireSkill(): Skill | null {
     const inventory = this.getInventory();
     for (const tag of inventory.equippedSkills) {
       if (tag === null) continue;
       const skill = H_getSkillByTag(tag);
-      if (skill !== null) return skill;
+      // 仅开火技能决定开火方式(闪现技能由空格触发,不参与)
+      if (skill !== null && skill.trigger === 'fire') return skill;
     }
     return null;
   }
@@ -442,6 +447,13 @@ class PlayerDynamicEntity extends DynamicEntity {
    */
   public hasSkill(skillTag: string): boolean {
     return H_inventoryHasSkill(this.getInventory(), skillTag);
+  }
+
+  /**
+   * 是否已装备该技能(仅看技能装配区)
+   */
+  public hasEquippedSkill(skillTag: string): boolean {
+    return this.getInventory().equippedSkills.includes(skillTag);
   }
 
   /**

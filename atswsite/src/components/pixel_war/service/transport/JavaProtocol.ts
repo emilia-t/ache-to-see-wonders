@@ -184,8 +184,6 @@ export type JavaClientMessageType =
   | 'respawn'
   | 'inventory_update'
   | 'inventory_use_item'
-  | 'servant_editor_delete'
-  | 'servant_editor_rotate'
   | 'tick_pause'
   | 'ping';
 
