@@ -10,10 +10,31 @@ import { H_getSkillByTag } from '@/components/pixel_war/class/Skill/index';
  * - 格子下标即界面槽位下标,因此拖拽/点击可以精确落到用户指定的格子
  * - 技能不可堆叠;物品可堆叠,单格上限 INVENTORY_ITEM_MAX_STACK(50)
  * - 技能装配区(equippedSkills)为 10 个槽位,已装配的技能不再出现在背包网格中
+ * - 技能装配区分两组:前 INVENTORY_INNATE_SKILL_SLOT_COUNT 格为"固有技能槽"(锁定,不可编辑),
+ *   后 INVENTORY_EXTENDED_SKILL_SLOT_COUNT 格为"拓展技能槽"(可移动/替换/排序/卸下/销毁);
+ *   两组槽位与底部状态栏技能槽一一对应(下标相同)
  */
 
-/** 技能装配区槽位数量 */
+/** 技能装配区槽位数量(含固有技能槽与拓展技能槽) */
 const INVENTORY_SKILL_SLOT_COUNT = 10;
+/** 技能装配区中的"固有技能槽"数量(前 2 格:锁定,不参与任何编辑操作) */
+const INVENTORY_INNATE_SKILL_SLOT_COUNT = 2;
+/** 技能装配区中的"拓展技能槽"数量(后 8 格:可自由调整) */
+const INVENTORY_EXTENDED_SKILL_SLOT_COUNT = INVENTORY_SKILL_SLOT_COUNT - INVENTORY_INNATE_SKILL_SLOT_COUNT;
+
+/**
+ * 槽位是否为"固有技能槽"(前 2 格)
+ * 固有槽不存储技能数据:它对应的能力是固定功能键,由界面直接绘制
+ */
+const H_inventoryIsInnateSkillSlot = (slotIndex: number): boolean =>
+  slotIndex >= 0 && slotIndex < INVENTORY_INNATE_SKILL_SLOT_COUNT;
+
+/**
+ * 槽位是否为可编辑的"拓展技能槽"(后 8 格)
+ * 所有装配/卸下/排序/销毁操作都只允许作用于拓展技能槽。
+ */
+const H_inventoryIsExtendedSkillSlot = (slotIndex: number): boolean =>
+  slotIndex >= INVENTORY_INNATE_SKILL_SLOT_COUNT && slotIndex < INVENTORY_SKILL_SLOT_COUNT;
 /** 单个物品格子的堆叠上限 */
 const INVENTORY_ITEM_MAX_STACK = 50;
 /** 背包网格容量(需与背包界面网格 2×10 保持一致) */
@@ -40,15 +61,36 @@ const H_createEmptyPlayerInventory = (): PlayerInventory => ({
 
 /**
  * 规范化技能装配区:保证长度为 10、元素为字符串或 null
+ *
+ * 前 INVENTORY_INNATE_SKILL_SLOT_COUNT 格为"固有技能槽"，恒不可被技能占用；
+ * 旧数据或异常数据若把技能写进固有槽，会被迁移到第一个空的"拓展技能槽"。
  */
 const H_normalizeEquippedSkills = (raw: unknown): (string | null)[] => {
   const slots = new Array<string | null>(INVENTORY_SKILL_SLOT_COUNT).fill(null);
-  if (!Array.isArray(raw)) return slots;
-  for (let i = 0; i < INVENTORY_SKILL_SLOT_COUNT; i++) {
-    const value = raw[i];
-    slots[i] = typeof value === 'string' && value !== '' ? value : null;
+  if (Array.isArray(raw)) {
+    for (let i = 0; i < INVENTORY_SKILL_SLOT_COUNT; i++) {
+      const value = raw[i];
+      slots[i] = typeof value === 'string' && value !== '' ? value : null;
+    }
   }
+  H_inventoryMigrateInnateSkillSlots(slots);
   return slots;
+};
+
+/**
+ * 把误占"固有技能槽"的技能迁移到第一个空的"拓展技能槽"
+ * (固有槽不做技能存储:它对应的能力是固定功能键,由界面直接绘制)
+ */
+const H_inventoryMigrateInnateSkillSlots = (equippedSkills: (string | null)[]): void => {
+  for (let i = 0; i < INVENTORY_INNATE_SKILL_SLOT_COUNT; i++) {
+    const tag = equippedSkills[i];
+    if (tag === null) continue;
+    equippedSkills[i] = null;
+    const emptySlot = equippedSkills.findIndex(
+      (value, index) => H_inventoryIsExtendedSkillSlot(index) && value === null
+    );
+    if (emptySlot >= 0) equippedSkills[emptySlot] = tag;
+  }
 };
 
 /**
@@ -291,12 +333,14 @@ const H_createSkillBagEntry = (skill: Skill): InventoryEntry => ({
 
 /**
  * 将背包中的技能装配到指定槽位
+ * - 固有技能槽(前 2 格)不可装配
  * - 若目标槽位已被其他技能占用,被替换的技能会放到该技能腾出的背包格子中(原地交换)
  * - 成功后该技能从背包网格中移除
  * @returns 是否装配成功
  */
 const H_inventoryEquipSkill = (inventory: PlayerInventory, tag: string, slotIndex: number): boolean => {
-  if (slotIndex < 0 || slotIndex >= INVENTORY_SKILL_SLOT_COUNT) return false;
+  // 仅"拓展技能槽"可装配(固有技能槽锁定)
+  if (!H_inventoryIsExtendedSkillSlot(slotIndex)) return false;
   const bagSlot = inventory.entries.findIndex(
     entry => entry !== null && entry.kind === 'skill' && entry.tag === tag
   );
@@ -318,21 +362,24 @@ const H_inventoryEquipSkill = (inventory: PlayerInventory, tag: string, slotInde
 };
 
 /**
- * 将背包中的技能自动装配到第一个空槽
+ * 将背包中的技能自动装配到第一个空的"拓展技能槽"
  * @returns 装配到的槽位下标,无空槽或失败时返回 null
  */
 const H_inventoryAutoEquipSkill = (inventory: PlayerInventory, tag: string): number | null => {
-  const slotIndex = inventory.equippedSkills.findIndex(value => value === null);
+  const slotIndex = inventory.equippedSkills.findIndex(
+    (value, index) => H_inventoryIsExtendedSkillSlot(index) && value === null
+  );
   if (slotIndex < 0) return null;
   return H_inventoryEquipSkill(inventory, tag, slotIndex) ? slotIndex : null;
 };
 
 /**
- * 卸下指定槽位的技能,放回背包(占用第一个空格)
+ * 卸下指定"拓展技能槽"的技能,放回背包(占用第一个空格)
  * @returns 是否卸载成功
  */
 const H_inventoryUnequipSkill = (inventory: PlayerInventory, slotIndex: number): boolean => {
-  if (slotIndex < 0 || slotIndex >= INVENTORY_SKILL_SLOT_COUNT) return false;
+  // 固有技能槽不可卸下
+  if (!H_inventoryIsExtendedSkillSlot(slotIndex)) return false;
   const tag = inventory.equippedSkills[slotIndex];
   if (tag === null) return false;
   const skill = H_getSkillByTag(tag);
@@ -345,12 +392,13 @@ const H_inventoryUnequipSkill = (inventory: PlayerInventory, slotIndex: number):
 };
 
 /**
- * 卸下指定槽位的技能,并放入指定的背包格(要求该格为空)
+ * 卸下指定"拓展技能槽"的技能,并放入指定的背包格(要求该格为空)
  * 用于把技能拖到用户指定的空格上
  * @returns 是否卸载成功
  */
 const H_inventoryUnequipSkillToSlot = (inventory: PlayerInventory, slotIndex: number, bagSlot: number): boolean => {
-  if (slotIndex < 0 || slotIndex >= INVENTORY_SKILL_SLOT_COUNT) return false;
+  // 固有技能槽不可卸下
+  if (!H_inventoryIsExtendedSkillSlot(slotIndex)) return false;
   if (bagSlot < 0 || bagSlot >= inventory.entries.length) return false;
   if (inventory.entries[bagSlot] !== null) return false;
   const tag = inventory.equippedSkills[slotIndex];
@@ -363,13 +411,13 @@ const H_inventoryUnequipSkillToSlot = (inventory: PlayerInventory, slotIndex: nu
 };
 
 /**
- * 交换/移动两个技能槽
+ * 交换/移动两个"拓展技能槽"(固有技能槽不参与)
  * @returns 是否发生了变化
  */
 const H_inventoryMoveSkillSlot = (inventory: PlayerInventory, from: number, to: number): boolean => {
   if (from === to) return false;
-  if (from < 0 || from >= INVENTORY_SKILL_SLOT_COUNT) return false;
-  if (to < 0 || to >= INVENTORY_SKILL_SLOT_COUNT) return false;
+  // 排序/移动只在"拓展技能槽"之间进行
+  if (!H_inventoryIsExtendedSkillSlot(from) || !H_inventoryIsExtendedSkillSlot(to)) return false;
   const temp = inventory.equippedSkills[to];
   inventory.equippedSkills[to] = inventory.equippedSkills[from];
   inventory.equippedSkills[from] = temp;
@@ -424,10 +472,10 @@ const H_inventoryDestroySlot = (inventory: PlayerInventory, slot: number): boole
 };
 
 /**
- * 销毁已装配的槽位技能
+ * 销毁已装配的"拓展技能槽"技能(固有技能槽不可销毁)
  */
 const H_inventoryDestroyEquipped = (inventory: PlayerInventory, slotIndex: number): boolean => {
-  if (slotIndex < 0 || slotIndex >= INVENTORY_SKILL_SLOT_COUNT) return false;
+  if (!H_inventoryIsExtendedSkillSlot(slotIndex)) return false;
   if (inventory.equippedSkills[slotIndex] === null) return false;
   inventory.equippedSkills[slotIndex] = null;
   return true;
@@ -435,6 +483,10 @@ const H_inventoryDestroyEquipped = (inventory: PlayerInventory, slotIndex: numbe
 
 export {
   INVENTORY_SKILL_SLOT_COUNT,
+  INVENTORY_INNATE_SKILL_SLOT_COUNT,
+  INVENTORY_EXTENDED_SKILL_SLOT_COUNT,
+  H_inventoryIsInnateSkillSlot,
+  H_inventoryIsExtendedSkillSlot,
   INVENTORY_ITEM_MAX_STACK,
   INVENTORY_BAG_CAPACITY,
   H_createInventoryUid,

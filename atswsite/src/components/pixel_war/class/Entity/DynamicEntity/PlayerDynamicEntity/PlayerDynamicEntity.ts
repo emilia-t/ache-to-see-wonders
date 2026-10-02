@@ -18,6 +18,7 @@ import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import {
+  INVENTORY_SKILL_SLOT_COUNT,
   H_createEmptyPlayerInventory,
   H_ensurePlayerInventory,
   H_inventoryAddItem,
@@ -46,6 +47,69 @@ type PlayerDodgeAfterimage = {
   age: number;
 };
 
+/**
+ * 玩家运动拖尾状态(纯视觉)。
+ *
+ * 与 GoldenDodgeXa4 的拖尾同理,状态放在模块级 WeakMap 而不是实体字段上:
+ * 单机(Worker)模式会把整个实体对象结构化克隆后由 `H_hydrateEntitySnapshot` 逐字段
+ * 水合到客户端实体,会覆盖这些"只属于客户端渲染"的字段(且 `performance.now()` 在
+ * Worker 与主线程不同源,时间戳会变成垃圾值);多人(Java)下发的白名单快照也不会包含它们。
+ */
+type PlayerMotionTrailState = {
+  /** 上一次结算时刻(performance.now()) */
+  lastSampleTime: number;
+  /** 速度采样窗口的起点位置与时刻 */
+  windowStart: Point | null;
+  windowStartTime: number;
+  /** 方向采样窗口的起点位置与时刻(比速度窗口更短,保证转身后朝向迅速跟上) */
+  dirWindowStart: Point | null;
+  dirWindowStartTime: number;
+  /** 平滑后的拖尾强度(0~1,由移速换算而来) */
+  strength: number;
+  /**
+   * 目标拖尾强度(0~1)。
+   * 只在速度采样窗口结算时更新,未结算的帧继续向它平滑收敛——
+   * 若每帧都重置为 0,平滑目标就会被拉成 0,拖尾几乎不可见。
+   */
+  targetStrength: number;
+  /** 平滑后的移动方向(单位向量,世界坐标 y 轴向上) */
+  direction: Point;
+};
+
+/** 每个玩家实体的运动拖尾状态(WeakMap:实体销毁时自动回收) */
+const PLAYER_MOTION_TRAIL_STATES = new WeakMap<object, PlayerMotionTrailState>();
+
+const H_createPlayerMotionTrailState = (): PlayerMotionTrailState => ({
+  lastSampleTime: 0,
+  windowStart: null,
+  windowStartTime: 0,
+  dirWindowStart: null,
+  dirWindowStartTime: 0,
+  strength: 0,
+  targetStrength: 0,
+  direction: { x: 1, y: 0 }
+});
+
+const H_getPlayerMotionTrailState = (owner: object): PlayerMotionTrailState => {
+  let state = PLAYER_MOTION_TRAIL_STATES.get(owner);
+  if (!state) {
+    state = H_createPlayerMotionTrailState();
+    PLAYER_MOTION_TRAIL_STATES.set(owner, state);
+  }
+  return state;
+};
+
+/** 重置玩家运动拖尾状态(重生等瞬移场景,避免把瞬移误判为高速移动) */
+const H_resetPlayerMotionTrailState = (owner: object): void => {
+  const state = PLAYER_MOTION_TRAIL_STATES.get(owner);
+  if (!state) return;
+  state.windowStart = null;
+  state.lastSampleTime = 0;
+  state.dirWindowStart = null;
+  state.strength = 0;
+  state.targetStrength = 0;
+};
+
 class PlayerDynamicEntity extends DynamicEntity {
   public static readonly WIDTH = 25;
   public static readonly HEIGHT = 25;
@@ -57,9 +121,31 @@ class PlayerDynamicEntity extends DynamicEntity {
   public static readonly PLAYER_MOTION_TURN_RESPONSE = 10.5;// 玩家转向响应，值越大移动转向越跟手
   public static readonly playerMoveState = {W: false,A: false,S: false,D: false,Shift: false};
   public static readonly DODGE_DISTANCE = 300;// 单次的闪避距离(像素)
-  public static readonly DODGE_DURATION = 0.3;// 无敌持续时间(秒)
   public static readonly DODGE_SLIDE_DURATION = 0.2;// 闪避位移持续时间(秒)
   public static readonly DODGE_TRAIL_DURATION = 0.3;// 闪避拖影持续时间(秒)
+  // 运动拖尾相关配置(纯视觉:不影响移动速度、碰撞体积与战斗数值)
+  /** 拖尾起效的最小速度(px/s),低于此值视为静止、拖尾自然淡出 */
+  public static readonly TRAIL_MIN_SPEED = 40;
+  /** 拖尾达到最强/最长时的速度(px/s) */
+  public static readonly TRAIL_FULL_SPEED = 600;
+  /** 速度采样窗口(秒):取窗口内的平均位移计算速度,与绘制频率解耦 */
+  public static readonly TRAIL_SAMPLE_WINDOW = 0.1;
+  /**
+   * 方向采样窗口(秒):比速度窗口短得多,保证转身(含 180° 掉头)后朝向迅速跟上;
+   * 若方向只在速度窗口结算时更新,平滑等效时间常数会被放大到秒级。
+   */
+  public static readonly TRAIL_DIRECTION_WINDOW = 0.04;
+  /** 单个采样窗口内位移超过该值视为瞬移(重生等),忽略该窗口 */
+  public static readonly TRAIL_TELEPORT_DISTANCE = 260;
+  /** 拖尾最短/最长长度(px) */
+  public static readonly TRAIL_MIN_LENGTH = 24;
+  public static readonly TRAIL_MAX_LENGTH = 128;
+  /** 拖尾最强时的不透明度 */
+  public static readonly TRAIL_MAX_ALPHA = 0.85;
+  /** 拖尾强度平滑系数(1/秒,越大越跟手) */
+  public static readonly TRAIL_FADE_SMOOTH = 12;
+  /** 拖尾方向平滑系数(1/秒,作用于方向采样窗口的时长,越大转身越跟手) */
+  public static readonly TRAIL_DIRECTION_SMOOTH = 30;
   // 疾跑与体力相关配置
   public static readonly SPRINT_SPEED_MULTIPLIER = 1.6;// 疾跑速度倍率(相对基础移动速度)
   public static readonly SPRINT_STAMINA_DRAIN_PER_SECOND = 30;// 疾跑过程中体力消耗速率(点/秒)
@@ -97,11 +183,8 @@ class PlayerDynamicEntity extends DynamicEntity {
   public dodgeAfterimages: PlayerDodgeAfterimage[] = [];
   public readonly playerRule:PlayerRule = {
     bulletColor: 'rgba(255, 255, 255, 0.9)',
-    invincibleTimer: 0,//无敌状态计时器
     fireCooldownNow: 0,//下一次开火还需要等待的时长(秒)
     fireCooldownMax: 0.5,//开火CD(秒)
-    dodgeCooldownNow: 0,//下一次闪避还需要等待的时长(秒)
-    dodgeCooldownMax: 5.0,//闪避CD(秒)
   };
 
   private servantGrid:ServantGrid|null = null;
@@ -109,6 +192,14 @@ class PlayerDynamicEntity extends DynamicEntity {
   private isme: boolean;
   /** 玩家背包:持有物品与技能,并保存 10 个技能槽的装配状态 */
   public inventory: PlayerInventory = H_createEmptyPlayerInventory();
+  /**
+   * 技能装配区各槽位的技能剩余CD(秒),下标与 equippedSkills 一致(0 表示就绪)。
+   *
+   * 该值由**权威端**(单人的 Worker / 多人的 Java 服务端)每帧写入并随快照下发,
+   * 客户端只负责渲染、不自行推算,避免与权威端产生偏差。
+   * 技能实例在技能注册表中共享、且冷却按持有者记录,所以必须由这一份快照字段带给客户端。
+   */
+  public equippedSkillCooldowns: number[] = new Array<number>(INVENTORY_SKILL_SLOT_COUNT).fill(0);
   
 
   constructor(
@@ -279,8 +370,8 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.playerRule.fireCooldownNow =  Math.max(0, this.playerRule.fireCooldownNow - dt);
     this.refreshSpeedByServantCount();
 
-    this.playerRule.invincibleTimer = Math.max(0, this.playerRule.invincibleTimer - dt);
-    this.playerRule.dodgeCooldownNow = Math.max(0, this.playerRule.dodgeCooldownNow - dt);
+    // 技能冷却:装配区中每个技能的内置CD计时器各自由玩家推进(闪现CD即来自闪现技能)
+    this.updateEquippedSkillCooldowns(dt);
     this.updateDodgeAfterimages(dt);
     /////cd count
 
@@ -367,7 +458,6 @@ class PlayerDynamicEntity extends DynamicEntity {
   }
 
   public override applyDamage(amount: number): void {
-    if (this.playerRule.invincibleTimer > 0) return;
     super.applyDamage(amount);
   }
 
@@ -440,6 +530,54 @@ class PlayerDynamicEntity extends DynamicEntity {
       if (skill !== null && skill.trigger === 'fire') return skill;
     }
     return null;
+  }
+
+  /**
+   * 当前生效的闪现技能:取技能装配区中第一个由"闪现"触发的技能
+   * 闪避能力与闪避冷却均由该技能决定(技能内置CD计时器)
+   * @returns 技能实例,未装配闪现技能时返回 null
+   */
+  public getEquippedDodgeSkill(): Skill | null {
+    const inventory = this.getInventory();
+    for (const tag of inventory.equippedSkills) {
+      if (tag === null) continue;
+      const skill = H_getSkillByTag(tag);
+      if (skill !== null && skill.trigger === 'dodge') return skill;
+    }
+    return null;
+  }
+
+  /**
+   * 推进技能装配区中所有技能的内置CD计时器(每帧调用),并把剩余CD写入快照字段。
+   * 技能冷却按玩家实体 id 分别记录,因此多个玩家装配同一技能时互不影响。
+   */
+  private updateEquippedSkillCooldowns(dt: number): void {
+    const inventory = this.getInventory();
+    // 快照字段可能被外部赋成非数组(异常协议数据),此处自愈以免中断主循环
+    if (!Array.isArray(this.equippedSkillCooldowns)) {
+      this.equippedSkillCooldowns = new Array<number>(INVENTORY_SKILL_SLOT_COUNT).fill(0);
+    }
+    for (let slot = 0; slot < inventory.equippedSkills.length; slot++) {
+      const tag = inventory.equippedSkills[slot];
+      const skill = tag === null ? null : H_getSkillByTag(tag);
+      if (skill === null || !skill.hasCooldown) {
+        this.equippedSkillCooldowns[slot] = 0;
+        continue;
+      }
+      this.equippedSkillCooldowns[slot] = skill.tickCooldown(this.id, dt);
+    }
+  }
+
+  /** 清空技能装配区中所有技能的内置CD(重生时调用) */
+  private resetEquippedSkillCooldowns(): void {
+    const inventory = this.getInventory();
+    if (Array.isArray(this.equippedSkillCooldowns)) {
+      this.equippedSkillCooldowns.fill(0);
+    }
+    for (const tag of inventory.equippedSkills) {
+      if (tag === null) continue;
+      H_getSkillByTag(tag)?.clearCooldown(this.id);
+    }
   }
 
   /**
@@ -635,9 +773,11 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.staminaRecoveryDelayRemaining = 0;
     this.dodgeState = null;
     this.dodgeAfterimages = [];
-    this.playerRule.invincibleTimer = 1.5;
     this.playerRule.fireCooldownNow = 0;
-    this.playerRule.dodgeCooldownNow = 0;
+    // 重生后技能内置CD一并清空(无敌时长已从玩家规则中移除)
+    this.resetEquippedSkillCooldowns();
+    // 重生是瞬移,重置拖尾状态避免把瞬移当成高速移动
+    H_resetPlayerMotionTrailState(this);
     this.resetServantGrid();
     this.stop();
     this.updateCollisionBox();
@@ -732,14 +872,18 @@ class PlayerDynamicEntity extends DynamicEntity {
   }
 
   /**
-   * 执行闪避：向指定方向进行短促冲刺，附带短暂无敌
+   * 执行闪避:向指定方向进行短促冲刺。
+   * 闪避能力与冷却都由玩家装配区中的"闪现技能"决定(技能内置CD计时器),
+   * 不再附带无敌效果——未装备闪现技能或技能处于冷却中时均不可释放。
    * @param direction 单位方向向量（不必归一化，内部会处理）
    * @param staticEntities 静态实体列表，用于碰撞检测
    */
   public dodge(direction: Point, staticEntities: StaticEntity[]): void {
     const len = Math.hypot(direction.x, direction.y);
     if (len < 0.001) return;
-    if (this.playerRule.dodgeCooldownNow > 0) return; // 冷却中
+    const dodgeSkill = this.getEquippedDodgeSkill();
+    if (dodgeSkill === null) return; // 未装备闪现技能
+    if (dodgeSkill.isOnCooldown(this.id)) return; // 技能内置CD中
     if (this.dodgeState !== null) return;
 
     const dir = { x: direction.x / len, y: direction.y / len };
@@ -757,9 +901,8 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.facingDirection = { ...dir };
     this.lastMoveDirection = { ...dir };
 
-    // 设置无敌和冷却
-    this.playerRule.invincibleTimer = PlayerDynamicEntity.DODGE_DURATION;
-    this.playerRule.dodgeCooldownNow = this.playerRule.dodgeCooldownMax;
+    // 释放成功后进入技能内置冷却(冷却时长由技能自己的 maxCooldown 决定)
+    dodgeSkill.startCooldown(this.id);
 
     // （可选）重置停滞检测等状态
     this.noMoveDuration = 0;
@@ -877,6 +1020,184 @@ class PlayerDynamicEntity extends DynamicEntity {
   }
 
   /**
+   * 维护运动拖尾状态(纯视觉)。
+   *
+   * 速度按「固定时间窗口内的平均位移」计算,与绘制频率解耦(单机 50Hz 与
+   * 多人快照 25Hz 下同一速度得到同一结果);由移速换算出的"拖尾强度"再按指数平滑,
+   * 保证加速/减速时辉光与长度都是平滑过渡而非突变。拖尾方向与移动方向相反。
+   */
+  private updateMotionTrailState(state: PlayerMotionTrailState): void {
+    const now = performance.now();
+    const dt = state.lastSampleTime > 0
+      ? Math.min(0.1, Math.max(0, (now - state.lastSampleTime) / 1000))
+      : 0;
+    state.lastSampleTime = now;
+
+    const pos = this.position;
+    if (state.windowStart === null) {
+      state.windowStart = { x: pos.x, y: pos.y };
+      state.windowStartTime = now;
+      state.dirWindowStart = { x: pos.x, y: pos.y };
+      state.dirWindowStartTime = now;
+    }
+
+    // ---- 方向:用较短的独立窗口测量,并在大角度转向时直接切换 ----
+    const dirElapsed = (now - state.dirWindowStartTime) / 1000;
+    if (dirElapsed >= PlayerDynamicEntity.TRAIL_DIRECTION_WINDOW) {
+      const dirFrom = state.dirWindowStart ?? pos;
+      const dirDx = pos.x - dirFrom.x;
+      const dirDy = pos.y - dirFrom.y;
+      const dirMoved = Math.hypot(dirDx, dirDy);
+      state.dirWindowStart = { x: pos.x, y: pos.y };
+      state.dirWindowStartTime = now;
+
+      // 只在本窗口确实发生位移且未发生瞬移时更新方向
+      if (dirMoved > 0.0001 && dirMoved <= PlayerDynamicEntity.TRAIL_TELEPORT_DISTANCE) {
+        const dir = { x: dirDx / dirMoved, y: dirDy / dirMoved };
+        const dot = state.direction.x * dir.x + state.direction.y * dir.y;
+        if (state.strength <= 0.01 || dot <= 0) {
+          // 静止后重新起步,或转角 ≥ 90°(含 180° 掉头):直接切换,避免插值经过零向量
+          state.direction = dir;
+        } else {
+          const kDir = 1 - Math.exp(-PlayerDynamicEntity.TRAIL_DIRECTION_SMOOTH * dirElapsed);
+          const mixed = {
+            x: state.direction.x + (dir.x - state.direction.x) * kDir,
+            y: state.direction.y + (dir.y - state.direction.y) * kDir
+          };
+          const mixedLen = Math.hypot(mixed.x, mixed.y);
+          state.direction = mixedLen > 0.0001
+            ? { x: mixed.x / mixedLen, y: mixed.y / mixedLen }
+            : dir;
+        }
+      }
+    }
+
+    let targetStrength = state.targetStrength;
+    const elapsed = (now - state.windowStartTime) / 1000;
+    if (elapsed >= PlayerDynamicEntity.TRAIL_SAMPLE_WINDOW) {
+      const from = state.windowStart;
+      const dx = pos.x - from.x;
+      const dy = pos.y - from.y;
+      const moved = Math.hypot(dx, dy);
+      // 结算本窗口,并以当前位置开启下一个窗口
+      state.windowStart = { x: pos.x, y: pos.y };
+      state.windowStartTime = now;
+
+      if (moved <= PlayerDynamicEntity.TRAIL_TELEPORT_DISTANCE) {
+        const speed = moved / elapsed;
+        const range = PlayerDynamicEntity.TRAIL_FULL_SPEED - PlayerDynamicEntity.TRAIL_MIN_SPEED;
+        targetStrength = Math.min(1, Math.max(0, (speed - PlayerDynamicEntity.TRAIL_MIN_SPEED) / range));
+        // 目标强度持久化:未结算的帧依旧朝该目标平滑收敛
+        state.targetStrength = targetStrength;
+      } else {
+        // 瞬移:直接淡出,不留下拖尾
+        H_resetPlayerMotionTrailState(this);
+        return;
+      }
+    }
+
+    const k = dt > 0 ? 1 - Math.exp(-PlayerDynamicEntity.TRAIL_FADE_SMOOTH * dt) : 0;
+    state.strength += (targetStrength - state.strength) * k;
+    if (state.strength < 0.001) state.strength = 0;
+  }
+
+  /**
+   * 绘制运动拖尾:从玩家身体中心沿移动反方向延伸的辉光条,整体渲染在身体「背后」。
+   * 起点放在身体中心(而非背面边缘)并且整条拖尾裁剪到身体渲染盒之外:
+   * 起点连同「垂直于移动方向的切口」都被身体盒裁掉,拖尾看起来是从身体背后冒出来的,
+   * 任何移动方向(尤其斜向)都不会露出切口、也不会与半透明身体重叠而透光。
+   * 长度与辉光强度都由平滑后的拖尾强度决定(与移速正相关);强度归零时完全不绘制。
+   */
+  private drawMotionTrail(
+    ctx: CanvasRenderingContext2D,
+    worldToScreen: (x: number, y: number) => { x: number; y: number },
+    canvasSize: { width: number; height: number },
+    state: PlayerMotionTrailState
+  ): void {
+    const strength = state.strength;
+    if (strength <= 0.01) return;
+
+    const dirLen = Math.hypot(state.direction.x, state.direction.y);
+    if (dirLen < 0.0001) return;
+
+    const center = worldToScreen(this.position.x, this.position.y);
+    // 屏幕坐标 y 轴向下、世界坐标 y 轴向上,故方向向量的 y 分量取反
+    const ux = state.direction.x / dirLen;
+    const uy = -state.direction.y / dirLen;
+    const length = PlayerDynamicEntity.TRAIL_MIN_LENGTH
+      + (PlayerDynamicEntity.TRAIL_MAX_LENGTH - PlayerDynamicEntity.TRAIL_MIN_LENGTH) * strength;
+    // 拖尾方向与移动方向相反:从身体中心沿移动反方向延伸
+    const tailX = center.x - ux * length;
+    const tailY = center.y - uy * length;
+    const alpha = PlayerDynamicEntity.TRAIL_MAX_ALPHA * strength;
+    const cell = Math.max(this.renderWidth, this.renderHeight);
+
+    ctx.save();
+    // 拖尾渲染在身体「背后」:把拖尾裁剪到身体渲染盒之外。
+    // 起点(以及垂直于移动方向的切口)都落在身体盒内被裁掉——
+    // 斜向移动时身体盒的角点正好落在拖尾中轴线上,若起点外移到背面边缘,
+    // 切口会紧贴角点且被身体盒咬出缺口,看起来像拖尾与身体脱开了。
+    // 玩家身体是半透明的,重叠处也会把辉光透出来,所以必须裁剪。
+    // 外接矩形 + 身体矩形取 even-odd,得到「画布内、身体盒外」的区域。
+    ctx.beginPath();
+    ctx.rect(0, 0, canvasSize.width, canvasSize.height);
+    ctx.rect(
+      center.x - this.renderWidth / 2,
+      center.y - this.renderHeight / 2,
+      this.renderWidth,
+      this.renderHeight
+    );
+    ctx.clip('evenodd');
+    ctx.globalCompositeOperation = 'lighter';
+    // 头部与尾部都用方头(butt):拖尾为方形条状,符合游戏的像素/方块风格
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'miter';
+
+    // 外层辉光(宽度与不透明度均随速度增强)
+    const glowGrad = ctx.createLinearGradient(tailX, tailY, center.x, center.y);
+    glowGrad.addColorStop(0, 'rgba(120, 220, 255, 0)');
+    glowGrad.addColorStop(1, `rgba(120, 220, 255, ${(0.32 * alpha).toFixed(3)})`);
+    ctx.strokeStyle = glowGrad;
+    ctx.lineWidth = cell * (0.95 + 0.75 * strength);
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(center.x, center.y);
+    ctx.stroke();
+
+    // 内层核心拖尾
+    const coreGrad = ctx.createLinearGradient(tailX, tailY, center.x, center.y);
+    coreGrad.addColorStop(0, 'rgba(215, 245, 255, 0)');
+    coreGrad.addColorStop(0.55, `rgba(120, 220, 255, ${(0.35 * alpha).toFixed(3)})`);
+    coreGrad.addColorStop(1, `rgba(215, 245, 255, ${(0.9 * alpha).toFixed(3)})`);
+    ctx.strokeStyle = coreGrad;
+    ctx.lineWidth = cell * (0.45 + 0.4 * strength);
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(center.x, center.y);
+    ctx.stroke();
+
+    // 残影方块(由近及远渐隐,与闪避拖影风格统一)
+    // 方块跟随移动方向旋转:斜向时若保持轴对齐,方块的角会凸出拖尾条外,轮廓出现台阶
+    const ghostCount = 5;
+    const ghostHalf = this.renderWidth / 2;
+    const ghostAngle = Math.atan2(uy, ux);
+    for (let i = 1; i <= ghostCount; i++) {
+      const t = i / (ghostCount + 1);
+      // 按「近侧边沿落在起点后方 length*t」定位,整块残影都在该位置之后
+      const ghostCenterX = center.x - ux * (length * t + ghostHalf);
+      const ghostCenterY = center.y - uy * (length * t + ghostHalf);
+      ctx.save();
+      ctx.globalAlpha = alpha * (1 - t) * 0.4;
+      ctx.fillStyle = 'rgba(92, 220, 255, 0.4)';
+      ctx.translate(ghostCenterX, ghostCenterY);
+      ctx.rotate(ghostAngle);
+      ctx.fillRect(-this.renderWidth / 2, -this.renderHeight / 2, this.renderWidth, this.renderHeight);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  /**
    * 绘制实体
    * @param ctx 
    * @param worldToScreen 
@@ -899,6 +1220,12 @@ class PlayerDynamicEntity extends DynamicEntity {
     const top = screenPos.y - halfH;
 
     //this.drawServantOutline(ctx, worldToScreen);
+
+    // 运动拖尾(纯视觉):先于身体绘制(渲染在身体背后)并裁剪到身体盒之外,
+    // 速度越快辉光越强、拖尾越长,静止时自然淡出
+    const trailState = H_getPlayerMotionTrailState(this);
+    this.updateMotionTrailState(trailState);
+    this.drawMotionTrail(ctx, worldToScreen, canvasSize, trailState);
 
     // 绘制本体
     if (this.texture && this.texture.loaded) {

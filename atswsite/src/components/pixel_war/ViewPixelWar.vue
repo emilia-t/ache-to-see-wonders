@@ -57,6 +57,9 @@ import {
   ExpOrbDynamicEntity,
   SkillOrbDynamicEntity,
   INVENTORY_SKILL_SLOT_COUNT,
+  INVENTORY_INNATE_SKILL_SLOT_COUNT,
+  INVENTORY_EXTENDED_SKILL_SLOT_COUNT,
+  H_inventoryIsInnateSkillSlot,
   INVENTORY_ITEM_MAX_STACK,
   INVENTORY_BAG_CAPACITY,
   H_inventoryGetEntryAtSlot,
@@ -573,6 +576,7 @@ let inventoryDragStartY = 0;
 let inventoryHoverTarget: InventorySlotTarget = null;       // 当前悬停/拖拽目标格
 let inventoryTooltipEntry: InventoryEntry | null = null;    // 需要显示浮窗的条目
 let inventoryTooltipSkillTag: string = '';                  // 需要显示浮窗的技能标签
+let inventoryTooltipInnateIndex: number | null = null;      // 需要显示浮窗的固有技能槽下标(提示不可编辑)
 let prevOwnedSkillTags: Set<string> = new Set<string>();    // 上一帧玩家持有的技能(用于获得提示)
 
 // 底部状态栏动画状态
@@ -2867,46 +2871,55 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   drawBarLabel(staminaX, 'SP', `${Math.ceil(currentStamina)} / ${Math.ceil(staminaMax)}`, 'rgba(255, 190, 60, 0.95)');
 
   // ---- 第4行: 技能槽(10个,参考设计稿;空槽留空) ----
-  const skills: BottomStatusSkill[] = [
-    {
-      key: 'F',
-      title: 'FIRE',
-      subtitle: playerFireMode ? 'ARMED' : 'AIM',
-      color: playerFireMode ? '#ffcf5a' : '#58d9ff',
-      cooldownNow: playerEntity?.playerRule.fireCooldownNow ?? 0,
-      cooldownMax: playerEntity?.playerRule.fireCooldownMax ?? 1,
-      active: playerFireMode
-    },
-    {
-      key: 'SHIFT',
-      title: 'SPRINT',
-      subtitle: playerEntity?.isSprinting ? 'RUN' : 'WALK',
-      color: '#ffa94d',
-      cooldownNow: 0,
-      cooldownMax: 1,
-      active: playerEntity?.isSprinting ?? false
-    }
-  ];
+  // 槽位与背包"技能装配区"逐格对应(下标一致,不压缩、不错位):
+  // - 前 INVENTORY_INNATE_SKILL_SLOT_COUNT 格 = 固有技能槽(固定功能键,不可更改)
+  // - 后 INVENTORY_EXTENDED_SKILL_SLOT_COUNT 格 = 拓展技能槽(对应 equippedSkills 的同下标槽位)
+  const skills: (BottomStatusSkill | null)[] = new Array(BOTTOM_STATUS_SKILL_SLOT_COUNT).fill(null);
+  skills[0] = {
+    key: 'F',
+    title: 'FIRE',
+    subtitle: playerFireMode ? 'ARMED' : 'AIM',
+    color: playerFireMode ? '#ffcf5a' : '#58d9ff',
+    cooldownNow: playerEntity?.playerRule.fireCooldownNow ?? 0,
+    cooldownMax: playerEntity?.playerRule.fireCooldownMax ?? 1,
+    active: playerFireMode
+  };
+  skills[1] = {
+    key: 'SHIFT',
+    title: 'SPRINT',
+    subtitle: playerEntity?.isSprinting ? 'RUN' : 'WALK',
+    color: '#ffa94d',
+    cooldownNow: 0,
+    cooldownMax: 1,
+    active: playerEntity?.isSprinting ?? false
+  };
 
-  // 技能装配区中已装配的技能填充剩余技能槽(让玩家直观看到当前生效的技能)
+  // 拓展技能槽:按下标填入已装配技能(空格保留为空槽,与背包装配区位置严格一致)
+  // 冷却取自权威端下发的 equippedSkillCooldowns(与装配区同下标),
+  // 由 drawBottomStatusSkill 绘制冷却扇形遮罩 + 剩余秒数,让玩家一眼看出技能是否就绪
   if (playerEntity) {
     const equippedTags = H_ensurePlayerInventory(playerEntity.inventory).equippedSkills;
-    for (const tag of equippedTags) {
-      if (skills.length >= BOTTOM_STATUS_SKILL_SLOT_COUNT) break;
+    const cooldownRemaining = Array.isArray(playerEntity.equippedSkillCooldowns)
+      ? playerEntity.equippedSkillCooldowns
+      : [];
+    for (let slot = INVENTORY_INNATE_SKILL_SLOT_COUNT; slot < BOTTOM_STATUS_SKILL_SLOT_COUNT; slot++) {
+      const tag = equippedTags[slot];
       if (!tag) continue;
       const skill = H_getSkillByTag(tag);
       if (!skill) continue;
-      skills.push({
+      // 技能内置CD:0 表示就绪;maxCooldown 为 0 的技能(无冷却)恒为就绪
+      const cooldownNow = Math.max(0, cooldownRemaining[slot] ?? 0);
+      skills[slot] = {
         key: '',
         title: skill.name,
         subtitle: skill.shortName,
         color: skill.color,
-        cooldownNow: 0,
-        cooldownMax: 1,
-        active: true,
+        cooldownNow,
+        cooldownMax: skill.maxCooldown,
+        active: cooldownNow <= 0,
         icon: skill.icon,
         equipped: true
-      });
+      };
     }
   }
 
@@ -2973,6 +2986,67 @@ const drawEmptyBottomStatusSkill = (
   CtxUi.lineTo(cx, cy + m);
   CtxUi.stroke();
   CtxUi.restore();
+};
+
+/**
+ * 绘制固定功能键的矢量图标(开火 / 疾跑等)
+ * @param key 功能键标识(与 bottomStatusBar 技能条目的 key 一致)
+ */
+const H_drawFixedFunctionIcon = (
+  ctx: CanvasRenderingContext2D,
+  key: string,
+  cx: number,
+  cy: number,
+  inner: number,
+  paint: string,
+  glowColor: string | null,
+  strokeWidth: number
+) => {
+  ctx.save();
+  ctx.fillStyle = paint;
+  ctx.strokeStyle = paint;
+  ctx.lineWidth = strokeWidth;
+  ctx.lineJoin = 'round';
+  if (glowColor) {
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 10;
+  }
+
+  ctx.beginPath();
+  if (key === 'F') {
+    // 开火:三角形
+    ctx.moveTo(cx - inner * 0.28, cy + inner * 0.28);
+    ctx.lineTo(cx + inner * 0.3, cy);
+    ctx.lineTo(cx - inner * 0.28, cy - inner * 0.28);
+    ctx.closePath();
+  } else if (key === 'SHIFT') {
+    // 疾跑:两个向右的三角形(快进)
+    const triW = inner * 0.24;
+    const triH = inner * 0.3;
+    const gapX = inner * 0.1;
+    for (let k = 0; k < 2; k++) {
+      const bx = cx - (triW + gapX) / 2 + k * (triW + gapX);
+      ctx.moveTo(bx, cy - triH);
+      ctx.lineTo(bx, cy + triH);
+      ctx.lineTo(bx + triW, cy);
+      ctx.closePath();
+    }
+  } else if (key === 'SP') {
+    // 闪避:闪电
+    ctx.moveTo(cx - inner * 0.28, cy + inner * 0.26);
+    ctx.lineTo(cx + inner * 0.2, cy);
+    ctx.lineTo(cx - inner * 0.28, cy - inner * 0.26);
+    ctx.lineTo(cx - inner * 0.08, cy);
+    ctx.closePath();
+  } else if (key === 'C') {
+    // 从者网格:方形
+    ctx.rect(cx - inner * 0.25, cy - inner * 0.25, inner * 0.5, inner * 0.5);
+  } else {
+    // 视角:圆形
+    ctx.arc(cx, cy, inner * 0.25, 0, Math.PI * 2);
+  }
+  ctx.fill();
+  ctx.restore();
 };
 
 /**
@@ -3052,48 +3126,16 @@ const drawBottomStatusSkill = (
   }
 
   if (!iconDrawn && skill.equipped !== true) {
-    const iconPaint = `${skill.color}${ready ? 'e6' : '80'}`;
-    CtxUi.fillStyle = iconPaint;
-    CtxUi.strokeStyle = iconPaint;
-    CtxUi.lineWidth = Math.max(1, size * 0.07);
-    CtxUi.lineJoin = 'round';
-    CtxUi.shadowColor = highlight ? skill.color : 'transparent';
-    CtxUi.shadowBlur = highlight ? 10 : 0;
-
-    CtxUi.beginPath();
-    if (skill.key === 'F') {
-      // 开火:三角形
-      CtxUi.moveTo(centerX - inner * 0.28, centerY + inner * 0.28);
-      CtxUi.lineTo(centerX + inner * 0.3, centerY);
-      CtxUi.lineTo(centerX - inner * 0.28, centerY - inner * 0.28);
-      CtxUi.closePath();
-    } else if (skill.key === 'SHIFT') {
-      // 疾跑:两个向右的三角形(快进)
-      const triW = inner * 0.24;
-      const triH = inner * 0.3;
-      const gapX = inner * 0.1;
-      for (let k = 0; k < 2; k++) {
-        const bx = centerX - (triW + gapX) / 2 + k * (triW + gapX);
-        CtxUi.moveTo(bx, centerY - triH);
-        CtxUi.lineTo(bx, centerY + triH);
-        CtxUi.lineTo(bx + triW, centerY);
-        CtxUi.closePath();
-      }
-    } else if (skill.key === 'SP') {
-      // 闪避:闪电
-      CtxUi.moveTo(centerX - inner * 0.28, centerY + inner * 0.26);
-      CtxUi.lineTo(centerX + inner * 0.2, centerY);
-      CtxUi.lineTo(centerX - inner * 0.28, centerY - inner * 0.26);
-      CtxUi.lineTo(centerX - inner * 0.08, centerY);
-      CtxUi.closePath();
-    } else if (skill.key === 'C') {
-      // 从者网格:方形
-      CtxUi.rect(centerX - inner * 0.25, centerY - inner * 0.25, inner * 0.5, inner * 0.5);
-    } else {
-      // 视角:圆形
-      CtxUi.arc(centerX, centerY, inner * 0.25, 0, Math.PI * 2);
-    }
-    CtxUi.fill();
+    H_drawFixedFunctionIcon(
+      CtxUi,
+      skill.key,
+      centerX,
+      centerY,
+      inner,
+      `${skill.color}${ready ? 'e6' : '80'}`,
+      highlight ? skill.color : null,
+      Math.max(1, size * 0.07)
+    );
   }
   CtxUi.shadowBlur = 0;
 
@@ -3176,7 +3218,7 @@ const INVENTORY_BAG_SLOT_COUNT = INVENTORY_BAG_COLS * INVENTORY_BAG_ROWS;
 /** 技能装配区槽位数量 */
 const INVENTORY_EQUIP_COUNT = INVENTORY_SKILL_SLOT_COUNT;
 /** 底部状态栏技能槽数量 */
-const BOTTOM_STATUS_SKILL_SLOT_COUNT = 10;
+const BOTTOM_STATUS_SKILL_SLOT_COUNT = INVENTORY_SKILL_SLOT_COUNT;
 
 /** 背包界面中的命中目标 */
 type InventorySlotTarget =
@@ -3216,10 +3258,13 @@ type InventoryLayout = {
   equipX: number;
   equipY: number;
   equipSlotSize: number;
+  /** 固有技能槽(前 2 格)与拓展技能槽(后 8 格)之间的额外间距 */
+  equipGroupGap: number;
   equipWidth: number;
   trashX: number;
   trashY: number;
   trashSize: number;
+  hintHeight: number;
   hintY: number;
 };
 
@@ -3261,7 +3306,12 @@ const H_getInventoryLayout = (canvasWidth: number, canvasHeight: number): Invent
   const bagWidth = slotSize * INVENTORY_BAG_COLS + slotGap * (INVENTORY_BAG_COLS - 1);
   const bagHeight = slotSize * INVENTORY_BAG_ROWS + slotGap * (INVENTORY_BAG_ROWS - 1);
   const equipSlotSize = Math.round(slotSize * equipSlotRatio);
-  const equipWidth = equipSlotSize * INVENTORY_EQUIP_COUNT + slotGap * (INVENTORY_EQUIP_COUNT - 1);
+  // 固有技能槽与拓展技能槽之间留出额外间距,让两组槽位在视觉上一眼可辨
+  const equipGroupGap = slotGap * 2;
+  const equipWidth =
+    equipSlotSize * INVENTORY_EQUIP_COUNT
+    + slotGap * (INVENTORY_EQUIP_COUNT - 1)
+    + equipGroupGap;
   const trashSize = equipSlotSize;
   const equipRowWidth = equipWidth + slotGap * 4 + trashSize;
   const contentWidth = Math.max(bagWidth, equipRowWidth);
@@ -3307,10 +3357,12 @@ const H_getInventoryLayout = (canvasWidth: number, canvasHeight: number): Invent
     equipX,
     equipY,
     equipSlotSize,
+    equipGroupGap,
     equipWidth,
     trashX,
     trashY: equipY,
     trashSize,
+    hintHeight,
     hintY: panelY + panelHeight - padding * 0.7
   };
 };
@@ -3330,16 +3382,29 @@ const H_getInventoryBagSlotRect = (
   };
 };
 
-/** 技能装配槽矩形 */
+/**
+ * 技能装配槽矩形
+ * 前 INVENTORY_INNATE_SKILL_SLOT_COUNT 格为固有技能槽,其余为拓展技能槽,
+ * 固有段与拓展段之间插入 layout.equipGroupGap 的额外间距。
+ */
 const H_getInventoryEquipSlotRect = (
   layout: InventoryLayout,
   index: number
-): { x: number; y: number; width: number; height: number } => ({
-  x: layout.equipX + index * (layout.equipSlotSize + layout.slotGap),
-  y: layout.equipY,
-  width: layout.equipSlotSize,
-  height: layout.equipSlotSize
-});
+): { x: number; y: number; width: number; height: number } => {
+  const stride = layout.equipSlotSize + layout.slotGap;
+  const x = index < INVENTORY_INNATE_SKILL_SLOT_COUNT
+    ? layout.equipX + index * stride
+    : layout.equipX
+      + INVENTORY_INNATE_SKILL_SLOT_COUNT * stride
+      + layout.equipGroupGap
+      + (index - INVENTORY_INNATE_SKILL_SLOT_COUNT) * stride;
+  return {
+    x,
+    y: layout.equipY,
+    width: layout.equipSlotSize,
+    height: layout.equipSlotSize
+  };
+};
 
 /** 垃圾桶矩形 */
 const H_getInventoryTrashRect = (
@@ -3415,6 +3480,97 @@ const H_drawInventorySlotFrame = (
   }
   createChamferRect(CtxUi, rect.x + 0.6, rect.y + 0.6, rect.width - 1.2, rect.height - 1.2, cut);
   CtxUi.stroke();
+  CtxUi.restore();
+};
+
+/**
+ * 固有技能槽的展示定义(与底部状态栏前 2 格固定功能键逐一对应)
+ * 数组下标即技能帖槽下标:下标 0 = 开火,下标 1 = 疾跑
+ */
+const INNATE_SKILL_SLOT_VIEWS = [
+  { key: 'F', name: '开火', color: '#58d9ff' },
+  { key: 'SHIFT', name: '疾跑', color: '#ffa94d' }
+] as const;
+
+/**
+ * 绘制"固有技能槽"的锁定外观
+ * 与可编辑的拓展技能槽形成明显区别:金色霓虹边框 + 暗金底色 + 斜向底纹 + 内侧细线。
+ * @param dragOver 当前是否有拖拽条目悬停在本槽位上(悬停时整体转红,提示不可放置)
+ */
+const H_drawInventoryInnateSlotFrame = (
+  CtxUi: CanvasRenderingContext2D,
+  rect: { x: number; y: number; width: number; height: number },
+  dragOver: boolean
+) => {
+  const cut = Math.max(3, Math.min(rect.width, rect.height) * 0.22);
+  const accent = dragOver ? 'rgba(255, 90, 104, 0.95)' : 'rgba(255, 208, 106, 0.92)';
+
+  CtxUi.save();
+  // 底板:暗金渐变(区别于拓展槽的青色玻璃)
+  createChamferRect(CtxUi, rect.x, rect.y, rect.width, rect.height, cut);
+  const grad = CtxUi.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height);
+  grad.addColorStop(0, dragOver ? 'rgba(70, 26, 26, 0.66)' : 'rgba(62, 48, 16, 0.62)');
+  grad.addColorStop(1, dragOver ? 'rgba(30, 12, 12, 0.60)' : 'rgba(24, 19, 8, 0.58)');
+  CtxUi.fillStyle = grad;
+  CtxUi.fill();
+
+  // 底纹:斜向条纹,表达"锁定 / 不可操作"
+  CtxUi.save();
+  createChamferRect(CtxUi, rect.x, rect.y, rect.width, rect.height, cut);
+  CtxUi.clip();
+  drawSlantedStripes(
+    CtxUi,
+    rect.x,
+    rect.y,
+    rect.width,
+    rect.height,
+    Math.max(6, rect.width * 0.24),
+    dragOver ? 'rgba(255, 90, 104, 0.14)' : 'rgba(255, 208, 106, 0.13)'
+  );
+  CtxUi.restore();
+
+  // 金色(或警示红)霓虹边框
+  CtxUi.strokeStyle = accent;
+  CtxUi.lineWidth = 1.6;
+  CtxUi.shadowColor = accent;
+  CtxUi.shadowBlur = 10;
+  createChamferRect(CtxUi, rect.x + 0.7, rect.y + 0.7, rect.width - 1.4, rect.height - 1.4, cut);
+  CtxUi.stroke();
+  CtxUi.shadowBlur = 0;
+
+  // 内侧细线
+  CtxUi.strokeStyle = 'rgba(255, 236, 180, 0.26)';
+  CtxUi.lineWidth = 1;
+  createChamferRect(CtxUi, rect.x + 3, rect.y + 3, rect.width - 6, rect.height - 6, Math.max(2, cut - 2));
+  CtxUi.stroke();
+  CtxUi.restore();
+};
+
+/**
+ * 绘制小锁图标(标识不可编辑的固有技能槽)
+ */
+const H_drawLockIcon = (
+  CtxUi: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string
+) => {
+  const bodyW = size * 0.72;
+  const bodyH = size * 0.56;
+  const bodyY = cy + size * 0.06;
+  CtxUi.save();
+  CtxUi.strokeStyle = color;
+  CtxUi.fillStyle = color;
+  CtxUi.lineWidth = Math.max(1, size * 0.16);
+  CtxUi.lineCap = 'round';
+  // 锁梁
+  CtxUi.beginPath();
+  CtxUi.arc(cx, bodyY - bodyH * 0.04, bodyW * 0.33, Math.PI, 0);
+  CtxUi.stroke();
+  // 锁体
+  createChamferRect(CtxUi, cx - bodyW / 2, bodyY, bodyW, bodyH, Math.max(1, size * 0.12));
+  CtxUi.fill();
   CtxUi.restore();
 };
 
@@ -3666,6 +3822,7 @@ const toggleInventory = (visible?: boolean) => {
   inventoryHoverTarget = null;
   inventoryTooltipEntry = null;
   inventoryTooltipSkillTag = '';
+  inventoryTooltipInnateIndex = null;
   drawUI();
 };
 
@@ -3676,6 +3833,9 @@ const toggleInventory = (visible?: boolean) => {
 const H_applyInventoryDrop = (payload: InventoryDragPayload, target: InventorySlotTarget): boolean => {
   const player = playerEntity;
   if (!player || !target) return false;
+  // 固有技能槽禁止任何更改:既不能作为拖拽来源,也不能作为放置目标
+  if (payload.fromZone === 'equip' && H_inventoryIsInnateSkillSlot(payload.fromIndex)) return false;
+  if (target.zone === 'equip' && H_inventoryIsInnateSkillSlot(target.index)) return false;
   const inventory = H_ensurePlayerInventory(player.inventory);
   let changed = false;
 
@@ -3727,6 +3887,8 @@ const handleInventoryPickUp = (canvas: HTMLCanvasElement, x: number, y: number) 
   const inventory = H_ensurePlayerInventory(playerEntity.inventory);
   const target = H_hitTestInventorySlot(layout, x, y);
   if (!target) return;
+  // 固有技能槽不可拿起(禁止拖拽/替换/卸下)
+  if (target.zone === 'equip' && H_inventoryIsInnateSkillSlot(target.index)) return;
 
   if (target.zone === 'bag') {
     const entry = H_inventoryGetEntryAtSlot(inventory, target.index);
@@ -3811,6 +3973,8 @@ const handleInventoryRightDown = (canvas: HTMLCanvasElement, x: number, y: numbe
   const inventory = H_ensurePlayerInventory(playerEntity.inventory);
   const target = H_hitTestInventorySlot(layout, x, y);
   if (!target) return;
+  // 固有技能槽不可卸下/销毁
+  if (target.zone === 'equip' && H_inventoryIsInnateSkillSlot(target.index)) return;
 
   if (target.zone === 'bag') {
     const entry = H_inventoryGetEntryAtSlot(inventory, target.index);
@@ -3983,8 +4147,8 @@ const drawInventoryPanel = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasE
   const labelFontSize = Math.max(11, layout.slotSize * 0.22);
   CtxUi.font = `bold ${labelFontSize}px "Microsoft YaHei", Arial, sans-serif`;
   CtxUi.fillStyle = 'rgba(224, 253, 255, 0.92)';
-  CtxUi.fillText('持有物品与技能', layout.panelX + layout.padding, layout.bagY - layout.labelHeight / 2);
-  const bagLabelWidth = CtxUi.measureText('持有物品与技能').width;
+  CtxUi.fillText('容量', layout.panelX + layout.padding, layout.bagY - layout.labelHeight / 2);
+  const bagLabelWidth = CtxUi.measureText('容量').width;
   CtxUi.font = `${Math.max(10, layout.slotSize * 0.19)}px Consolas, "Courier New", monospace`;
   CtxUi.fillStyle = 'rgba(122, 214, 240, 0.8)';
   CtxUi.fillText(
@@ -4044,24 +4208,71 @@ const drawInventoryPanel = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasE
   CtxUi.font = `bold ${labelFontSize}px "Microsoft YaHei", Arial, sans-serif`;
   CtxUi.fillStyle = 'rgba(224, 253, 255, 0.92)';
   CtxUi.fillText('技能装配区', layout.panelX + layout.padding, layout.equipY - layout.labelHeight / 2);
-  const equipLabelWidth = CtxUi.measureText('技能装配区').width;
-  CtxUi.font = `${Math.max(10, layout.slotSize * 0.19)}px "Microsoft YaHei", Arial, sans-serif`;
-  CtxUi.fillStyle = 'rgba(122, 214, 240, 0.8)';
-  CtxUi.fillText(
-    '拖拽调整顺序 · 拖回上方卸下 · 拖入垃圾桶销毁',
-    layout.panelX + layout.padding + equipLabelWidth + 14,
-    layout.equipY - layout.labelHeight / 2 + 1
-  );
+  // const equipLabelWidth = CtxUi.measureText('技能装配区').width;
+  // CtxUi.font = `${Math.max(10, layout.slotSize * 0.19)}px "Microsoft YaHei", Arial, sans-serif`;
+  // CtxUi.fillStyle = 'rgba(122, 214, 240, 0.8)';
+  // CtxUi.fillText(
+  //   '拖拽调整顺序 · 拖回上方卸下 · 拖入垃圾桶销毁',
+  //   layout.panelX + layout.padding + equipLabelWidth + 14,
+  //   layout.equipY - layout.labelHeight / 2 + 1
+  // );
 
-  // ---- 技能槽 ----
+  // ---- 技能槽:前 2 格固有(锁定,不可编辑)/ 后 8 格拓展(可拖动/替换/排序) ----
   const equippedTags = inventory.equippedSkills;
   for (let i = 0; i < INVENTORY_EQUIP_COUNT; i++) {
     const rect = H_getInventoryEquipSlotRect(layout, i);
-    const tag = equippedTags[i];
-    const skill = tag ? H_getSkillByTag(tag) : null;
     const isTarget = inventoryHoverTarget?.zone === 'equip' && inventoryHoverTarget.index === i;
     const hovered = isTarget && inventoryDragPayload === null;
     const draggingOver = isTarget && inventoryDragPayload !== null;
+
+    // ---- 固有技能槽:内容固定,不注册任何事件区域(不可拿起/卸下/销毁) ----
+    if (H_inventoryIsInnateSkillSlot(i)) {
+      const view = INNATE_SKILL_SLOT_VIEWS[i];
+      H_drawInventoryInnateSlotFrame(CtxUi, rect, draggingOver);
+      if (view) {
+        H_drawFixedFunctionIcon(
+          CtxUi,
+          view.key,
+          rect.x + rect.width / 2,
+          rect.y + rect.height * 0.4,
+          layout.equipSlotSize * 0.52,
+          `${view.color}e6`,
+          null,
+          Math.max(1, rect.width * 0.06)
+        );
+        // 能力名
+        CtxUi.font = `bold ${Math.max(9, layout.equipSlotSize * 0.2)}px "Microsoft YaHei", Arial, sans-serif`;
+        CtxUi.textAlign = 'center';
+        CtxUi.textBaseline = 'middle';
+        CtxUi.fillStyle = 'rgba(255, 240, 205, 0.92)';
+        CtxUi.fillText(view.name, rect.x + rect.width / 2, rect.y + rect.height * 0.76);
+        // 锁定图标(右上角)
+        H_drawLockIcon(
+          CtxUi,
+          rect.x + rect.width - layout.equipSlotSize * 0.19,
+          rect.y + layout.equipSlotSize * 0.2,
+          layout.equipSlotSize * 0.24,
+          'rgba(255, 214, 120, 0.95)'
+        );
+        // 悬停时给出"不可更改"提示
+        if (hovered) {
+          CtxUi.save();
+          CtxUi.font = `${Math.max(9, layout.equipSlotSize * 0.18)}px "Microsoft YaHei", Arial, sans-serif`;
+          CtxUi.textAlign = 'center';
+          CtxUi.textBaseline = 'middle';
+          CtxUi.fillStyle = 'rgba(255, 214, 120, 0.98)';
+          CtxUi.shadowColor = 'rgba(255, 208, 106, 0.85)';
+          CtxUi.shadowBlur = 8;
+          CtxUi.fillText('不可更改', rect.x + rect.width / 2, rect.y - layout.equipSlotSize * 0.16);
+          CtxUi.restore();
+        }
+      }
+      continue;
+    }
+
+    // ---- 拓展技能槽:可移动/替换/排序 ----
+    const tag = equippedTags[i];
+    const skill = tag ? H_getSkillByTag(tag) : null;
     const invalid = draggingOver && inventoryDragPayload !== null && inventoryDragPayload.kind !== 'skill';
 
     H_drawInventorySlotFrame(CtxUi, rect, {
@@ -4093,6 +4304,33 @@ const drawInventoryPanel = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasE
     }
   }
 
+  // ---- 分组说明:固有技能槽(锁定) / 拓展技能槽(可调整) ----
+  const innateFirst = H_getInventoryEquipSlotRect(layout, 0);
+  const innateLast = H_getInventoryEquipSlotRect(layout, INVENTORY_INNATE_SKILL_SLOT_COUNT - 1);
+  const extendedFirst = H_getInventoryEquipSlotRect(layout, INVENTORY_INNATE_SKILL_SLOT_COUNT);
+  const extendedLast = H_getInventoryEquipSlotRect(layout, INVENTORY_EQUIP_COUNT - 1);
+  const captionY = layout.equipY + layout.equipSlotSize + layout.hintHeight * 0.55;
+  /** 以最大可用宽度自动缩小字号后居中绘制说明文案(窄屏下不溢出到相邻分组) */
+  const drawGroupCaption = (text: string, centerX: number, maxWidth: number, color: string) => {
+    let fontSize = Math.max(9, layout.equipSlotSize * 0.19);
+    CtxUi.font = `${fontSize}px "Microsoft YaHei", Arial, sans-serif`;
+    while (fontSize > 8 && CtxUi.measureText(text).width > maxWidth) {
+      fontSize -= 0.5;
+      CtxUi.font = `${fontSize}px "Microsoft YaHei", Arial, sans-serif`;
+    }
+    CtxUi.fillStyle = color;
+    CtxUi.fillText(text, centerX, captionY);
+  };
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  drawGroupCaption(
+    '固有技能',
+    (innateFirst.x + innateLast.x + innateLast.width) / 2,
+    innateLast.x + innateLast.width - innateFirst.x + layout.equipGroupGap,
+    'rgba(255, 214, 120, 0.9)'
+  );
+  CtxUi.textAlign = 'left';
+
   // ---- 垃圾桶 ----
   const trashRect = H_getInventoryTrashRect(layout);
   const trashTarget = inventoryHoverTarget?.zone === 'trash';
@@ -4105,24 +4343,29 @@ const drawInventoryPanel = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasE
   H_drawInventoryTrashIcon(CtxUi, trashRect, trashTarget);
 
   // ---- 底部操作提示 ----
-  CtxUi.font = `${Math.max(10, layout.slotSize * 0.2)}px "Microsoft YaHei", Arial, sans-serif`;
-  CtxUi.fillStyle = 'rgba(150, 214, 235, 0.85)';
-  CtxUi.textAlign = 'center';
-  CtxUi.fillText(
-    '左键点击/拖拽:拿起并放置　·　右键:使用物品 / 装配·卸下技能　·　拖入垃圾桶:销毁',
-    width / 2,
-    layout.hintY
-  );
-  CtxUi.textAlign = 'left';
+  // CtxUi.font = `${Math.max(10, layout.slotSize * 0.2)}px "Microsoft YaHei", Arial, sans-serif`;
+  // CtxUi.fillStyle = 'rgba(150, 214, 235, 0.85)';
+  // CtxUi.textAlign = 'center';
+  // CtxUi.fillText(
+  //   '左键点击/拖拽:拿起并放置　·　右键:使用物品 / 装配·卸下技能　·　拖入垃圾桶:销毁',
+  //   width / 2,
+  //   layout.hintY
+  // );
+  // CtxUi.textAlign = 'left';
 
   // ---- 悬停浮窗 ----
   inventoryTooltipEntry = null;
   inventoryTooltipSkillTag = '';
+  inventoryTooltipInnateIndex = null;
   if (inventoryDragPayload === null && inventoryHoverTarget) {
     if (inventoryHoverTarget.zone === 'bag') {
       inventoryTooltipEntry = inventory.entries[inventoryHoverTarget.index] ?? null;
     } else if (inventoryHoverTarget.zone === 'equip') {
-      inventoryTooltipSkillTag = equippedTags[inventoryHoverTarget.index] ?? '';
+      if (H_inventoryIsInnateSkillSlot(inventoryHoverTarget.index)) {
+        inventoryTooltipInnateIndex = inventoryHoverTarget.index;
+      } else {
+        inventoryTooltipSkillTag = equippedTags[inventoryHoverTarget.index] ?? '';
+      }
     }
   }
 
@@ -4167,6 +4410,19 @@ const drawInventoryPanel = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasE
       '已装配',
       skill?.description ?? '',
       skill?.color ?? '#9fe8ff'
+    );
+  } else if (inventoryTooltipInnateIndex !== null) {
+    const view = INNATE_SKILL_SLOT_VIEWS[inventoryTooltipInnateIndex];
+    H_drawInventoryTooltip(
+      CtxUi,
+      width,
+      height,
+      mouseX,
+      mouseY,
+      view?.name ?? '固有技能',
+      '固有技能槽',
+      '固定能力,不可移动、替换、卸下或更改',
+      view?.color ?? '#ffd96a'
     );
   }
 

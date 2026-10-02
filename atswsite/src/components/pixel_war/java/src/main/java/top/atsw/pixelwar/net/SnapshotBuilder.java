@@ -205,13 +205,22 @@ public final class SnapshotBuilder {
                 player.stamina,
                 player.staminaMax,
                 player.isSprinting,
-                player.playerRule.invincibleTimer,
                 player.playerRule.fireCooldownNow,
                 player.playerRule.fireCooldownMax,
-                player.playerRule.dodgeCooldownNow,
-                player.playerRule.dodgeCooldownMax,
+                toCooldownList(player.equippedSkillCooldowns),
                 toInventoryDto(player.inventory),
                 player.getAllServantIds());
+    }
+
+    /**
+     * 技能剩余CD数组 -> 协议列表(量化到 2 位小数,避免下发无意义的长浮点串)
+     */
+    private static List<Double> toCooldownList(double[] values) {
+        List<Double> list = new ArrayList<>(values.length);
+        for (double value : values) {
+            list.add(value <= 0 ? 0.0 : Math.round(value * 100) / 100.0);
+        }
+        return list;
     }
 
     /** 背包 -> 协议 DTO(保持与前端 InventoryEntry 结构一致,null 元素表示空格) */

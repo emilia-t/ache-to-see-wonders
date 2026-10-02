@@ -59,11 +59,8 @@ const H_BULLET_DAMAGE = 1;
  */
 const H_defaultPlayerRule = (): Record<string, number | string> => ({
   bulletColor: 'rgba(255, 255, 255, 0.9)',
-  invincibleTimer: 0,
   fireCooldownNow: 0,
-  fireCooldownMax: 0.5,
-  dodgeCooldownNow: 0,
-  dodgeCooldownMax: 5
+  fireCooldownMax: 0.5
 });
 
 /** 空背包(结构、长度与前端 Inventory 保持一致) */
@@ -130,14 +127,15 @@ export const H_toPlayerEntity = (
         equippedSkills: privateState.inventory.equippedSkills
       }
     : H_emptyInventory(),
+  // 技能装配区各槽位的剩余CD(秒),与 equippedSkills 同下标;客户端仅用于渲染技能冷却
+  equippedSkillCooldowns: privateState && Array.isArray(privateState.equippedSkillCooldowns)
+    ? privateState.equippedSkillCooldowns
+    : new Array(10).fill(0),
   playerRule: privateState
     ? {
         bulletColor: 'rgba(255, 255, 255, 0.9)',
-        invincibleTimer: privateState.invincibleTimer,
         fireCooldownNow: privateState.fireCooldownNow,
-        fireCooldownMax: privateState.fireCooldownMax,
-        dodgeCooldownNow: privateState.dodgeCooldownNow,
-        dodgeCooldownMax: privateState.dodgeCooldownMax
+        fireCooldownMax: privateState.fireCooldownMax
       }
     : H_defaultPlayerRule()
 });

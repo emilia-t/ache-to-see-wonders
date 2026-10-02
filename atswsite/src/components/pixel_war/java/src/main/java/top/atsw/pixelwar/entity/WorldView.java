@@ -4,6 +4,7 @@ import top.atsw.pixelwar.entity.dynamicEntity.BulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.DynamicEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
+import top.atsw.pixelwar.game.Skill;
 
 import java.util.List;
 
@@ -31,4 +32,7 @@ public interface WorldView {
 
     /** 当前子弹列表(用于 NPC 威胁預判等) */
     List<BulletEntity> bullets();
+
+    /** 技能表:实体按技能 tag 取共享的技能实例(技能内置CD按持有者分别记录) */
+    Skill.Provider skills();
 }

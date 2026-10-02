@@ -8,6 +8,7 @@ import top.atsw.pixelwar.game.Inventory;
 import top.atsw.pixelwar.game.Skill;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -36,8 +37,6 @@ public final class PlayerEntity extends DynamicEntity {
 
     /** 单次闪避距离(px) */
     public static final double DODGE_DISTANCE = 300;
-    /** 闪避无敌持续时间(秒) */
-    public static final double DODGE_DURATION = 0.3;
     /** 闪避位移持续时间(秒) */
     public static final double DODGE_SLIDE_DURATION = 0.2;
 
@@ -75,19 +74,13 @@ public final class PlayerEntity extends DynamicEntity {
         }
     }
 
-    /** 玩家战斗规则(冷却与无敌计时) */
+    /** 玩家战斗规则(开火冷却等) */
     public static final class PlayerRule {
         public String bulletColor = "rgba(255, 255, 255, 0.9)";
-        /** 无敌状态剩余时间(秒) */
-        public double invincibleTimer;
         /** 下一次开火还需要等待的时长(秒) */
         public double fireCooldownNow;
         /** 开火 CD(秒) */
         public double fireCooldownMax = 0.5;
-        /** 下一次闪避还需要等待的时长(秒) */
-        public double dodgeCooldownNow;
-        /** 闪避 CD(秒) */
-        public double dodgeCooldownMax = 5.0;
     }
 
     /** 从者网格中的一个格子 */
@@ -136,6 +129,14 @@ public final class PlayerEntity extends DynamicEntity {
 
     /** 玩家背包:持有物品与技能,并保存 10 个技能槽的装配状态 */
     public Inventory.Bag inventory = Inventory.createEmpty();
+
+    /**
+     * 技能装配区各槽位的技能剩余CD(秒),下标与 {@code inventory.equippedSkills} 一致(0 表示就绪)。
+     *
+     * <p>技能冷却本身按持有者记在共享的技能实例上,客户端拿不到,因此每帧把剩余CD
+     * 写进这份快照字段随 {@code PlayerPrivate} 单播下发,仅用于客户端渲染技能冷却。</p>
+     */
+    public final double[] equippedSkillCooldowns = new double[Inventory.SKILL_SLOT_COUNT];
 
     /** 未疾跑时的基础移动速度(由从者数量决定) */
     private double baseMoveSpeed = MOVE_SPEED;
@@ -238,6 +239,56 @@ public final class PlayerEntity extends DynamicEntity {
             }
         }
         return null;
+    }
+
+    /** 当前生效的闪现技能:取技能装配区中第一个由"闪现"触发的技能,未装配返回 null */
+    public Skill getEquippedDodgeSkill(Skill.Provider skills) {
+        if (skills == null) {
+            return null;
+        }
+        for (String tag : inventory.equippedSkills) {
+            if (tag == null) {
+                continue;
+            }
+            Skill skill = skills.byTag(tag);
+            if (skill != null && skill.trigger() == Skill.Trigger.DODGE) {
+                return skill;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 推进技能装配区中所有技能的内置CD计时器(每帧调用),并把剩余CD写入快照字段。
+     * 技能冷却按玩家实体 id 分别记录,因此多个玩家装配同一技能时互不影响。
+     */
+    private void updateEquippedSkillCooldowns(double dt, Skill.Provider skills) {
+        for (int slot = 0; slot < equippedSkillCooldowns.length; slot++) {
+            String tag = slot < inventory.equippedSkills.length ? inventory.equippedSkills[slot] : null;
+            Skill skill = (tag == null || skills == null) ? null : skills.byTag(tag);
+            if (skill == null || !skill.hasCooldown()) {
+                equippedSkillCooldowns[slot] = 0;
+                continue;
+            }
+            equippedSkillCooldowns[slot] = skill.tickCooldown(id, dt);
+        }
+    }
+
+    /** 清空技能装配区中所有技能的内置CD(重生时调用) */
+    private void resetEquippedSkillCooldowns(Skill.Provider skills) {
+        Arrays.fill(equippedSkillCooldowns, 0);
+        if (skills == null) {
+            return;
+        }
+        for (String tag : inventory.equippedSkills) {
+            if (tag == null) {
+                continue;
+            }
+            Skill skill = skills.byTag(tag);
+            if (skill != null) {
+                skill.clearCooldown(id);
+            }
+        }
     }
 
     /**
@@ -369,7 +420,7 @@ public final class PlayerEntity extends DynamicEntity {
     }
 
     /** 重生玩家并重置临时战斗状态 */
-    public void respawn(Geometry.Vec2 position) {
+    public void respawn(Geometry.Vec2 position, Skill.Provider skills) {
         this.position = position.copy();
         this.nextTarget = position.copy();
         this.targetHistory = new ArrayList<>(List.of(position.copy()));
@@ -384,9 +435,9 @@ public final class PlayerEntity extends DynamicEntity {
         this.isSprinting = false;
         this.staminaRecoveryDelayRemaining = 0;
         this.dodgeState = null;
-        this.playerRule.invincibleTimer = 1.5;
         this.playerRule.fireCooldownNow = 0;
-        this.playerRule.dodgeCooldownNow = 0;
+        // 重生后技能内置CD一并清空(无敌时长已从玩家规则中移除)
+        resetEquippedSkillCooldowns(skills);
         this.resetServantGrid();
         this.stop();
         this.updateCollisionBox();
@@ -403,8 +454,8 @@ public final class PlayerEntity extends DynamicEntity {
         }
         playerRule.fireCooldownNow = Math.max(0, playerRule.fireCooldownNow - dt);
         refreshSpeedByServantCount();
-        playerRule.invincibleTimer = Math.max(0, playerRule.invincibleTimer - dt);
-        playerRule.dodgeCooldownNow = Math.max(0, playerRule.dodgeCooldownNow - dt);
+        // 技能冷却:装配区中每个技能的内置CD计时器各自由玩家推进(闪避CD即来自闪现技能)
+        updateEquippedSkillCooldowns(dt, world.skills());
 
         if (updateDodgeMovement(dt, world)) {
             return;
@@ -506,9 +557,6 @@ public final class PlayerEntity extends DynamicEntity {
 
     @Override
     public void applyDamage(double amount) {
-        if (playerRule.invincibleTimer > 0) {
-            return;
-        }
         super.applyDamage(amount);
     }
 
@@ -582,14 +630,23 @@ public final class PlayerEntity extends DynamicEntity {
     // ==================================================================
 
     /**
-     * 执行闪避:向指定方向进行短促冲刺,附带短暂无敌。
+     * 执行闪避:向指定方向进行短促冲刺。
+     * 闪避能力与冷却都由玩家装配区中的"闪现技能"决定(技能内置CD计时器),
+     * 不再附带无敌效果——未装备闪现技能或技能处于冷却中时均不可释放。
      */
     public void dodge(Geometry.Vec2 direction, WorldView world) {
         double len = Math.hypot(direction.x, direction.y);
         if (len < 0.001) {
             return;
         }
-        if (playerRule.dodgeCooldownNow > 0 || dodgeState != null) {
+        Skill dodgeSkill = getEquippedDodgeSkill(world.skills());
+        if (dodgeSkill == null) {
+            return; // 未装备闪现技能
+        }
+        if (dodgeSkill.isOnCooldown(id)) {
+            return; // 技能内置CD中
+        }
+        if (dodgeState != null) {
             return;
         }
 
@@ -609,8 +666,8 @@ public final class PlayerEntity extends DynamicEntity {
 
         facingDirection = dir.copy();
         lastMoveDirection = dir.copy();
-        playerRule.invincibleTimer = DODGE_DURATION;
-        playerRule.dodgeCooldownNow = playerRule.dodgeCooldownMax;
+        // 释放成功后进入技能内置冷却(冷却时长由技能自己的 maxCooldown 决定)
+        dodgeSkill.startCooldown(id);
         noMoveDuration = 0;
         noMoveLastPos = position.copy();
     }

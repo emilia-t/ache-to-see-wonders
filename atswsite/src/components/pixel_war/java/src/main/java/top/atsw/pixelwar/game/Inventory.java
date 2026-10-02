@@ -13,13 +13,20 @@ import java.util.concurrent.atomic.AtomicLong;
  * <ul>
  *   <li>背包采用"固定格子"模型,{@code entries} 长度固定 20,下标即界面槽位;</li>
  *   <li>技能不可堆叠;物品可堆叠,单格上限 50;</li>
- *   <li>技能装配区固定 10 个槽位,已装配的技能不再出现在背包网格中。</li>
+ *   <li>技能装配区固定 10 个槽位,已装配的技能不再出现在背包网格中;</li>
+ *   <li>技能装配区分两组:前 {@link #INNATE_SKILL_SLOT_COUNT} 格为"固有技能槽"(锁定,不可编辑),
+ *       后 {@link #EXTENDED_SKILL_SLOT_COUNT} 格为"拓展技能槽"(可移动/替换/排序/卸下/销毁);
+ *       两组槽位与前端底部状态栏技能槽一一对应(下标相同)。</li>
  * </ul>
  */
 public final class Inventory {
 
-    /** 技能装配区槽位数量 */
+    /** 技能装配区槽位数量(含固有技能槽与拓展技能槽) */
     public static final int SKILL_SLOT_COUNT = 10;
+    /** 技能装配区中的"固有技能槽"数量(前 2 格:锁定,不参与任何编辑操作) */
+    public static final int INNATE_SKILL_SLOT_COUNT = 2;
+    /** 技能装配区中的"拓展技能槽"数量(后 8 格:可自由调整) */
+    public static final int EXTENDED_SKILL_SLOT_COUNT = SKILL_SLOT_COUNT - INNATE_SKILL_SLOT_COUNT;
     /** 单个物品格子的堆叠上限 */
     public static final int ITEM_MAX_STACK = 50;
     /** 背包网格容量(与前端背包界面网格 2×10 保持一致) */
@@ -33,6 +40,16 @@ public final class Inventory {
     private static final AtomicLong UID_SEED = new AtomicLong(1);
 
     private Inventory() {
+    }
+
+    /** 槽位是否为"固有技能槽"(前 2 格:锁定,不可装配/卸下/排序/销毁) */
+    public static boolean isInnateSkillSlot(int slotIndex) {
+        return slotIndex >= 0 && slotIndex < INNATE_SKILL_SLOT_COUNT;
+    }
+
+    /** 槽位是否为可编辑的"拓展技能槽"(后 8 格);所有编辑操作只允许作用于拓展槽 */
+    public static boolean isExtendedSkillSlot(int slotIndex) {
+        return slotIndex >= INNATE_SKILL_SLOT_COUNT && slotIndex < SKILL_SLOT_COUNT;
     }
 
     // ==================================================================
@@ -75,7 +92,8 @@ public final class Inventory {
     public static final class Bag {
         /** 背包网格(固定长度,元素为 null 表示空格) */
         public Entry[] entries = new Entry[BAG_CAPACITY];
-        /** 技能装配区(10 个槽位,存放技能 tag,null 表示空槽) */
+        /** 技能装配区(10 个槽位,存放技能 tag,null 表示空槽;
+         *  前 {@link #INNATE_SKILL_SLOT_COUNT} 格为固有技能槽,恒为 null) */
         public String[] equippedSkills = new String[SKILL_SLOT_COUNT];
 
         public static Bag createEmpty() {
@@ -339,10 +357,11 @@ public final class Inventory {
 
     /**
      * 将背包中的技能装配到指定槽位。
+     * 仅"拓展技能槽"可装配(固有技能槽锁定);
      * 若目标槽位已被其他技能占用,被替换的技能会放到该技能腾出的背包格子中(原地交换)。
      */
     public static boolean equipSkill(Bag bag, String tag, int slotIndex, Skill.Provider skills) {
-        if (slotIndex < 0 || slotIndex >= SKILL_SLOT_COUNT) {
+        if (!isExtendedSkillSlot(slotIndex)) {
             return false;
         }
         int bagSlot = -1;
@@ -373,9 +392,9 @@ public final class Inventory {
         return true;
     }
 
-    /** 将背包中的技能自动装配到第一个空槽,返回装配到的槽位下标(失败返回 null) */
+    /** 将背包中的技能自动装配到第一个空的"拓展技能槽",返回装配到的槽位下标(失败返回 null) */
     public static Integer autoEquipSkill(Bag bag, String tag, Skill.Provider skills) {
-        for (int i = 0; i < SKILL_SLOT_COUNT; i++) {
+        for (int i = INNATE_SKILL_SLOT_COUNT; i < SKILL_SLOT_COUNT; i++) {
             if (bag.equippedSkills[i] == null) {
                 return equipSkill(bag, tag, i, skills) ? i : null;
             }
@@ -383,9 +402,9 @@ public final class Inventory {
         return null;
     }
 
-    /** 卸下指定槽位的技能,放回背包(占用第一个空格) */
+    /** 卸下指定"拓展技能槽"的技能,放回背包(占用第一个空格) */
     public static boolean unequipSkill(Bag bag, int slotIndex, Skill.Provider skills) {
-        if (slotIndex < 0 || slotIndex >= SKILL_SLOT_COUNT) {
+        if (!isExtendedSkillSlot(slotIndex)) {
             return false;
         }
         String tag = bag.equippedSkills[slotIndex];
@@ -405,9 +424,9 @@ public final class Inventory {
         return true;
     }
 
-    /** 卸下指定槽位的技能,并放入指定的背包格(要求该格为空) */
+    /** 卸下指定"拓展技能槽"的技能,并放入指定的背包格(要求该格为空) */
     public static boolean unequipSkillToSlot(Bag bag, int slotIndex, int bagSlot, Skill.Provider skills) {
-        if (slotIndex < 0 || slotIndex >= SKILL_SLOT_COUNT) {
+        if (!isExtendedSkillSlot(slotIndex)) {
             return false;
         }
         if (bagSlot < 0 || bagSlot >= bag.entries.length) {
@@ -429,9 +448,9 @@ public final class Inventory {
         return true;
     }
 
-    /** 交换/移动两个技能槽 */
+    /** 交换/移动两个"拓展技能槽"(固有技能槽不参与排序) */
     public static boolean moveSkillSlot(Bag bag, int from, int to) {
-        if (from == to || from < 0 || from >= SKILL_SLOT_COUNT || to < 0 || to >= SKILL_SLOT_COUNT) {
+        if (from == to || !isExtendedSkillSlot(from) || !isExtendedSkillSlot(to)) {
             return false;
         }
         String temp = bag.equippedSkills[to];
@@ -483,9 +502,9 @@ public final class Inventory {
         return removeSlot(bag, slot, Integer.MAX_VALUE);
     }
 
-    /** 销毁已装配的槽位技能 */
+    /** 销毁已装配的"拓展技能槽"技能(固有技能槽不可销毁) */
     public static boolean destroyEquipped(Bag bag, int slotIndex) {
-        if (slotIndex < 0 || slotIndex >= SKILL_SLOT_COUNT || bag.equippedSkills[slotIndex] == null) {
+        if (!isExtendedSkillSlot(slotIndex) || bag.equippedSkills[slotIndex] == null) {
             return false;
         }
         bag.equippedSkills[slotIndex] = null;
@@ -496,17 +515,42 @@ public final class Inventory {
     // 规范化(用于客户端提交数据 / 快照覆盖 / 旧数据兜底)
     // ==================================================================
 
-    /** 规范化技能装配区:保证长度为 10、元素为字符串或 null */
+    /**
+     * 规范化技能装配区:保证长度为 10、元素为字符串或 null。
+     *
+     * <p>前 {@link #INNATE_SKILL_SLOT_COUNT} 格为"固有技能槽",恒不可被技能占用;
+     * 旧数据或异常数据若把技能写进固有槽,会被迁移到第一个空的"拓展技能槽"。</p>
+     */
     public static String[] normalizeEquippedSkills(List<String> raw) {
         String[] slots = new String[SKILL_SLOT_COUNT];
-        if (raw == null) {
-            return slots;
+        if (raw != null) {
+            for (int i = 0; i < SKILL_SLOT_COUNT && i < raw.size(); i++) {
+                String value = raw.get(i);
+                slots[i] = (value != null && !value.isEmpty()) ? value : null;
+            }
         }
-        for (int i = 0; i < SKILL_SLOT_COUNT && i < raw.size(); i++) {
-            String value = raw.get(i);
-            slots[i] = (value != null && !value.isEmpty()) ? value : null;
-        }
+        migrateInnateSkillSlots(slots);
         return slots;
+    }
+
+    /**
+     * 把误占"固有技能槽"的技能迁移到第一个空的"拓展技能槽"
+     * (固有槽不做技能存储:它对应的能力是固定功能键,由客户端界面直接绘制)
+     */
+    private static void migrateInnateSkillSlots(String[] equippedSkills) {
+        for (int i = 0; i < INNATE_SKILL_SLOT_COUNT; i++) {
+            String tag = equippedSkills[i];
+            if (tag == null) {
+                continue;
+            }
+            equippedSkills[i] = null;
+            for (int slot = INNATE_SKILL_SLOT_COUNT; slot < SKILL_SLOT_COUNT; slot++) {
+                if (equippedSkills[slot] == null) {
+                    equippedSkills[slot] = tag;
+                    break;
+                }
+            }
+        }
     }
 
     /** 规范化背包网格:固定长度,过滤非法条目并修正数量/堆叠上限 */

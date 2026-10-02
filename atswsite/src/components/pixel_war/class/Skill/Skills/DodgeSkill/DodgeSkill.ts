@@ -7,12 +7,17 @@ import type { SkillCastContext } from '@/components/pixel_war/class/Skill/Skill'
  * 由击杀 GoldenDodgeXa4Entity(金色闪避者 xa4)掉落。
  * 玩家必须装备本技能后,才能使用闪现(空格)能力。
  * 未装备时,空格键不会触发任何位移。
+ *
+ * 闪现的冷却由本技能自带的内置CD计时器(maxCooldown)管理,
+ * 不再由玩家规则(playerRule)维护。
  */
 class DodgeSkill extends Skill {
   /** 技能标签 */
   public static readonly TAG = 'dodge_skill';
   /** 技能图标贴图文件名(resource/skill_icon 下的 100px × 100px PNG) */
   public static readonly ICON = 'dodge_skill.png';
+  /** 闪现冷却(秒):原 playerRule.dodgeCooldownMax,现由技能内置CD计时器管理 */
+  public static readonly COOLDOWN = 5;
 
   constructor() {
     super(
@@ -21,7 +26,7 @@ class DodgeSkill extends Skill {
       '闪现',
       '装备后可使用闪现能力(快捷键:空格),向朝向方向高速位移',
       '#f4dda4',
-      0,
+      DodgeSkill.COOLDOWN,
       DodgeSkill.ICON,
       'dodge'
     );

@@ -73,11 +73,10 @@ export interface JavaPlayerPrivate {
   stamina: number;
   staminaMax: number;
   sprinting: boolean;
-  invincibleTimer: number;
   fireCooldownNow: number;
   fireCooldownMax: number;
-  dodgeCooldownNow: number;
-  dodgeCooldownMax: number;
+  /** 技能装配区各槽位的技能剩余CD(秒),下标与 equippedSkills 一致 */
+  equippedSkillCooldowns: number[];
   inventory: JavaInventory;
   servantIds: number[];
 }

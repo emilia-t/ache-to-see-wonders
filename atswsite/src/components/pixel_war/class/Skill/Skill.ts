@@ -58,8 +58,21 @@ abstract class Skill {
    * 由 class/Skill/SkillIconTexture.ts 负责加载与绘制。
    */
   public readonly icon: string;
-  /** 技能释放冷却(秒),实际冷却取施法者开火冷却与该值的较大者 */
-  public readonly cooldown: number;
+  /**
+   * 冷却时长上限(秒),即构造参数 cooldown。
+   * 0 表示该技能没有冷却;开火技能的释放冷却取"施法者基础开火冷却"与该值的较大者。
+   */
+  public readonly maxCooldown: number;
+  /** 是否拥有冷却(由 maxCooldown 决定) */
+  public readonly hasCooldown: boolean;
+  /**
+   * 各持有者的冷却剩余(秒)。
+   *
+   * 技能实例在技能注册表中是**共享**的(每个 tag 只有一个实例),所以冷却不能存成全局单值,
+   * 否则多人模式下某个玩家的冷却会影响到其他玩家。需要读取"当前冷却时长"时请使用
+   * getCurrentCooldown(ownerId) / getCooldownRatio(ownerId) 等方法(ownerId 即持有者实体 id)。
+   */
+  private readonly cooldownRemaining: Map<number, number> = new Map();
   /** 是否可以堆叠(技能恒为 false) */
   public readonly stackable: boolean = false;
   /** 技能触发方式:决定该技能由哪个输入(开火/闪现)触发 */
@@ -80,9 +93,15 @@ abstract class Skill {
     this.shortName = shortName;
     this.description = description;
     this.color = color;
-    this.cooldown = cooldown;
+    this.maxCooldown = Math.max(0, cooldown);
+    this.hasCooldown = this.maxCooldown > 0;
     this.icon = icon;
     this.trigger = trigger;
+  }
+
+  /** 冷却时长上限(秒):maxCooldown 的别名(兼容既有读取处) */
+  public get cooldown(): number {
+    return this.maxCooldown;
   }
 
   /**
@@ -90,6 +109,58 @@ abstract class Skill {
    * @param context 技能释放上下文
    */
   public abstract cast(context: SkillCastContext): void;
+
+  /**
+   * 当前冷却剩余(秒)
+   * @param ownerId 持有者(实体 id)
+   */
+  public getCurrentCooldown(ownerId: number): number {
+    return this.cooldownRemaining.get(ownerId) ?? 0;
+  }
+
+  /**
+   * 设置指定持有者的冷却剩余(秒),不大于 0 视为冷却结束
+   */
+  public setCurrentCooldown(ownerId: number, seconds: number): void {
+    if (seconds > 0) {
+      this.cooldownRemaining.set(ownerId, seconds);
+    } else {
+      this.cooldownRemaining.delete(ownerId);
+    }
+  }
+
+  /**
+   * 按 dt 递减指定持有者的冷却并返回剩余(秒)
+   * 冷却结束后直接移除记录,避免长期运行下残留无用条目。
+   */
+  public tickCooldown(ownerId: number, dt: number): number {
+    const remaining = this.getCurrentCooldown(ownerId);
+    if (remaining <= 0 || dt <= 0) return remaining;
+    const next = Math.max(0, remaining - dt);
+    this.setCurrentCooldown(ownerId, next);
+    return next;
+  }
+
+  /** 指定持有者是否处于冷却中 */
+  public isOnCooldown(ownerId: number): boolean {
+    return this.getCurrentCooldown(ownerId) > 0;
+  }
+
+  /** 让指定持有者进入满冷却(技能释放成功后调用) */
+  public startCooldown(ownerId: number): void {
+    this.setCurrentCooldown(ownerId, this.maxCooldown);
+  }
+
+  /** 清空指定持有者的冷却(立即就绪) */
+  public clearCooldown(ownerId: number): void {
+    this.cooldownRemaining.delete(ownerId);
+  }
+
+  /** 冷却进度(0~1,1 表示刚进入冷却;无冷却的技能恒为 0) */
+  public getCooldownRatio(ownerId: number): number {
+    if (!this.hasCooldown) return 0;
+    return Math.min(1, Math.max(0, this.getCurrentCooldown(ownerId) / this.maxCooldown));
+  }
 }
 
 export { Skill };

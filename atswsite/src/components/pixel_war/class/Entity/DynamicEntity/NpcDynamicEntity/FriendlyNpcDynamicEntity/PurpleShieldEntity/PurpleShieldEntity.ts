@@ -10,9 +10,38 @@ import type {
 } from '@/components/pixel_war/interface/Interface';
 
 /**
+ * 护盾方块环绕角度状态。
+ *
+ * 存在模块级 WeakMap 而不是实体自身字段上:护盾环绕是**纯客户端视觉**,
+ * 但多人模式下服务端(Java)没有该字段、快照不下发,而客户端又不会调用
+ * `update()`,若存在实例字段里角度会永远停在初值(方块看似静止不动);
+ * 同时单机(Worker)模式的快照是整实体结构化克隆,水合会覆盖实例字段。
+ * 因此改为「绘制时按真实时间推进 + 模块级状态保存」,两种模式都能正确旋转。
+ */
+type ShieldOrbitState = {
+  /** 当前环绕角度(弧度) */
+  angle: number;
+  /** 上一次推进时刻(performance.now()) */
+  lastTime: number;
+};
+
+/** 每个实体实例的护盾环绕状态(WeakMap:实体销毁时自动回收) */
+const SHIELD_ORBIT_STATES = new WeakMap<object, ShieldOrbitState>();
+
+const H_getShieldOrbitState = (owner: object): ShieldOrbitState => {
+  let state = SHIELD_ORBIT_STATES.get(owner);
+  if (!state) {
+    state = { angle: 0, lastTime: 0 };
+    SHIELD_ORBIT_STATES.set(owner, state);
+  }
+  return state;
+};
+
+/**
  * 友好 NPC「PurpleShield」(紫色护盾)
  * - 基础生命值 4 点;生成权重 0.08(测试期间可临时提高至 0.99)
  * - 出生时身边环绕 4 个 5px × 5px 的蓝色渐变透明防护小方块并持续旋转;
+ *   旋转角度由客户端在绘制时按真实时间推进(不依赖 update()),单人/多人都能正确旋转;
  *   每损失 1 点生命值减少 1 个,数量与当前剩余生命值一一对应
  *   该方块仅为视觉特效,不参与碰撞,无碰撞体积
  * - 以螺旋轨迹向各个方向游走:每次需要新的游走目标时,改为取螺旋轨迹上的下一个路点
@@ -52,8 +81,6 @@ class PurpleShieldEntity extends FriendlyNpcDynamicEntity {
   private spiralAngle: number;
   /** 螺旋当前半径(px) */
   private spiralRadius: number;
-  /** 防护小方块当前环绕角度(弧度) */
-  private shieldOrbitAngle = 0;
 
   constructor(position: Point, ownerId: number | null, teamId: number | null) {
     super(position, ownerId, teamId, '', 'PurpleShield', 0, 'purple_shield');
@@ -86,9 +113,11 @@ class PurpleShieldEntity extends FriendlyNpcDynamicEntity {
 
   /**
    * 每帧更新:
-   * 1. 推进防护小方块的环绕角度(纯视觉)
-   * 2. 被玩家吸附时跟随主人
-   * 3. 否则按螺旋轨迹继续游走
+   * 1. 被玩家吸附时跟随主人
+   * 2. 否则按螺旋轨迹继续游走
+   *
+   * 说明:护盾方块的环绕动画不在这里推进,而是在 draw() 中按真实时间推进,
+   * 以兼容多人模式(服务端不模拟该视觉状态、也不下发给客户端)。
    */
   public override update(
     dt: number,
@@ -96,8 +125,6 @@ class PurpleShieldEntity extends FriendlyNpcDynamicEntity {
     dynamicEntity: DynamicEntitieList,
     gameConfig: GameConfig
   ): void {
-    this.shieldOrbitAngle += dt * PurpleShieldEntity.SHIELD_ORBIT_SPEED;
-
     if (this.ownerId !== null) {
       this.followOwner(dynamicEntity);
       return;
@@ -234,11 +261,19 @@ class PurpleShieldEntity extends FriendlyNpcDynamicEntity {
 
   /**
    * 绘制环绕自身的防护小方块
-   * 方块数量 = 当前剩余生命值;围绕身体中心匀速旋转,呈蓝色渐变透明
+   * 方块数量 = 当前剩余生命值;围绕身体中心匀速旋转,呈蓝色渐变透明。
+   * 环绕角度在绘制时按真实时间推进(不依赖 update(),以便多人模式下也能旋转)。
    */
   private drawShieldBlocks(ctx: CanvasRenderingContext2D, centerX: number, centerY: number): void {
     const count = Math.max(0, Math.round(this.health));
     if (count <= 0) return;
+
+    // 推进环绕角度:dt 上限 0.1s,避免实体长时间不可见后的角度大跳
+    const orbit = H_getShieldOrbitState(this);
+    const now = performance.now();
+    const dt = orbit.lastTime > 0 ? Math.min(0.1, Math.max(0, (now - orbit.lastTime) / 1000)) : 0;
+    orbit.lastTime = now;
+    orbit.angle += dt * PurpleShieldEntity.SHIELD_ORBIT_SPEED;
 
     const size = PurpleShieldEntity.SHIELD_BLOCK_SIZE;
     const half = size / 2;
@@ -249,7 +284,7 @@ class PurpleShieldEntity extends FriendlyNpcDynamicEntity {
     ctx.shadowBlur = size * 1.4;
     for (let i = 0; i < count; i++) {
       // 均匀分布在环绕圆周上,并随时间旋转
-      const angle = this.shieldOrbitAngle + (i * Math.PI * 2) / count;
+      const angle = orbit.angle + (i * Math.PI * 2) / count;
       const bx = centerX + Math.cos(angle) * orbitRadius;
       const by = centerY + Math.sin(angle) * orbitRadius;
 

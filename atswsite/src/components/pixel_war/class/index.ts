@@ -34,6 +34,10 @@ export {
 // Inventory(背包)
 export {
   INVENTORY_SKILL_SLOT_COUNT,
+  INVENTORY_INNATE_SKILL_SLOT_COUNT,
+  INVENTORY_EXTENDED_SKILL_SLOT_COUNT,
+  H_inventoryIsInnateSkillSlot,
+  H_inventoryIsExtendedSkillSlot,
   INVENTORY_ITEM_MAX_STACK,
   INVENTORY_BAG_CAPACITY,
   H_createInventoryUid,

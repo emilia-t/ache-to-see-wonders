@@ -220,7 +220,7 @@ public final class Protocol {
         }
     }
 
-    /** 玩家的私有状态(仅单播给本人):背包 / 经验 / 冷却 / 从者列表 */
+    /** 玩家的私有状态(仅单播给本人):背包 / 经验 / 开火冷却 / 技能CD / 从者列表 */
     public record PlayerPrivate(
             long playerId,
             long score,
@@ -230,11 +230,10 @@ public final class Protocol {
             double stamina,
             double staminaMax,
             boolean sprinting,
-            double invincibleTimer,
             double fireCooldownNow,
             double fireCooldownMax,
-            double dodgeCooldownNow,
-            double dodgeCooldownMax,
+            /** 技能装配区各槽位剩余CD(秒),下标与 inventory.equippedSkills 一致 */
+            List<Double> equippedSkillCooldowns,
             InventoryDto inventory,
             List<Long> servantIds
     ) {

@@ -61,7 +61,14 @@
 
 `PlayerPublic`：`id / name / teamId / position / facingDirection / width / height / health / healthMax / dead / moving / sprinting / staminaRatio / servantCount / score / level`
 
-`PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / invincibleTimer / fireCooldownNow / fireCooldownMax / dodgeCooldownNow / dodgeCooldownMax / inventory / servantIds`
+`PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / fireCooldownNow / fireCooldownMax / equippedSkillCooldowns / inventory / servantIds`
+
+> 说明：`invincibleTimer`、`dodgeCooldownNow`、`dodgeCooldownMax` 已从玩家规则中移除。
+> 玩家不再有无敌时间；闪避冷却改由玩家装配的「闪现」技能自带的内置CD计时器管理
+> （技能定义：`hasCooldown` / `maxCooldown` / 按持有者记录的 `currentCooldown`）。
+> `equippedSkillCooldowns`：长度 10 的数组，下标与 `inventory.equippedSkills` 一致，
+> 值为对应槽位技能的**剩余冷却秒数**（0 表示就绪，无冷却的技能恒为 0，量化到 2 位小数），
+> 仅用于客户端渲染技能冷却（冷却时长上限由客户端从技能定义 `maxCooldown` 取得，无需下发）。
 
 `inventory` 与前端结构一致：
 

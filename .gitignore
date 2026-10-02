@@ -59,3 +59,4 @@ default.mp4
 .gradle/
 atswsite/src/components/pixel_war/java/build/
 !gradle/wrapper/gradle-wrapper.jar
+atswsite/src/components/pixel_war/java/bin/

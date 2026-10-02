@@ -342,9 +342,6 @@ export interface PlayerRule {
   bulletColor: string,
   fireCooldownNow: number,
   fireCooldownMax: number,
-  invincibleTimer: number,
-  dodgeCooldownNow: number,
-  dodgeCooldownMax: number,
 };
 
 //////////////////////////////////////////////////

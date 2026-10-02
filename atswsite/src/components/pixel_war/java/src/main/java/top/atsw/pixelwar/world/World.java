@@ -131,6 +131,11 @@ public final class World implements WorldView {
         return new ArrayList<>(npcs);
     }
 
+    @Override
+    public Skill.Provider skills() {
+        return skills;
+    }
+
     // ==================================================================
     // 集合访问
     // ==================================================================
@@ -296,7 +301,7 @@ public final class World implements WorldView {
         if (player == null) {
             return;
         }
-        player.respawn(randomSpawnPoint());
+        player.respawn(randomSpawnPoint(), skills);
     }
 
     /**
