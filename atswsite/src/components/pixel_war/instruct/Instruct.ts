@@ -238,6 +238,22 @@ export class Instruct {
         };
     };
 
+    /**
+     * 专研选择指令
+     * 玩家在专研界面中选定一项研究后提交,由权威端结算研究等级与效果。
+     * @param playerId 玩家ID
+     * @param tag 选中的研究项标签
+     */
+    public static I_ResearchChoose = (playerId: number, tag: string): InstructObject => {
+        return {
+            type: 'research_choose',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: { playerId, tag }
+        };
+    };
+
 /**
  * 
  */

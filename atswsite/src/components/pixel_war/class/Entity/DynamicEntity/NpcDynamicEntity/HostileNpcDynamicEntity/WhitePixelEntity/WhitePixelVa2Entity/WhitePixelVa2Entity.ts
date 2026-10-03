@@ -62,35 +62,21 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
     // 辅助函数：发射一颗子弹，并扣减生命值
     const shootAndDamage = (direction: Point) => {
       if (this.isDead) return;
-      // 发射子弹
-      if(bulletColor === ''){
-        context.spawnBullet(
-          new OrdinaryBulletDynamicEntity(
-            {
-              x: this.position.x + direction.x * spawnDistance,
-              y: this.position.y + direction.y * spawnDistance,
-            },
-            direction,
-            this.id,
-            this.teamId
-          )
-        );
-      }
-      else{
-        context.spawnBullet(
-          new OrdinaryBulletDynamicEntity(
-            {
-              x: this.position.x + direction.x * spawnDistance,
-              y: this.position.y + direction.y * spawnDistance,
-            },
-            direction,
-            this.id,
-            this.teamId,
-            '',
-            bulletColor
-          )
-        );
-      }
+      // 发射子弹(子弹速度随等级提升;空颜色由构造函数回退到默认色)
+      context.spawnBullet(
+        new OrdinaryBulletDynamicEntity(
+          {
+            x: this.position.x + direction.x * spawnDistance,
+            y: this.position.y + direction.y * spawnDistance,
+          },
+          direction,
+          this.id,
+          this.teamId,
+          '',
+          bulletColor,
+          this.getBulletMoveSpeed()
+        )
+      );
     };
     
     // 射出两颗子弹
@@ -112,6 +98,11 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
       }
     }
     return '';
+  }
+
+  /** 等级变化时重算等级相关属性(va2 的经验值公式与白像素不同:2 + Level × 3) */
+  protected override onNpcLevelApplied(): void {
+    this.game_exp = 2 + this.level * 3;
   }
 
   /**

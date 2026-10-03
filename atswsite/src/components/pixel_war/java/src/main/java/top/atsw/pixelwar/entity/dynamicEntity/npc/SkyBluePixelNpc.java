@@ -33,6 +33,18 @@ public class SkyBluePixelNpc extends NpcEntity {
         this.perceptionRange = APPROACH_RANGE;
     }
 
+    /** 等级上限:2 */
+    @Override
+    public int maxLevel() {
+        return 2;
+    }
+
+    /** 等级变化时重算等级相关属性(经验值随等级提升) */
+    @Override
+    protected void onNpcLevelApplied() {
+        this.gameExp = 1 + level * 1;
+    }
+
     @Override
     public double generateWeight() {
         return GENERATE_WEIGHT;

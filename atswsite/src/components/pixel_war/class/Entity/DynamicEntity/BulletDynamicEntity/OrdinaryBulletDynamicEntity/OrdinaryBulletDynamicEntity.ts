@@ -8,9 +8,10 @@ class OrdinaryBulletDynamicEntity extends BulletDynamicEntity {
     ownerId: number | null,
     teamId: number | null, 
     name: string = '',
-    bulletColor: string = BulletDynamicEntity.DEFAULT_COLOR
+    bulletColor: string = BulletDynamicEntity.DEFAULT_COLOR,
+    moveSpeed: number = BulletDynamicEntity.MOVE_SPEED
   ) {
-    super(position, direction, ownerId, teamId, 'short', name, 1, 'ordinary_bullet');
+    super(position, direction, ownerId, teamId, 'short', name, 1, 'ordinary_bullet', moveSpeed);
     // 基色同时决定弹体、拖尾与发光颜色;空值回退到默认色,避免快照缺省导致颜色丢失
     this.bulletColor = bulletColor || BulletDynamicEntity.DEFAULT_COLOR;
   }

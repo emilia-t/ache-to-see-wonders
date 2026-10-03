@@ -45,6 +45,16 @@ class SkyBluePixelEntity extends FriendlyNpcDynamicEntity {
     // 友好NPC不拾取任何物品
   }
 
+  /** 等级上限:2 */
+  public override getMaxLevel(): number {
+    return 2;
+  }
+
+  /** 等级变化时重算等级相关属性(经验值随等级提升) */
+  protected override onNpcLevelApplied(): void {
+    this.game_exp = 1 + this.level * 1;
+  }
+
   /**
    * 每帧更新:
    * 1. 被玩家吸附时跟随主人
@@ -212,6 +222,9 @@ class SkyBluePixelEntity extends FriendlyNpcDynamicEntity {
             ctx.fillText(this.tag, screenPos.x, screenPos.y + halfH + 20);
         }
     }
+
+    // NPC 等级徽标(/show_level)
+    this.drawNpcLevelBadge(ctx, worldToScreen, debugFlags);
   }
 }
 

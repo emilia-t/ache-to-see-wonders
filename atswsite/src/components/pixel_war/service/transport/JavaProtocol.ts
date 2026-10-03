@@ -64,6 +64,35 @@ export interface JavaPlayerPublic {
   level: number;
 }
 
+export interface JavaResearchEntry {
+  tag: string;
+  level: number;
+  /** 附带数值状态(不动堡垒剩余吸收值,其余恒为 0) */
+  value: number;
+}
+
+/** 死亡掉落的物品堆叠 */
+export interface JavaDeathItem {
+  tag: string;
+  name: string;
+  count: number;
+}
+
+/** 专研降级记录(from > to;to = 0 表示该项被移除) */
+export interface JavaResearchDowngrade {
+  tag: string;
+  from: number;
+  to: number;
+}
+
+/** 玩家死亡明细(仅单播给本人,用于死亡界面展示) */
+export interface JavaDeathReport {
+  droppedExp: number;
+  items: JavaDeathItem[];
+  skillTags: string[];
+  researchDowngrades: JavaResearchDowngrade[];
+}
+
 export interface JavaPlayerPrivate {
   playerId: number;
   score: number;
@@ -79,6 +108,12 @@ export interface JavaPlayerPrivate {
   equippedSkillCooldowns: number[];
   inventory: JavaInventory;
   servantIds: number[];
+  /** 已研究的专研项 */
+  research: JavaResearchEntry[];
+  /** 待玩家选择的专研选项(空数组表示无待选界面) */
+  researchPendingOptions: string[];
+  /** 最近一次死亡结算明细(缺省/null 表示尚未死亡或已重生) */
+  lastDeathReport?: JavaDeathReport | null;
 }
 
 export interface JavaNpc {
@@ -99,6 +134,8 @@ export interface JavaNpc {
   killScore?: number | null;
   /** 服务端仅在死亡特效期间下发 */
   deathEffectTimer?: number | null;
+  /** NPC 等级(服务端仅在 > 0 时下发,缺省视为 0) */
+  level?: number | null;
 }
 
 /**
@@ -183,6 +220,7 @@ export type JavaClientMessageType =
   | 'respawn'
   | 'inventory_update'
   | 'inventory_use_item'
+  | 'research_choose'
   | 'tick_pause'
   | 'ping';
 

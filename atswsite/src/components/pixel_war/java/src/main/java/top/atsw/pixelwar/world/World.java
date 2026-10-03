@@ -20,6 +20,7 @@ import top.atsw.pixelwar.entity.itemEntity.ItemEntity;
 import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
 import top.atsw.pixelwar.game.DodgeSkill;
 import top.atsw.pixelwar.game.Inventory;
+import top.atsw.pixelwar.game.NpcLevelTable;
 import top.atsw.pixelwar.game.Skill;
 
 import java.util.ArrayList;
@@ -532,6 +533,7 @@ public final class World implements WorldView {
         PlayerEntity owner = getPlayerById(killerOwnerId);
         if (owner != null) {
             owner.playerScore += victim.killScore;
+            victim.lastKillerPlayerId = owner.id;
         }
         if (killerTeamId != null) {
             NpcEntity killerNpc = getNpcById(killerOwnerId);
@@ -539,6 +541,7 @@ public final class World implements WorldView {
                 PlayerEntity npcOwner = getPlayerById(killerNpc.ownerId);
                 if (npcOwner != null) {
                     npcOwner.playerScore += victim.killScore;
+                    victim.lastKillerPlayerId = npcOwner.id;
                 }
             }
         }
@@ -614,11 +617,15 @@ public final class World implements WorldView {
             if (npc.ownerId != null || npc.loot.isEmpty()) {
                 continue;// 玩家从者不产出战利品
             }
+            // 专研"幸运之星":按击杀者(或其从者主人)的等级提升逐条掉落概率
+            PlayerEntity killer = npc.lastKillerPlayerId != null
+                    ? getPlayerById(npc.lastKillerPlayerId) : null;
+            double luckyBonus = killer != null ? killer.getLuckyStarBonus() : 0;
             for (NpcEntity.Loot loot : npc.loot) {
                 if (!"skillOrb".equals(loot.type())) {
                     continue;
                 }
-                double odds = Geometry.clamp(loot.odds(), 0, 1);
+                double odds = Geometry.clamp(loot.odds() + luckyBonus, 0, 1);
                 if (Math.random() < odds) {
                     spawnSkillOrb(npc.position, loot.tag());
                 }
@@ -811,6 +818,12 @@ public final class World implements WorldView {
             if (!canSpawnAt(position, false, true)) {
                 continue;
             }
+            // 多人刷怪交叉区域降刷怪率:被 n 个玩家的刷怪区域同时覆盖时,仅以 1/n 概率生成,
+            // 使重叠区域的总刷怪率回到单人水平(否则每个玩家各有一套计时器会导致刷怪量成倍增加)。
+            int coverage = countPlayersCovering(position, config.npcSpawnLowRadius);
+            if (coverage > 1 && Math.random() > 1.0 / coverage) {
+                continue;
+            }
             NpcEntity npc = createRandomNpc(position);
             npc.setTarget(position, this, true);
             npcs.add(npc);
@@ -824,10 +837,32 @@ public final class World implements WorldView {
             if (!canSpawnAt(position, true, false)) {
                 continue;
             }
+            // 与刷怪同理:交叉区域按覆盖人数下调生成概率
+            int coverage = countPlayersCovering(position, config.itemSpawnLowRadius);
+            if (coverage > 1 && Math.random() > 1.0 / coverage) {
+                continue;
+            }
             // 目前物品注册表中只有"治疗宝石"
             items.add(new ItemEntity(position, "healing_gem", "治疗宝石", 1));
             return;
         }
+    }
+
+    /** 统计有多少个存活玩家的刷怪区域(以玩家为圆心的 radius 圆)覆盖该点 */
+    private int countPlayersCovering(Geometry.Vec2 position, double radius) {
+        int count = 0;
+        double radiusSquared = radius * radius;
+        for (PlayerEntity player : players) {
+            if (player.isDead) {
+                continue;
+            }
+            double dx = player.position.x - position.x;
+            double dy = player.position.y - position.y;
+            if (dx * dx + dy * dy <= radiusSquared) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
@@ -837,26 +872,23 @@ public final class World implements WorldView {
     private NpcEntity createRandomNpc(Geometry.Vec2 position) {
         double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08 + 0.11;
         double random = Math.random() * total;
+        NpcEntity npc;
         if (random < 0.8) {
-            return new WhitePixelNpc(position, null, null);
+            npc = new WhitePixelNpc(position, null, null);
+        } else if ((random -= 0.8) < 0.4) {
+            npc = new WhitePixelVa2Npc(position, null, null);
+        } else if ((random -= 0.4) < 0.2) {
+            npc = new SkyBluePixelNpc(position, null, null);
+        } else if ((random -= 0.2) < 0.1) {
+            npc = new RedPixelNpc(position, null, null);
+        } else if ((random -= 0.1) < 0.11) {
+            npc = new GoldenDodgeXa4Npc(position, null, null);
+        } else {
+            npc = new PurpleShieldNpc(position, null, null);
         }
-        random -= 0.8;
-        if (random < 0.4) {
-            return new WhitePixelVa2Npc(position, null, null);
-        }
-        random -= 0.4;
-        if (random < 0.2) {
-            return new SkyBluePixelNpc(position, null, null);
-        }
-        random -= 0.2;
-        if (random < 0.1) {
-            return new RedPixelNpc(position, null, null);
-        }
-        random -= 0.1;
-        if (random < 0.11) {
-            return new GoldenDodgeXa4Npc(position, null, null);
-        }
-        return new PurpleShieldNpc(position, null, null);
+        // 按等级概率表随机等级(等级越高能力越强;默认等级 0)
+        npc.applyNpcLevel(NpcLevelTable.rollLevel(npc.maxLevel()));
+        return npc;
     }
 
     /** 环形范围内的随机点(面积均匀) */
@@ -1246,7 +1278,7 @@ public final class World implements WorldView {
                     position, dir, player.id, player.teamId, "", color));
             activeSkill.cast(context);
             player.playerRule.fireCooldownNow = Math.max(
-                    player.playerRule.fireCooldownMax, activeSkill.cooldown());
+                    player.playerRule.fireCooldownMax, activeSkill.cooldown() * player.getCooldownMultiplier());
             return;
         }
 
@@ -1304,6 +1336,14 @@ public final class World implements WorldView {
         }
     }
 
+    /** 玩家选择一项专研(由客户端 research_choose 指令触发) */
+    public void chooseResearch(long playerId, String tag) {
+        PlayerEntity player = getPlayerById(playerId);
+        if (player != null && !player.isDead) {
+            player.chooseResearch(tag);
+        }
+    }
+
     /** 房间标识(用于日志与调试) */
     public long roomSeed() {
         return roomSeed;
@@ -1326,6 +1366,16 @@ public final class World implements WorldView {
         }
         List<NpcEntity> snapshot = new ArrayList<>(npcs);
         NpcEntity.ActionContext context = buildActionContext();
+
+        // 同步从者射速倍率(主人的专研"射速"):从者开火节奏随之加快
+        for (NpcEntity npc : npcs) {
+            if (npc.ownerId == null) {
+                npc.ownerFireRateMultiplier = 1;
+                continue;
+            }
+            PlayerEntity owner = getPlayerById(npc.ownerId);
+            npc.ownerFireRateMultiplier = owner != null ? owner.getFireRateMultiplier() : 1;
+        }
         context.deltaTime = dt;
         for (NpcEntity npc : snapshot) {
             if (npc.isDead) {

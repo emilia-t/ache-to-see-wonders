@@ -6,7 +6,8 @@ import type {
   MapData,
   Point,
   TickTimer,
-  GameConfig
+  GameConfig,
+  PlayerDeathDrop
 } from '@/components/pixel_war/interface/Interface';
 import { 
   Instruct
@@ -34,6 +35,7 @@ import {
 } from '@/components/pixel_war/class';
 
 import gameConfig from '@/components/pixel_war/service/GameConfig';
+import { H_rollNpcLevel } from '@/components/pixel_war/registry/NpcLevelTable';
 
 ////////////////////
 // 常量区-->
@@ -476,10 +478,10 @@ const spawnPlayerBullet = (target: Point, playerId: number) => {
         );
       }
     });
-    // 技能冷却不低于施法者的基础开火冷却
+    // 技能冷却不低于施法者的基础开火冷却(受专研"冷却"降低)
     playerEntity.playerRule.fireCooldownNow = Math.max(
       playerEntity.playerRule.fireCooldownMax,
-      activeSkill.cooldown
+      activeSkill.cooldown * playerEntity.getCooldownMultiplier()
     );
     return;
   }
@@ -616,6 +618,7 @@ const updateBulletEntities = (deltaTime: number): boolean => {
           
           if (owner) {
             owner.player_score += entity.kill_score;
+            entity.lastKillerPlayerId = owner.id;
           }
 
           if(bullet.teamId!==null){// 玩家的从者NPC击杀的其他NPC也计入玩家的击杀分数中
@@ -624,6 +627,7 @@ const updateBulletEntities = (deltaTime: number): boolean => {
               const player = getPlayerDynamicEntityById(npc.ownerId);
               if(player){
                 player.player_score += entity.kill_score;
+                entity.lastKillerPlayerId = player.id;
               }
             }
           }
@@ -725,8 +729,9 @@ const killPlayerServantsOnPlayerDeath = (player: PlayerDynamicEntity): void => {
 
 /**
  * 结算死亡实体的经验掉落
- * NPC 或玩家死亡后:60% 经验掉落为经验球(向上取整),其余 40% 作为死亡惩罚扣除。
- * 即:掉落经验 = ceil(game_exp × 60%),实际扣除经验 = game_exp - 掉落经验(经验清零)。
+ * - NPC:掉落经验 = ceil(game_exp × 60%),其余作为死亡惩罚扣除。
+ * - 玩家:统一走 PlayerDynamicEntity.onDeath()(掉落物品/技能、专研全部降 1 级、
+ *   经验按“等级折算总经验 + 当前经验”的 60% 掉落且上限 215),掉落物落在地面。
  * 同时,玩家死亡时其所有从者跟随死亡。
  */
 const handleEntityDeathExpOrbs = (): void => {
@@ -735,18 +740,43 @@ const handleEntityDeathExpOrbs = (): void => {
     if (entity.deathExpProcessed) continue;
     entity.deathExpProcessed = true;
 
-    // 玩家死亡时,其所有从者跟随死亡
     if (entity instanceof PlayerDynamicEntity) {
+      // 玩家死亡时,其所有从者跟随死亡
       killPlayerServantsOnPlayerDeath(entity);
+      // 玩家死亡结算(物品/技能/专研惩罚/经验掉落)
+      const drop = entity.onDeath();
+      spawnPlayerDeathDrops(entity.position, drop);
+      if (drop.droppedExp > 0) {
+        spawnExpOrbs(entity.position, drop.droppedExp);
+      }
+      continue;
     }
 
-    // 掉落经验 = ceil(game_exp × 60%)
+    // NPC:掉落经验 = ceil(game_exp × 60%),其余作为死亡惩罚扣除
     const dropExp = Math.ceil(entity.game_exp * 0.6);
-    // 死亡惩罚:经验清零(60%掉落为经验球 + 40%扣除)
     entity.game_exp = 0;
     if (dropExp > 0) {
       spawnExpOrbs(entity.position, dropExp);
     }
+  }
+};
+
+/** 死亡掉落物落点:在中心位置周围随机散布 */
+const randomDropPosition = (origin: Point): Point => {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 8 + Math.random() * 30;
+  return { x: origin.x + Math.cos(angle) * dist, y: origin.y + Math.sin(angle) * dist };
+};
+
+/** 玩家死亡掉落:物品按堆叠落地,技能落成技能球 */
+const spawnPlayerDeathDrops = (position: Point, drop: PlayerDeathDrop): void => {
+  for (const stack of drop.items) {
+    const item = new HealingGemItemEntity(randomDropPosition(position), stack.name, stack.tag);
+    item.count = Math.max(1, Math.floor(stack.count));
+    MAP_DATA.itemEntities.push(item);
+  }
+  for (const skillTag of drop.skillTags) {
+    spawnSkillOrb(position, skillTag);
   }
 };
 
@@ -804,9 +834,15 @@ const handleNpcDeathLoot = (): void => {
     if (npc.ownerId !== null) continue;// 玩家从者不产出战利品
     if (!Array.isArray(npc.loot) || npc.loot.length === 0) continue;
 
+    // 专研"幸运之星":按击杀者(或其从者主人)的等级提升逐条掉落概率
+    const killer = npc.lastKillerPlayerId !== null
+      ? getPlayerDynamicEntityById(npc.lastKillerPlayerId)
+      : null;
+    const luckyBonus = killer ? killer.getLuckyStarBonus() : 0;
+
     for (const loot of npc.loot) {
       if (loot.type !== 'skillOrb') continue;
-      const odds = Math.max(0, Math.min(1, Number(loot.odds)));
+      const odds = Math.max(0, Math.min(1, Number(loot.odds) + luckyBonus));
       if (!(Math.random() < odds)) continue;
       spawnSkillOrb(npc.position, loot.tag);
     }
@@ -1094,6 +1130,16 @@ const updateDynamicEntities = (deltaTime: number) => {
     }
   }
 
+  // 同步从者射速倍率(主人的专研"射速"):从者开火节奏随之加快
+  for (const npc of MAP_DATA.dynamicEntitie.npcDynamicEntitys) {
+    if (npc.ownerId === null) {
+      npc.ownerFireRateMultiplier = 1;
+      continue;
+    }
+    const owner = getPlayerDynamicEntityById(npc.ownerId);
+    npc.ownerFireRateMultiplier = owner ? owner.getFireRateMultiplier() : 1;
+  }
+
   // 先结算本帧死亡实体的经验掉落(部分实体如红像素自爆会立即完成死亡特效并可能被清理)
   handleEntityDeathExpOrbs();
   // 再结算战利品掉落(必须在清理死亡实体之前,否则刚死亡的 NPC 会被移除导致掉落丢失)
@@ -1253,6 +1299,8 @@ const spawnNpcInRingAroundPlayer = (
     const NpcCtor = selectRandomNpcCtor();
     if(NpcCtor === null){break;}
     const npc = new NpcCtor(position,null,null);
+    // 按等级概率表随机等级(等级越高能力越强;默认等级 0)
+    npc.applyNpcLevel(H_rollNpcLevel(npc.getMaxLevel()));
     npc.setTarget(position, MAP_DATA.staticEntities, { preferStraight: true });
     MAP_DATA.dynamicEntitie.npcDynamicEntitys.push(npc);
     return true;
@@ -1518,6 +1566,15 @@ const handleInstruct = (instruct: InstructObject) => {
       const playerEntity = getPlayerDynamicEntityById(instruct.data.playerId as number);
       if (playerEntity && !playerEntity.isDead) {
         playerEntity.useInventoryItem(instruct.data.uid as string);
+      }
+      break;
+    }
+
+    case 'research_choose': {
+      // 玩家从专研界面中选择了一项研究,由服务端权威结算
+      const playerEntity = getPlayerDynamicEntityById(instruct.data.playerId as number);
+      if (playerEntity && !playerEntity.isDead) {
+        playerEntity.chooseResearch(instruct.data.tag as string);
       }
       break;
     }

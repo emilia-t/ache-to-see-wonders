@@ -38,6 +38,12 @@ public class WhitePixelVa2Npc extends WhitePixelNpc {
         return GENERATE_WEIGHT;
     }
 
+    /** 等级变化时重算等级相关属性(va2 的经验值公式与白像素不同:2 + Level × 3) */
+    @Override
+    protected void onNpcLevelApplied() {
+        this.gameExp = 2 + level * 3;
+    }
+
     /** 向水平移动方向上下 45° 各射出一颗子弹 */
     @Override
     public void action(ActionContext context) {
@@ -67,7 +73,8 @@ public class WhitePixelVa2Npc extends WhitePixelNpc {
                 id,
                 teamId,
                 "",
-                bulletColor));
+                bulletColor,
+                getBulletMoveSpeed()));
     }
 
     private static Geometry.Vec2 rotate(double x, double y, double radians) {

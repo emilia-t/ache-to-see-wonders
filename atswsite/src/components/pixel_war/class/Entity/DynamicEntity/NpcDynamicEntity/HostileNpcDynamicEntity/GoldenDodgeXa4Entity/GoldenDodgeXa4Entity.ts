@@ -148,6 +148,21 @@ class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
     // 闪避者不拾取任何物品
   }
 
+  /** 当前攻击间隔(秒):随等级缩短(ACTION_INTERVAL - 0.2 × Level) */
+  private getActionInterval(): number {
+    return Math.max(0.1, GoldenDodgeXa4Entity.ACTION_INTERVAL - 0.2 * this.level);
+  }
+
+  /** 当前闪现冷却(秒):随等级缩短(BLINK_COOLDOWN - 0.4 × Level) */
+  private getBlinkCooldown(): number {
+    return Math.max(0.1, GoldenDodgeXa4Entity.BLINK_COOLDOWN - 0.4 * this.level);
+  }
+
+  /** 等级变化时重算等级相关属性(经验值随等级提升) */
+  protected override onNpcLevelApplied(): void {
+    this.game_exp = 3 + this.level * 3;
+  }
+
   /** 偏好直线移动:强制以直线路径前往目标 */
   public override setTarget(
     target: Point,
@@ -209,10 +224,10 @@ class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
         this.actionBefore(context);
         return;
       }
-      this.actionCooldownRemaining -= context.deltaTime;
+      this.actionCooldownRemaining -= this.getActionDelta(context.deltaTime);
       while (this.actionCooldownRemaining <= 0 && this.isMoving && !this.isDead) {
         this.action(context);
-        this.actionCooldownRemaining += GoldenDodgeXa4Entity.ACTION_INTERVAL;
+        this.actionCooldownRemaining += this.getActionInterval();
       }
     } else {
       // 被玩家吸附情况下不考虑移动的条件
@@ -226,10 +241,10 @@ class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
         this.actionBefore(context);
         return;
       }
-      this.actionCooldownRemaining -= context.deltaTime;
+      this.actionCooldownRemaining -= this.getActionDelta(context.deltaTime);
       while (this.actionCooldownRemaining <= 0 && !this.isDead) {
         this.action(context);
-        this.actionCooldownRemaining += GoldenDodgeXa4Entity.ACTION_INTERVAL;
+        this.actionCooldownRemaining += this.getActionInterval();
       }
     }
   }
@@ -237,7 +252,7 @@ class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
   public override actionBefore(context: ActionLoopContext): void {
     this.actionLoopRunning = true;
     this.action(context);
-    this.actionCooldownRemaining = GoldenDodgeXa4Entity.ACTION_INTERVAL;
+    this.actionCooldownRemaining = this.getActionInterval();
   }
 
   public override actionAfter(_context: ActionLoopContext): void {
@@ -261,7 +276,8 @@ class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
           this.id,
           this.teamId,
           '',
-          bulletColor
+          bulletColor,
+          this.getBulletMoveSpeed()
         )
       );
     }
@@ -368,8 +384,8 @@ class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
       elapsed: 0,
       duration: GoldenDodgeXa4Entity.BLINK_DURATION
     };
-    // 闪现一触发即进入冷却,避免连续闪现
-    this.blinkCooldownRemaining = GoldenDodgeXa4Entity.BLINK_COOLDOWN;
+    // 闪现一触发即进入冷却,避免连续闪现(冷却时长随等级缩短)
+    this.blinkCooldownRemaining = this.getBlinkCooldown();
 
     // 清空常规寻路状态,避免与闪现位移冲突
     this.isMoving = false;
@@ -562,6 +578,9 @@ class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
         ctx.restore();
       }
     }
+
+    // NPC 等级徽标(/show_level)
+    this.drawNpcLevelBadge(ctx, worldToScreen, debugFlags);
   }
 
   /**

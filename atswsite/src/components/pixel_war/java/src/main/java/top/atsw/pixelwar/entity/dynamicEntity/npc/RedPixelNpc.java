@@ -35,8 +35,26 @@ public class RedPixelNpc extends NpcEntity {
         this.healthMax = 1;
         this.killScore = 3;
         this.mapColor = "#ff1313";
-        this.gameExp = 2;
+        this.gameExp = 4; // 基础经验值(4 + Level × 4)
         // 战利品:红像素(自走爆炸)不掉落任何战利品
+    }
+
+    /** 等级上限:2 */
+    @Override
+    public int maxLevel() {
+        return 2;
+    }
+
+    /** 每级移动速度增益:红像素为 40(其余 NPC 为 20) */
+    @Override
+    protected double moveSpeedBonusPerLevel() {
+        return 40;
+    }
+
+    /** 等级变化时重算等级相关属性(经验值随等级提升) */
+    @Override
+    protected void onNpcLevelApplied() {
+        this.gameExp = 4 + level * 4;
     }
 
     @Override

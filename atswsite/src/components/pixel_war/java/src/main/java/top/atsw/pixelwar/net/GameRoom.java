@@ -217,6 +217,12 @@ public final class GameRoom {
                         world.playerUseItem(playerId, input.uid());
                     }
                 }
+                case Protocol.ClientType.RESEARCH_CHOOSE -> {
+                    Protocol.ResearchChoose input = mapper.treeToValue(data, Protocol.ResearchChoose.class);
+                    if (input != null) {
+                        world.chooseResearch(playerId, input.tag());
+                    }
+                }
                 case Protocol.ClientType.TICK_PAUSE -> {
                     Protocol.TickPause input = data == null ? null : mapper.treeToValue(data, Protocol.TickPause.class);
                     if (input == null || input.paused() == null) {

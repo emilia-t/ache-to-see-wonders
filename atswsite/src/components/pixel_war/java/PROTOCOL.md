@@ -17,6 +17,7 @@
 | `respawn` | `{}` | 死亡后请求重生（服务端随机出生点） |
 | `inventory_update` | `{ inventory: { entries, equippedSkills } }` | 客户端背包变更后提交完整背包（服务端会规范化） |
 | `inventory_use_item` | `{ uid }` | 使用背包物品 |
+| `research_choose` | `{ tag }` | 从专研界面选择一项研究(必须属于服务端下发的待选项) |
 | `tick_pause` | `{ paused?: boolean }` | 暂停/恢复；不传 `paused` 时服务端自行切换 |
 | `ping` | `{ clientTime }` | 心跳，服务端回 `pong` |
 
@@ -50,7 +51,7 @@
   "selfPrivate": { /* PlayerPrivate:背包/经验/冷却/从者,仅单播给自己 */ },
   "players": [ /* PlayerPublic[]:视野内的玩家(含自己,自己的实体固定排在首位的是 self) */ ],
   "npcs":      [ { "id", "tag", "name", "ownerId", "teamId", "attitude", "position", "facingDirection",
-                   "width", "height", "health", "healthMax", "dead", "moving", "mapColor", "killScore" } ],
+                   "width", "height", "health", "healthMax", "dead", "moving", "mapColor", "killScore", "level" } ],
   "bullets":   [ { "id", "tag", "position", "velocity", "ownerId", "teamId", "width", "height", "damage", "bulletColor" } ],
   "grenades":  [ { "id", "tag", "position", "ownerId", "teamId", "width", "height", "fuseRatio" } ],
   "expOrbs":   [ { "id", "position", "value", "width", "height" } ],
@@ -61,7 +62,12 @@
 
 `PlayerPublic`：`id / name / teamId / position / facingDirection / width / height / health / healthMax / dead / moving / sprinting / staminaRatio / servantCount / score / level`
 
-`PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / fireCooldownNow / fireCooldownMax / equippedSkillCooldowns / inventory / servantIds`
+> `NpcSnapshot.level`：NPC 等级（0~5）。等级越高能力越强（移动速度、子弹速度、攻击间隔、闪现冷却、
+> 紫盾生命值/防护方块数、经验值均随等级变化，见 `game/NpcLevelTable` 与 `NpcEntity.applyNpcLevel`）。
+> 为节省带宽，**等级 0 时该字段不下发**，客户端缺省视为 0。刷怪时按等级概率表随机等级
+> （上限 5 用 45/25/15/8/5/2%，上限 2 用 65/25/10%）。
+
+`PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / fireCooldownNow / fireCooldownMax / equippedSkillCooldowns / inventory / servantIds / research / researchPendingOptions / lastDeathReport`
 
 > 说明：`invincibleTimer`、`dodgeCooldownNow`、`dodgeCooldownMax` 已从玩家规则中移除。
 > 玩家不再有无敌时间；闪避冷却改由玩家装配的「闪现」技能自带的内置CD计时器管理
@@ -69,6 +75,25 @@
 > `equippedSkillCooldowns`：长度 10 的数组，下标与 `inventory.equippedSkills` 一致，
 > 值为对应槽位技能的**剩余冷却秒数**（0 表示就绪，无冷却的技能恒为 0，量化到 2 位小数），
 > 仅用于客户端渲染技能冷却（冷却时长上限由客户端从技能定义 `maxCooldown` 取得，无需下发）。
+>
+> `research`：已研究的专研项数组 `[{ tag, level, value }]`；`value` 仅「不动堡垒」用于记录剩余吸收值，其余恒为 0。
+> `researchPendingOptions`：待玩家选择的专研项标签数组（空数组表示无待选界面）。
+> 玩家升级时按 `p = max(0.05, (64 - 等级)/100)` 的概率触发专研，服务端抽取 3 个互不相同的研究项下发，
+> 客户端展示顶部小卡片并回传 `research_choose`。
+> **跨级补发**：每次升级都独立判定，判定成功的次数累计为服务端私有的「待抽取次数」；一次升级跨越多级时，
+> 玩家选择后会立即补发下一次待选项，不会漏掉抽取机会。
+>
+> `lastDeathReport`：最近一次死亡结算明细，重生后为 `null`。结构：
+> ```jsonc
+> {
+>   "droppedExp": 215.0,
+>   "items": [ { "tag": "healing_gem", "name": "治疗宝石", "count": 3 } ],
+>   "skillTags": [ "va2_shoot_skill" ],
+>   "researchDowngrades": [ { "tag": "move_speed", "from": 3, "to": 2 } ]
+> }
+> ```
+> `researchDowngrades` 中 `to == 0` 表示该研究项已被移除；死亡时所有专研项降低 1 级，降至 0 级则移除。
+> `droppedExp = min(215, ceil((等级折算总经验 + 当前经验) × 0.6))`。客户端据该字段在死亡界面展示掉落与降级信息。
 
 `inventory` 与前端结构一致：
 

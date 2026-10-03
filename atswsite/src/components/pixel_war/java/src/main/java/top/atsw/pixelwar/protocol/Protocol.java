@@ -34,6 +34,7 @@ public final class Protocol {
         public static final String RESPAWN = "respawn";
         public static final String INVENTORY_UPDATE = "inventory_update";
         public static final String INVENTORY_USE_ITEM = "inventory_use_item";
+        public static final String RESEARCH_CHOOSE = "research_choose";
         public static final String TICK_PAUSE = "tick_pause";
         public static final String PING = "ping";
 
@@ -121,6 +122,10 @@ public final class Protocol {
 
     /** 使用背包物品 */
     public record InventoryUseItem(String uid) {
+    }
+
+    /** 专研选择:tag 为选中的研究项标签 */
+    public record ResearchChoose(String tag) {
     }
 
     /** 暂停开关,data 为 null 时服务端自行切换 */
@@ -220,7 +225,7 @@ public final class Protocol {
         }
     }
 
-    /** 玩家的私有状态(仅单播给本人):背包 / 经验 / 开火冷却 / 技能CD / 从者列表 */
+    /** 玩家的私有状态(仅单播给本人):背包 / 经验 / 开火冷却 / 技能CD / 从者列表 / 专研 */
     public record PlayerPrivate(
             long playerId,
             long score,
@@ -235,15 +240,50 @@ public final class Protocol {
             /** 技能装配区各槽位剩余CD(秒),下标与 inventory.equippedSkills 一致 */
             List<Double> equippedSkillCooldowns,
             InventoryDto inventory,
-            List<Long> servantIds
+            List<Long> servantIds,
+            /** 已研究的专研项 */
+            List<ResearchEntryDto> research,
+            /** 待玩家选择的专研选项(空数组表示无待选界面) */
+            List<String> researchPendingOptions,
+            /** 最近一次死亡结算明细(null 表示尚未死亡或已重生) */
+            DeathReportDto lastDeathReport
     ) {
+    }
+
+    /** 已研究的专研项:value 仅"不动堡垒"用于记录剩余吸收值,其余恒为 0 */
+    public record ResearchEntryDto(String tag, int level, double value) {
+
+        public ResearchEntryDto {
+            value = quantize(value);
+        }
+    }
+
+    /** 玩家死亡明细:掉落经验 / 掉落物品 / 掉落技能 / 专研降级(仅单播给本人用于死亡界面) */
+    public record DeathReportDto(
+            double droppedExp,
+            List<DeathItemDto> items,
+            List<String> skillTags,
+            List<ResearchDowngradeDto> researchDowngrades
+    ) {
+
+        public DeathReportDto {
+            droppedExp = quantize(droppedExp);
+        }
+    }
+
+    /** 死亡掉落的物品堆叠 */
+    public record DeathItemDto(String tag, String name, int count) {
+    }
+
+    /** 专研降级记录(from > to;to == 0 表示该项被移除) */
+    public record ResearchDowngradeDto(String tag, int from, int to) {
     }
 
     /**
      * NPC 快照。
      *
      * <p>width/height 固定为 25 不再下发;name 为空字符串时置 null(序列化时直接被忽略);
-     * deathEffectTimer 仅在死亡特效期间有值(平时 null)。</p>
+     * deathEffectTimer 仅在死亡特效期间有值(平时 null);level 为 0 时置 null(默认等级 0 不下发)。</p>
      */
     public record NpcSnapshot(
             long id,
@@ -260,7 +300,8 @@ public final class Protocol {
             boolean moving,
             String mapColor,
             Integer killScore,
-            Double deathEffectTimer
+            Double deathEffectTimer,
+            Integer level
     ) {
 
         public NpcSnapshot {
@@ -274,6 +315,9 @@ public final class Protocol {
                 if (deathEffectTimer <= 0) {
                     deathEffectTimer = null;
                 }
+            }
+            if (level != null && level <= 0) {
+                level = null;// 默认等级 0 不下发
             }
         }
     }

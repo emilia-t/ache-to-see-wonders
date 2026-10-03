@@ -165,10 +165,10 @@ public class GoldenDodgeXa4Npc extends NpcEntity {
                 actionBefore(context);
                 return;
             }
-            actionCooldownRemaining -= context.deltaTime;
+            actionCooldownRemaining -= getActionDelta(context.deltaTime);
             while (actionCooldownRemaining <= 0 && isMoving && !isDead) {
                 action(context);
-                actionCooldownRemaining += ACTION_INTERVAL;
+                actionCooldownRemaining += getActionInterval();
             }
         } else {
             // 被玩家吸附情况下不考虑移动的条件
@@ -182,10 +182,10 @@ public class GoldenDodgeXa4Npc extends NpcEntity {
                 actionBefore(context);
                 return;
             }
-            actionCooldownRemaining -= context.deltaTime;
+            actionCooldownRemaining -= getActionDelta(context.deltaTime);
             while (actionCooldownRemaining <= 0 && !isDead) {
                 action(context);
-                actionCooldownRemaining += ACTION_INTERVAL;
+                actionCooldownRemaining += getActionInterval();
             }
         }
     }
@@ -194,7 +194,23 @@ public class GoldenDodgeXa4Npc extends NpcEntity {
     public void actionBefore(ActionContext context) {
         actionLoopRunning = true;
         action(context);
-        actionCooldownRemaining = ACTION_INTERVAL;
+        actionCooldownRemaining = getActionInterval();
+    }
+
+    /** 当前攻击间隔(秒):随等级缩短(ACTION_INTERVAL - 0.2 × Level) */
+    private double getActionInterval() {
+        return Math.max(0.1, ACTION_INTERVAL - 0.2 * level);
+    }
+
+    /** 当前闪现冷却(秒):随等级缩短(BLINK_COOLDOWN - 0.4 × Level) */
+    private double getBlinkCooldown() {
+        return Math.max(0.1, BLINK_COOLDOWN - 0.4 * level);
+    }
+
+    /** 等级变化时重算等级相关属性(经验值随等级提升) */
+    @Override
+    protected void onNpcLevelApplied() {
+        this.gameExp = 3 + level * 3;
     }
 
     /** 结束行动循环:清除运行标记与冷却 */
@@ -222,7 +238,8 @@ public class GoldenDodgeXa4Npc extends NpcEntity {
                     id,
                     teamId,
                     "",
-                    bulletColor));
+                    bulletColor,
+                    getBulletMoveSpeed()));
         }
     }
 
@@ -348,7 +365,7 @@ public class GoldenDodgeXa4Npc extends NpcEntity {
 
         this.blinkState = new BlinkState(position.copy(), target, dir, BLINK_DURATION);
         // 闪现一触发即进入冷却,避免连续闪现
-        this.blinkCooldownRemaining = BLINK_COOLDOWN;
+        this.blinkCooldownRemaining = getBlinkCooldown();
 
         // 清空常规寻路状态,避免与闪现位移冲突
         this.isMoving = false;

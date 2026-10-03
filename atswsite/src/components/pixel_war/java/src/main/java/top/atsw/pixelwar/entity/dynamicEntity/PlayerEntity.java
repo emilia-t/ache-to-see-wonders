@@ -5,6 +5,7 @@ import top.atsw.pixelwar.core.Geometry;
 import top.atsw.pixelwar.entity.WorldView;
 import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
 import top.atsw.pixelwar.game.Inventory;
+import top.atsw.pixelwar.game.Research;
 import top.atsw.pixelwar.game.Skill;
 import top.atsw.pixelwar.registry.ItemDefinition;
 import top.atsw.pixelwar.registry.ItemRegistry;
@@ -31,7 +32,7 @@ public final class PlayerEntity extends DynamicEntity {
     public static final double MOVE_SPEED = 410;
     public static final double MIN_MOVE_SPEED = 50;
     /** 玩家生命值上限 */
-    public static final double HEALTH_MAX = 100;
+    public static final double HEALTH_MAX = 10;
     /** 玩家移动阻尼,值越大松手后减速越快 */
     public static final double MOTION_DAMPING = 8.5;
     /** 玩家转向响应,值越大移动转向越跟手 */
@@ -54,6 +55,14 @@ public final class PlayerEntity extends DynamicEntity {
     public static final double SPRINT_START_MIN_STAMINA = 20;
     /** 体力完全耗尽后的恢复延迟(秒) */
     public static final double STAMINA_EXHAUST_RECOVERY_DELAY = 5;
+    /** 基础开火冷却(秒),实际冷却由专研(射速/冷却)在此基础上缩放 */
+    public static final double BASE_FIRE_COOLDOWN = 0.5;
+    /** 基础体力上限(未叠加专研前) */
+    public static final double BASE_STAMINA_MAX = 100;
+    /** 死亡掉落经验系数:按(等级折算总经验 + 当前经验)的该比例掉落 */
+    public static final double DEATH_DROP_COEFFICIENT = 0.6;
+    /** 单次死亡掉落经验的上限(避免高等级玩家爆炸式掉落导致卡顿) */
+    public static final double DEATH_DROP_EXP_MAX = 215;
 
     /** 从者网格边长(15 × 15,中心格 (7,7) 为玩家本体不可占用) */
     public static final int SERVANT_GRID_SIZE = 15;
@@ -109,8 +118,13 @@ public final class PlayerEntity extends DynamicEntity {
     public record ItemStack(String tag, String name, int count) {
     }
 
-    /** 玩家死亡结算结果:掉落经验值 + 掉落物品堆叠 + 掉落技能标签 */
-    public record DeathDrop(double droppedExp, List<ItemStack> items, List<String> skillTags) {
+    /** 专研降级记录(from > to;to == 0 表示该项被移除) */
+    public record ResearchDowngrade(String tag, int from, int to) {
+    }
+
+    /** 玩家死亡结算结果:掉落经验值 + 掉落物品堆叠 + 掉落技能标签 + 专研降级明细 */
+    public record DeathDrop(double droppedExp, List<ItemStack> items, List<String> skillTags,
+                            List<ResearchDowngrade> researchDowngrades) {
     }
 
     public final MoveState moveState = new MoveState();
@@ -139,6 +153,21 @@ public final class PlayerEntity extends DynamicEntity {
      * 写进这份快照字段随 {@code PlayerPrivate} 单播下发,仅用于客户端渲染技能冷却。</p>
      */
     public final double[] equippedSkillCooldowns = new double[Inventory.SKILL_SLOT_COUNT];
+
+    /** 已研究的专研项 */
+    public final List<Research.State> research = new ArrayList<>();
+    /** 待玩家选择的专研选项(空表示无待选界面) */
+    public final List<String> researchPendingOptions = new ArrayList<>();
+    /**
+     * 尚未展示的专研抽取次数。
+     *
+     * <p>每次升级都会独立进行一次触发判定,成功的次数累计到这里;
+     * 这样一次 gainExp 跨越多级时不会因为界面已打开而漏掉后续等级的抽取机会。</p>
+     */
+    public int researchPendingRolls;
+
+    /** 最近一次死亡结算明细(仅用于死亡界面展示,重生时清空) */
+    public DeathDrop lastDeathReport;
 
     /** 未疾跑时的基础移动速度(由从者数量决定) */
     private double baseMoveSpeed = MOVE_SPEED;
@@ -194,6 +223,20 @@ public final class PlayerEntity extends DynamicEntity {
         return getExpToNextLevel(gameLevel);
     }
 
+    /**
+     * 把「等级 + 当前经验」折算成玩家累计获得的总经验值。
+     * 即:累加 0 ~ level-1 每一级所需的升级经验,再加上当前等级内已积累的经验。
+     * 用于死亡掉落经验的计算。
+     */
+    public static double getTotalAccumulatedExp(int level, double currentExp) {
+        int safeLevel = Math.max(0, level);
+        double total = 0;
+        for (int l = 0; l < safeLevel; l++) {
+            total += getExpToNextLevel(l);
+        }
+        return total + Math.max(0, currentExp);
+    }
+
     /** 增加游戏经验,经验足够时自动提升游戏等级 */
     public void gainExp(double amount) {
         if (amount <= 0 || isDead) {
@@ -203,6 +246,8 @@ public final class PlayerEntity extends DynamicEntity {
         while (gameExp >= getExpToNextLevel(gameLevel)) {
             gameExp -= getExpToNextLevel(gameLevel);
             gameLevel += 1;
+            // 每次升级都有概率触发专研界面
+            rollResearchOnLevelUp();
         }
     }
 
@@ -366,12 +411,24 @@ public final class PlayerEntity extends DynamicEntity {
     }
 
     /**
-     * 取出背包与技能装配区中的全部内容,并清空背包(仅供死亡结算使用)。
+     * 取出背包与技能装配区中需要掉落的内容(仅供死亡结算使用)。
+     *
+     * <p>专研"死亡不掉落"生效时,按当前等级逐条判断物品与技能是否被保护:
+     * 被保护的条目留在原格子中,未被保护的按原有规则掉落。</p>
      */
     private void takeInventoryForDeathDrop(List<ItemStack> itemStacks, List<String> skillTags) {
+        double keepChance = getDeathKeepChance();
         Map<String, ItemStack> stackMap = new LinkedHashMap<>();
-        for (Inventory.Entry entry : inventory.entries) {
+
+        Inventory.Bag kept = Inventory.createEmpty();
+        for (int i = 0; i < inventory.entries.length; i++) {
+            Inventory.Entry entry = inventory.entries[i];
             if (entry == null) {
+                continue;
+            }
+            // 死亡不掉落:按概率保护该条目
+            if (keepChance > 0 && Math.random() < keepChance) {
+                kept.entries[i] = entry;
                 continue;
             }
             if (Inventory.KIND_ITEM.equals(entry.kind)) {
@@ -385,23 +442,29 @@ public final class PlayerEntity extends DynamicEntity {
             }
             skillTags.add(entry.tag);
         }
-        for (String tag : inventory.equippedSkills) {
-            if (tag != null) {
-                skillTags.add(tag);
+        for (int i = 0; i < inventory.equippedSkills.length; i++) {
+            String tag = inventory.equippedSkills[i];
+            if (tag == null) {
+                continue;
             }
+            if (keepChance > 0 && Math.random() < keepChance) {
+                kept.equippedSkills[i] = tag;
+                continue;
+            }
+            skillTags.add(tag);
         }
         itemStacks.addAll(stackMap.values());
-        // 背包整体清空:死亡后不再保留任何物品与技能
-        this.inventory = Inventory.createEmpty();
+        this.inventory = kept;
     }
 
     /**
      * 玩家死亡事件:统一处理玩家死亡后需要做的事情。
      *
      * <ul>
-     *   <li>清空背包:背包中的物品全部取出并掉落;</li>
+     *   <li>清空背包:背包中的物品全部取出并掉落(受专研"死亡不掉落"保护的部分保留);</li>
      *   <li>清空技能:技能装配区中已装配的技能与背包中的技能条目一并取出并掉落;</li>
-     *   <li>清空经验:结算经验掉落后经验归零(掉落经验 = ceil(经验 × 60%));</li>
+     *   <li>专研惩罚:所有专研项降低 1 级,降至 0 级则直接移除该项;</li>
+     *   <li>清空经验:按"(等级折算总经验 + 当前经验) × 掉落系数"掉落经验球,上限 215;</li>
      *   <li>清空等级:游戏等级归零;</li>
      *   <li>清空积分:击杀积分归零。</li>
      * </ul>
@@ -411,14 +474,47 @@ public final class PlayerEntity extends DynamicEntity {
     public DeathDrop onDeath() {
         List<ItemStack> items = new ArrayList<>();
         List<String> skillTags = new ArrayList<>();
+        // 死亡时清空待选的专研选项与未展示的抽取次数(死亡后不再保留专研界面)
+        researchPendingOptions.clear();
+        researchPendingRolls = 0;
+
+        // 死亡不掉落:按当前等级决定背包条目是否被保护(读取发生在专研降级之前)
         takeInventoryForDeathDrop(items, skillTags);
 
-        double droppedExp = Math.ceil(gameExp * 0.6);
+        // 死亡惩罚:所有专研项降低 1 级;降至 0 级则移除该项
+        List<ResearchDowngrade> researchDowngrades = new ArrayList<>();
+        for (Research.State state : new ArrayList<>(research)) {
+            int from = Math.max(0, state.level);
+            if (from <= 0) {
+                continue;
+            }
+            int to = from - 1;
+            if (to <= 0) {
+                research.remove(state);
+            } else {
+                state.level = to;
+                if ("immovable_fortress".equals(state.tag)) {
+                    // 降级后吸收池不应超过新等级的上限
+                    state.value = Math.min(state.value, Research.FORTRESS_ABSORB_PER_LEVEL * to);
+                }
+            }
+            researchDowngrades.add(new ResearchDowngrade(state.tag, from, to));
+        }
+        refreshResearchModifiers();
+
+        // 掉落经验 = (等级折算总经验 + 当前经验) × 掉落系数(向上取整),上限 215
+        double totalAccumulatedExp = getTotalAccumulatedExp(gameLevel, gameExp);
+        double droppedExp = Math.min(
+                DEATH_DROP_EXP_MAX,
+                Math.ceil(totalAccumulatedExp * DEATH_DROP_COEFFICIENT));
         this.gameExp = 0;
         this.gameLevel = 0;
         this.playerScore = 0;
 
-        return new DeathDrop(droppedExp, items, skillTags);
+        DeathDrop report = new DeathDrop(droppedExp, items, skillTags, researchDowngrades);
+        // 记录本次死亡明细,供死亡界面展示(重生时清空)
+        this.lastDeathReport = report;
+        return report;
     }
 
     /** 重生玩家并重置临时战斗状态 */
@@ -438,6 +534,9 @@ public final class PlayerEntity extends DynamicEntity {
         this.staminaRecoveryDelayRemaining = 0;
         this.dodgeState = null;
         this.playerRule.fireCooldownNow = 0;
+        // 清空上一次死亡明细(死亡界面随重生关闭)
+        this.lastDeathReport = null;
+        this.researchPendingRolls = 0;
         // 重生后技能内置CD一并清空(无敌时长已从玩家规则中移除)
         resetEquippedSkillCooldowns(skills);
         this.resetServantGrid();
@@ -559,6 +658,14 @@ public final class PlayerEntity extends DynamicEntity {
 
     @Override
     public void applyDamage(double amount) {
+        if (amount > 0 && !isDead) {
+            double remaining = absorbDamageWithFortress(amount);
+            if (remaining <= 0) {
+                return;
+            }
+            super.applyDamage(remaining);
+            return;
+        }
         super.applyDamage(amount);
     }
 
@@ -574,7 +681,7 @@ public final class PlayerEntity extends DynamicEntity {
         }
 
         if (isSprinting) {
-            stamina = Math.max(0, stamina - SPRINT_STAMINA_DRAIN_PER_SECOND * dt);
+            stamina = Math.max(0, stamina - getSprintStaminaDrainPerSecond() * dt);
             if (stamina <= 0) {
                 stamina = 0;
                 isSprinting = false;
@@ -601,8 +708,193 @@ public final class PlayerEntity extends DynamicEntity {
     /** 根据当前从者数量刷新玩家移动速度:每增加一个从者降低 4,最低不低于 MIN_MOVE_SPEED */
     private void refreshSpeedByServantCount() {
         int servantCount = servantMap.size();
-        baseMoveSpeed = Math.max(MIN_MOVE_SPEED, MOVE_SPEED - servantCount * 4);
+        double base = Math.max(MIN_MOVE_SPEED, MOVE_SPEED - servantCount * 4);
+        // 专研"移速"按百分比提升基础移动速度
+        baseMoveSpeed = base * getMoveSpeedMultiplier();
         speed = baseMoveSpeed;
+    }
+
+    /** 专研"移速"的移动速度倍率(1 表示无加成) */
+    public double getMoveSpeedMultiplier() {
+        return 1 + Research.MOVE_SPEED_BONUS_PER_LEVEL * Research.getLevel(research, "move_speed");
+    }
+
+    /** 专研"射速"的开火速度倍率(1 表示无加成) */
+    public double getFireRateMultiplier() {
+        return 1 + Research.FIRE_RATE_BONUS_PER_LEVEL * Research.getLevel(research, "fire_rate");
+    }
+
+    /** 专研"冷却"的技能冷却倍率(1 表示无减少,最低 0.5) */
+    public double getCooldownMultiplier() {
+        double reduction = Math.min(
+                Research.COOLDOWN_REDUCTION_MAX,
+                Research.COOLDOWN_REDUCTION_PER_LEVEL * Research.getLevel(research, "cooldown"));
+        return 1 - reduction;
+    }
+
+    /** 当前疾跑体力消耗速率(点/秒,受专研"体力"降低) */
+    private double getSprintStaminaDrainPerSecond() {
+        return Math.max(
+                Research.STAMINA_DRAIN_MIN,
+                SPRINT_STAMINA_DRAIN_PER_SECOND
+                        - Research.STAMINA_DRAIN_REDUCTION_PER_LEVEL * Research.getLevel(research, "stamina"));
+    }
+
+    /** 专研"幸运之星"提供的战利品掉落概率加成(0~0.25) */
+    public double getLuckyStarBonus() {
+        return Research.LUCKY_STAR_BONUS_PER_LEVEL * Research.getLevel(research, "lucky_star");
+    }
+
+    /** 专研"死亡不掉落"当前等级对应的保护概率(0~1) */
+    public double getDeathKeepChance() {
+        return Math.min(1, Research.DEATH_KEEP_CHANCE_PER_LEVEL * Research.getLevel(research, "death_keep"));
+    }
+
+    /**
+     * 根据当前专研重新计算受其影响的派生属性:生命/体力上限与开火冷却,
+     * 并刷新移动速度。生命/体力上限提升时把增量直接补进当前值。
+     */
+    public void refreshResearchModifiers() {
+        int healthLevel = Research.getLevel(research, "health");
+        double newHealthMax = HEALTH_MAX + Research.HEALTH_MAX_BONUS_PER_LEVEL * healthLevel;
+        double healthDelta = newHealthMax - healthMax;
+        healthMax = newHealthMax;
+        if (healthDelta > 0 && !isDead) {
+            health = Math.min(healthMax, health + healthDelta);
+        }
+        if (health > healthMax) {
+            health = healthMax;
+        }
+
+        int staminaLevel = Research.getLevel(research, "stamina");
+        double newStaminaMax = BASE_STAMINA_MAX + Research.STAMINA_MAX_BONUS_PER_LEVEL * staminaLevel;
+        double staminaDelta = newStaminaMax - staminaMax;
+        staminaMax = newStaminaMax;
+        if (staminaDelta > 0 && !isDead) {
+            stamina = Math.min(staminaMax, stamina + staminaDelta);
+        }
+        if (stamina > staminaMax) {
+            stamina = staminaMax;
+        }
+
+        // 开火冷却 = 基础冷却 ÷ 射速倍率 × 冷却倍率
+        playerRule.fireCooldownMax = BASE_FIRE_COOLDOWN / getFireRateMultiplier() * getCooldownMultiplier();
+
+        refreshSpeedByServantCount();
+    }
+
+    /**
+     * 升级时按概率触发专研:p = (64 - 等级)/100,最低 5%。
+     *
+     * <p>每次升级都独立判定;判定成功的次数累计到 {@link #researchPendingRolls},
+     * 再逐次展示待选项——一次跨多级升级时不会漏掉抽取机会。</p>
+     */
+    private void rollResearchOnLevelUp() {
+        if (Math.random() >= Research.triggerProbability(gameLevel)) {
+            return;
+        }
+        researchPendingRolls = Math.max(0, researchPendingRolls) + 1;
+        presentPendingResearchOptions();
+    }
+
+    /**
+     * 从累计的待抽取次数中取出一次生成待选研究项。
+     * 已有待选项(界面尚未选择)时不重复生成,等玩家选择后由 chooseResearch 再次调用补发。
+     */
+    private void presentPendingResearchOptions() {
+        int remaining = Math.max(0, researchPendingRolls);
+        if (remaining <= 0 || !researchPendingOptions.isEmpty()) {
+            return;
+        }
+        List<String> options = Research.rollOptions(research, Research.OPTION_COUNT);
+        researchPendingRolls = remaining - 1;
+        if (options.isEmpty()) {
+            // 可研究项已全部叠满,清空剩余次数避免界面空转
+            researchPendingRolls = 0;
+            return;
+        }
+        researchPendingOptions.clear();
+        researchPendingOptions.addAll(options);
+    }
+
+    /**
+     * 玩家从待选专研项中选择一项(由服务端权威结算)。
+     * 若仍有跨级升级累计下来的抽取次数,立即补发下一次待选项。
+     *
+     * @return 是否选择成功
+     */
+    public boolean chooseResearch(String tag) {
+        if (tag == null || !researchPendingOptions.contains(tag)) {
+            return false;
+        }
+        applyResearch(tag);
+        researchPendingOptions.clear();
+        // 补发跨级升级时累计的抽取机会
+        presentPendingResearchOptions();
+        return true;
+    }
+
+    /** 应用一次研究:等级 +1(已持有则叠加),并刷新派生属性 */
+    private void applyResearch(String tag) {
+        Research.Definition definition = Research.byTag(tag);
+        if (definition == null) {
+            return;
+        }
+        Research.State state = Research.getState(research, tag);
+        if (state == null) {
+            research.add(new Research.State(tag, 1,
+                    "immovable_fortress".equals(tag) ? Research.FORTRESS_ABSORB_PER_LEVEL : 0));
+        } else {
+            Integer maxLevel = definition.maxLevel();
+            if (maxLevel != null && state.level >= maxLevel) {
+                return;
+            }
+            state.level += 1;
+            if ("immovable_fortress".equals(tag)) {
+                // 研究升级时自动恢复到该等级的最大吸收值
+                state.value = Research.FORTRESS_ABSORB_PER_LEVEL * state.level;
+            }
+        }
+        refreshResearchModifiers();
+    }
+
+    /** 移除某个研究项(死亡不掉落降级至 0 / 不动堡垒吸收耗尽) */
+    private void removeResearch(String tag) {
+        research.removeIf(state -> state.tag.equals(tag));
+        refreshResearchModifiers();
+    }
+
+    /**
+     * 专研"不动堡垒":玩家保持不动时吸收受到的伤害。
+     *
+     * @return 未被吸收的剩余伤害
+     */
+    private double absorbDamageWithFortress(double amount) {
+        Research.State state = Research.getState(research, "immovable_fortress");
+        if (state == null || state.level <= 0) {
+            return amount;
+        }
+        // 仅在玩家保持不动时生效(移动/闪避中不吸收)
+        if (isMoving || dodgeState != null) {
+            return amount;
+        }
+        int level = state.level;
+        double pool = Math.max(0, state.value);
+        if (pool <= 0) {
+            removeResearch("immovable_fortress");
+            return amount;
+        }
+        double absorbed = Math.min(pool, amount);
+        pool -= absorbed;
+        state.value = pool;
+
+        // 降级/移除判定:1 级归零即移除;≥2 级降至下一等级上限则降 1 级
+        if (pool <= 0) {
+            removeResearch("immovable_fortress");
+        } else if (level >= 2 && pool <= Research.FORTRESS_ABSORB_PER_LEVEL * (level - 1)) {
+            state.level = level - 1;
+        }
+        return amount - absorbed;
     }
 
     /** 玩家与静态实体的碰撞检测 */
@@ -668,8 +960,8 @@ public final class PlayerEntity extends DynamicEntity {
 
         facingDirection = dir.copy();
         lastMoveDirection = dir.copy();
-        // 释放成功后进入技能内置冷却(冷却时长由技能自己的 maxCooldown 决定)
-        dodgeSkill.startCooldown(id);
+        // 释放成功后进入技能内置冷却(冷却时长由技能自身 maxCooldown 与专研"冷却"共同决定)
+        dodgeSkill.setCurrentCooldown(id, dodgeSkill.maxCooldown() * getCooldownMultiplier());
         noMoveDuration = 0;
         noMoveLastPos = position.copy();
     }

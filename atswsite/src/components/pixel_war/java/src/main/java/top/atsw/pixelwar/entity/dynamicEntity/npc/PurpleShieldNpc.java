@@ -54,6 +54,24 @@ public class PurpleShieldNpc extends NpcEntity {
         this.spiralRadius = SPIRAL_MIN_RADIUS;
     }
 
+    /** 等级上限:2 */
+    @Override
+    public int maxLevel() {
+        return 2;
+    }
+
+    /**
+     * 等级变化时重算等级相关属性:
+     * 生命上限 = HEALTH_MAX + Level(当前生命同步回满);经验值 = 4 + Level × 4。
+     * 防护小方块数量在客户端由当前生命值推导,因此无需额外同步。
+     */
+    @Override
+    protected void onNpcLevelApplied() {
+        this.healthMax = HEALTH_MAX + level;
+        this.health = healthMax;
+        this.gameExp = 4 + level * 4;
+    }
+
     @Override
     public double generateWeight() {
         return GENERATE_WEIGHT;

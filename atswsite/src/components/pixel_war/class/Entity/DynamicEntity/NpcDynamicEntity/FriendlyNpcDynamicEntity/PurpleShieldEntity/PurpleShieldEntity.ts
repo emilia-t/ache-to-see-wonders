@@ -105,6 +105,23 @@ class PurpleShieldEntity extends FriendlyNpcDynamicEntity {
     // 友好 NPC 不拾取任何物品
   }
 
+  /** 等级上限:2 */
+  public override getMaxLevel(): number {
+    return 2;
+  }
+
+  /**
+   * 等级变化时重算等级相关属性:
+   * - 生命上限 = HEALTH_MAX + Level(当前生命同步回满)
+   * - 经验值 = 4 + Level × 4
+   * 防护小方块数量在客户端由当前生命值推导,因此无需额外同步。
+   */
+  protected override onNpcLevelApplied(): void {
+    this.healthMax = PurpleShieldEntity.HEALTH_MAX + this.level;
+    this.health = this.healthMax;
+    this.game_exp = 4 + this.level * 4;
+  }
+
   /** 无任何攻击行为 */
   public override actionLoop(_context: ActionLoopContext): void {}
   public override action(_context: ActionLoopContext): void {}
@@ -255,6 +272,9 @@ class PurpleShieldEntity extends FriendlyNpcDynamicEntity {
         ctx.fillText(this.tag, screenPos.x, screenPos.y + halfH + 20);
       }
     }
+
+    // NPC 等级徽标(/show_level)
+    this.drawNpcLevelBadge(ctx, worldToScreen, debugFlags);
 
     void canvasSize;
   }

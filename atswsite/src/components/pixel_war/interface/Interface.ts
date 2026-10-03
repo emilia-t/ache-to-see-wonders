@@ -186,6 +186,7 @@ export interface EntityDebugFlags {
   showMovementSpeed: boolean;
   showMovementPassion: boolean;
   showTag: boolean;
+  showLevel: boolean;
   //几何相关
   showHistoricalTrajectory: boolean;
   showCollisionBoxes: boolean;
@@ -398,6 +399,31 @@ export interface PlayerInventory {
   equippedSkills: (string | null)[];
 }
 
+//////////////////////////////////////////////////
+// 专研(Research)系统相关类型 -->
+//////////////////////////////////////////////////
+
+/** 研究项类别:普通(蓝) / 传说(金) */
+export type ResearchCategory = 'normal' | 'legendary';
+
+/**
+ * 玩家持有的一个研究项记录。
+ * - level:当前研究等级(1 起)
+ * - value:附带的数值状态(目前仅"不动堡垒"用于记录剩余吸收值,其余恒为 0)
+ */
+export interface ResearchEntry {
+  /** 研究项标签(见 class/Research/Research.ts 的 ResearchTagType) */
+  tag: string;
+  /** 当前等级 */
+  level: number;
+  /** 附带数值状态(不动堡垒的剩余吸收值) */
+  value: number;
+}
+
+//////////////////////////////////////////////////
+// <-- 专研(Research)系统相关类型
+//////////////////////////////////////////////////
+
 /** 物品定义(名称/说明/堆叠上限/使用效果) */
 export interface ItemDefinition {
   /** 物品标签 */
@@ -440,11 +466,25 @@ export interface InventoryDeathDrop {
 }
 
 /**
- * 玩家死亡结算结果:玩家死亡后需要落在地面上的内容
+ * 专研降级记录:死亡惩罚会让所有专研项降低 1 级
+ */
+export interface ResearchDowngrade {
+  /** 研究项标签 */
+  tag: string;
+  /** 死亡前的等级 */
+  from: number;
+  /** 死亡后的等级(0 表示该项已被移除) */
+  to: number;
+}
+
+/**
+ * 玩家死亡结算结果:玩家死亡后需要落在地面上的内容与自身损失
  */
 export interface PlayerDeathDrop extends InventoryDeathDrop {
   /** 掉落为经验球的经验值 */
   droppedExp: number;
+  /** 死亡惩罚导致降级/移除的专研项 */
+  researchDowngrades: ResearchDowngrade[];
 }
 
 //////////////////////////////////////////////////

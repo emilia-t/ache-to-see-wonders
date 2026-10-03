@@ -39,7 +39,23 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
     this.healthMax = 1;
     this.kill_score = 3;
     this.mapColor = '#ff1313'; // 地图上的颜色表示
+    this.game_exp = 4; // 基础经验值(4 + Level × 4)
     this.loot = []; // 战利品:红像素(自走爆炸)不掉落任何战利品
+  }
+
+  /** 等级上限:2 */
+  public override getMaxLevel(): number {
+    return 2;
+  }
+
+  /** 每级移动速度增益:红像素为 40(其余 NPC 为 20) */
+  protected override getMoveSpeedBonusPerLevel(): number {
+    return 40;
+  }
+
+  /** 等级变化时重算等级相关属性(经验值随等级提升) */
+  protected override onNpcLevelApplied(): void {
+    this.game_exp = 4 + this.level * 4;
   }
 
   public tryPickupItem(_item: ItemEntity): boolean {
@@ -188,6 +204,9 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
         ctx.fillText(this.tag, screenPos.x, screenPos.y + halfH + 20);
       }
     }
+
+    // NPC 等级徽标(/show_level)
+    this.drawNpcLevelBadge(ctx, worldToScreen, debugFlags);
   }
 
   // 动作循环

@@ -81,23 +81,28 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     rangeType: BulletRangeType,
     name: string = '',
     damage: number = BulletDynamicEntity.DEFAULT_DAMAGE,
-    tag: BulletTag
+    tag: BulletTag,
+    moveSpeed: number = BulletDynamicEntity.MOVE_SPEED
   ) {
     super(position, BulletDynamicEntity.WIDTH, BulletDynamicEntity.HEIGHT, '', name, 'bullet', tag);
     this.rangeType = rangeType;
     this.bulletColor = BulletDynamicEntity.DEFAULT_COLOR;
     this.fillColor = this.bulletColor;
-    this.minMoveSpeed = BulletDynamicEntity.MOVE_SPEED;
-    this.maxMoveSpeed = BulletDynamicEntity.MOVE_SPEED;
-    this.speed = BulletDynamicEntity.MOVE_SPEED;
+    // 子弹速度可由调用方自定义(如 NPC 等级加成),非法值回退到默认速度
+    const speed = Number.isFinite(moveSpeed) && moveSpeed > 0
+      ? moveSpeed
+      : BulletDynamicEntity.MOVE_SPEED;
+    this.minMoveSpeed = speed;
+    this.maxMoveSpeed = speed;
+    this.speed = speed;
     this.wanderRange = 0;
     this.perceptionRange = 0;
     this.health = 1;
     this.healthMax = 1;
     this.movementPassion = 1;
     this.velocity = {
-      x: direction.x * BulletDynamicEntity.MOVE_SPEED,
-      y: direction.y * BulletDynamicEntity.MOVE_SPEED,
+      x: direction.x * speed,
+      y: direction.y * speed,
     };
     this.ownerId = ownerId;
     this.teamId = teamId;

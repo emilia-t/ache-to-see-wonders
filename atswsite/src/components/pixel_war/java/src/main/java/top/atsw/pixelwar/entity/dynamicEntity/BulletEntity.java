@@ -35,12 +35,23 @@ public final class BulletEntity extends DynamicEntity {
 
     public BulletEntity(Geometry.Vec2 position, Geometry.Vec2 direction, Long ownerId, Long teamId,
                         String name, String bulletColor) {
+        this(position, direction, ownerId, teamId, name, bulletColor, MOVE_SPEED);
+    }
+
+    /**
+     * 构造一颗子弹,可自定义子弹速度。
+     *
+     * @param moveSpeed 子弹速度(px/s);用于 NPC 等级加成等场景,非法值回退到 {@link #MOVE_SPEED}
+     */
+    public BulletEntity(Geometry.Vec2 position, Geometry.Vec2 direction, Long ownerId, Long teamId,
+                        String name, String bulletColor, double moveSpeed) {
         super(position, WIDTH, HEIGHT, name == null ? "" : name, "bullet", "ordinary_bullet");
         this.rangeType = "short";
         this.fillColor = "#ffd84d";
-        this.minMoveSpeed = MOVE_SPEED;
-        this.maxMoveSpeed = MOVE_SPEED;
-        this.speed = MOVE_SPEED;
+        double speedValue = (Double.isFinite(moveSpeed) && moveSpeed > 0) ? moveSpeed : MOVE_SPEED;
+        this.minMoveSpeed = speedValue;
+        this.maxMoveSpeed = speedValue;
+        this.speed = speedValue;
         this.wanderRange = 0;
         this.perceptionRange = 0;
         this.health = 1;
@@ -49,7 +60,7 @@ public final class BulletEntity extends DynamicEntity {
         double len = Math.hypot(direction.x, direction.y);
         double dirX = len < 0.0001 ? 1 : direction.x / len;
         double dirY = len < 0.0001 ? 0 : direction.y / len;
-        this.velocity = new Geometry.Vec2(dirX * MOVE_SPEED, dirY * MOVE_SPEED);
+        this.velocity = new Geometry.Vec2(dirX * speedValue, dirY * speedValue);
         this.ownerId = ownerId;
         this.teamId = teamId;
         this.isMoving = true;

@@ -131,6 +131,17 @@ export const H_toPlayerEntity = (
   equippedSkillCooldowns: privateState && Array.isArray(privateState.equippedSkillCooldowns)
     ? privateState.equippedSkillCooldowns
     : new Array(10).fill(0),
+  // 专研:已研究的专研项与待选选项(客户端据待选项展示全屏专研界面)
+  research: privateState && Array.isArray(privateState.research)
+    ? privateState.research
+    : [],
+  researchPendingOptions: privateState && Array.isArray(privateState.researchPendingOptions)
+    ? privateState.researchPendingOptions
+    : [],
+  // 最近一次死亡结算明细(仅本人可见;用于死亡界面展示掉落与专研降级)
+  lastDeathReport: privateState && privateState.lastDeathReport
+    ? privateState.lastDeathReport
+    : null,
   playerRule: privateState
     ? {
         bulletColor: 'rgba(255, 255, 255, 0.9)',
@@ -160,7 +171,9 @@ export const H_toNpcEntity = (npc: JavaNpc): Record<string, unknown> => ({
   isMoving: npc.moving,
   mapColor: npc.mapColor ?? '',
   kill_score: npc.killScore ?? 1,
-  deathEffectTimer: npc.deathEffectTimer ?? 0
+  deathEffectTimer: npc.deathEffectTimer ?? 0,
+  // NPC 等级(0 不下发,缺省视为 0)
+  level: npc.level ?? 0
 });
 
 /** Java 子弹 -> 前端子弹快照 */
@@ -329,6 +342,8 @@ export const H_toJavaClientMessage = (instruct: InstructObject): JavaClientEnvel
       return { type: 'inventory_update', data: { inventory: data.inventory } };
     case 'inventory_use_item':
       return { type: 'inventory_use_item', data: { uid: data.uid } };
+    case 'research_choose':
+      return { type: 'research_choose', data: { tag: data.tag } };
     case 'tick_pause':
       return { type: 'tick_pause', data: { paused: data.paused } };
     default:

@@ -66,6 +66,22 @@ export {
   H_inventoryDestroySlot,
   H_inventoryDestroyEquipped
 } from './Inventory/Inventory';
+// Research(专研)
+export {
+  H_getResearchDefinition,
+  H_getAllResearchDefinitions,
+  H_getResearchLevel,
+  H_getResearchEntry,
+  H_isResearchMaxed,
+  H_getResearchTriggerProbability,
+  H_rollResearchOptions,
+  H_getResearchEffectText,
+  RESEARCH_OPTION_COUNT,
+  RESEARCH_NORMAL_COLOR,
+  RESEARCH_LEGENDARY_COLOR,
+  RESEARCH_FORTRESS_ABSORB_PER_LEVEL
+} from './Research/Research';
+export type { ResearchTagType, ResearchDefinition } from './Research/Research';
 // NpcDynamicEntity and its subclasses
 export { NpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';

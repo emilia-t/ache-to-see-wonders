@@ -57,7 +57,13 @@ import {
   H_inventoryDestroyEquipped,
   H_ensurePlayerInventory,
   H_drawSkillIconTexture,
-  H_preloadSkillIconTextures
+  H_preloadSkillIconTextures,
+  H_getResearchDefinition,
+  H_getResearchEffectText,
+  H_getResearchLevel,
+  RESEARCH_NORMAL_COLOR,
+  RESEARCH_LEGENDARY_COLOR,
+  RESEARCH_FORTRESS_ABSORB_PER_LEVEL
 } from '@/components/pixel_war/class';
 // 注册表层(技能表 / 物品表 / 实体工厂)统一从 registry/ 导入
 import { H_getSkillByTag, H_getAllSkills } from '@/components/pixel_war/registry/SkillRegistry';
@@ -578,6 +584,7 @@ let entityDebugFlags: EntityDebugFlags = {
   showMovementSpeed: false,
   showMovementPassion: false,
   showTag: false,
+  showLevel: false,
   //几何相关
   showHistoricalTrajectory: false,
   showCollisionBoxes: false,
@@ -618,6 +625,26 @@ let entityInterpolationMap = new Map<number, EntityInterpolationState>();
 let entitySnapshotTimeMap = new Map<number, number>();
 // 上一帧 NPC 归属快照,用于检测从者"吸附成功"(ownerId 由无主变为本玩家)
 let prevNpcAbsorbStates = new Map<number, number | null>();
+
+// ---- 专研(Research)界面状态 ----
+const RESEARCH_OVERLAY_EVENT_PREFIX = 'research_option_'; // 专研选项卡事件区域id前缀
+const RESEARCH_CARD_WIDTH = 214;    // 选项卡宽度(顶部小卡片,单位px)
+const RESEARCH_CARD_HEIGHT = 104;   // 选项卡高度
+const RESEARCH_CARD_GAP = 14;       // 选项卡间距
+const RESEARCH_TOP_OFFSET = 58;     // 卡片组距画布顶部的距离(让出标题位置)
+const RESEARCH_CONFIRM_DURATION = 0.6; // 选中强调阶段时长(秒)
+const RESEARCH_CLOSE_DURATION = 0.45;  // 收场淡出阶段时长(秒)
+/** 刚结算过的选项在该时长内不再弹出(等待权威端清空);超过后即使标签相同也允许再次展示,避免补发抽取被永久吞掉 */
+const RESEARCH_RESOLVED_SUPPRESS_MS = 1200;
+type ResearchUiPhase = 'idle' | 'confirm' | 'closing';
+let researchUiOptions: string[] = [];          // 当前待选研究项标签
+let researchUiPhase: ResearchUiPhase = 'idle'; // 界面阶段
+let researchUiSelectedTag: string | null = null; // 被选中的研究项
+let researchUiPhaseStart = 0;                  // 当前阶段开始时间(performance.now())
+let researchUiAnimTime = 0;                    // 用于呼吸/流动动画的累计时间(秒)
+let researchUiAnimLast = 0;
+let researchUiResolvedTags: string[] = [];     // 刚结算过的选项(避免服务端清空滞后时重复弹出)
+let researchUiResolvedAt = 0;                  // 记录刚结算选项的时间戳(用于抑制时长的判定)
 
 ////////////////////
 //<--变量区
@@ -3065,6 +3092,15 @@ const INVENTORY_BAG_SLOT_COUNT = INVENTORY_BAG_COLS * INVENTORY_BAG_ROWS;
 const INVENTORY_EQUIP_COUNT = INVENTORY_SKILL_SLOT_COUNT;
 /** 底部状态栏技能槽数量 */
 const BOTTOM_STATUS_SKILL_SLOT_COUNT = INVENTORY_SKILL_SLOT_COUNT;
+/** 研究项展示区列数(4 列 × 2 行恰好容纳全部 8 个研究项) */
+const INVENTORY_RESEARCH_COLUMNS = 4;
+/** 研究项展示区行数上限 */
+const INVENTORY_RESEARCH_MAX_ROWS = 2;
+/**
+ * 背包格子整体缩放系数。
+ * 缩小背包界面以腾出上部分空间展示研究项(格子变小→背包区变矮)。
+ */
+const INVENTORY_SLOT_SHRINK = 0.8;
 
 /** 背包界面中的命中目标 */
 type InventorySlotTarget =
@@ -3112,6 +3148,16 @@ type InventoryLayout = {
   trashSize: number;
   hintHeight: number;
   hintY: number;
+  /** 研究项展示区(位于背包上方)左上角与宽度 */
+  researchX: number;
+  researchY: number;
+  researchWidth: number;
+  /** 单个研究项卡片的宽高与间距 */
+  researchCardWidth: number;
+  researchCardHeight: number;
+  researchGap: number;
+  /** 研究项展示区总高度(含最大行数) */
+  researchHeight: number;
 };
 
 /** 矩形命中检测 */
@@ -3141,13 +3187,25 @@ const H_getInventoryLayout = (canvasWidth: number, canvasHeight: number): Invent
   // 标题/标签/提示等固定区域折算成的格子高度倍率
   const fixedSlotRatio = 1.5;
   const equipSlotRatio = 0.78;
+  // 研究项卡片高度与行间距折算成的格子高度倍率
+  const researchCardRatio = 0.66;
+  const researchGapRatio = 0.18;
+  // 研究项展示区折算成格子高度:标签(0.36) + N 行卡片 + 行间距
+  const researchSlotRatio =
+    0.36
+    + INVENTORY_RESEARCH_MAX_ROWS * researchCardRatio
+    + (INVENTORY_RESEARCH_MAX_ROWS - 1) * researchGapRatio;
 
   const slotFromWidth =
     (maxPanelWidth - padding * 2 - slotGap * (INVENTORY_BAG_COLS - 1)) / INVENTORY_BAG_COLS;
   const slotFromHeight =
     (maxPanelHeight - padding * 2 - slotGap * (INVENTORY_BAG_ROWS + 2)) /
-    (INVENTORY_BAG_ROWS + equipSlotRatio + fixedSlotRatio);
-  const slotSize = Math.max(24, Math.floor(Math.min(slotFromWidth, slotFromHeight)));
+    (INVENTORY_BAG_ROWS + equipSlotRatio + fixedSlotRatio + researchSlotRatio);
+  // 缩小背包格子以腾出上部分空间展示研究项
+  const slotSize = Math.max(
+    20,
+    Math.floor(Math.min(slotFromWidth, slotFromHeight) * INVENTORY_SLOT_SHRINK)
+  );
 
   const bagWidth = slotSize * INVENTORY_BAG_COLS + slotGap * (INVENTORY_BAG_COLS - 1);
   const bagHeight = slotSize * INVENTORY_BAG_ROWS + slotGap * (INVENTORY_BAG_ROWS - 1);
@@ -3166,10 +3224,24 @@ const H_getInventoryLayout = (canvasWidth: number, canvasHeight: number): Invent
   const labelHeight = Math.round(slotSize * 0.36);
   const dividerHeight = Math.round(slotSize * 0.24);
   const hintHeight = Math.round(slotSize * 0.36);
+
+  // ---- 研究项展示区 ----
+  const researchGap = Math.round(slotSize * researchGapRatio);
+  const researchCardHeight = Math.round(slotSize * researchCardRatio);
+  const researchCardWidth = Math.floor(
+    (contentWidth - researchGap * (INVENTORY_RESEARCH_COLUMNS - 1)) / INVENTORY_RESEARCH_COLUMNS
+  );
+  const researchHeight =
+    researchCardHeight * INVENTORY_RESEARCH_MAX_ROWS
+    + researchGap * (INVENTORY_RESEARCH_MAX_ROWS - 1);
+
   const panelWidth = contentWidth + padding * 2;
   const panelHeight =
     padding * 2 +
     headerHeight +
+    labelHeight +
+    researchHeight +
+    dividerHeight +
     labelHeight +
     bagHeight +
     dividerHeight +
@@ -3179,8 +3251,10 @@ const H_getInventoryLayout = (canvasWidth: number, canvasHeight: number): Invent
 
   const panelX = (canvasWidth - panelWidth) / 2;
   const panelY = Math.max(8, (canvasHeight - panelHeight) / 2 - canvasHeight * 0.02);
+  const researchX = panelX + padding;
+  const researchY = panelY + padding + headerHeight + labelHeight;
   const bagX = panelX + padding + (contentWidth - bagWidth) / 2;
-  const bagY = panelY + padding + headerHeight + labelHeight;
+  const bagY = researchY + researchHeight + dividerHeight + labelHeight;
   const equipX = panelX + padding + (contentWidth - equipRowWidth) / 2;
   const equipY = bagY + bagHeight + dividerHeight + labelHeight;
   const trashX = equipX + equipWidth + slotGap * 4;
@@ -3209,7 +3283,14 @@ const H_getInventoryLayout = (canvasWidth: number, canvasHeight: number): Invent
     trashY: equipY,
     trashSize,
     hintHeight,
-    hintY: panelY + panelHeight - padding * 0.7
+    hintY: panelY + panelHeight - padding * 0.7,
+    researchX,
+    researchY,
+    researchWidth: contentWidth,
+    researchCardWidth,
+    researchCardHeight,
+    researchGap,
+    researchHeight
   };
 };
 
@@ -3882,6 +3963,97 @@ const handleInventoryMouseUp = (canvas: HTMLCanvasElement, x: number, y: number,
 /**
  * 绘制背包界面(UI层)
  */
+/** 按最大宽度截断文本(超出时以省略号结尾) */
+const H_fitText = (CtxUi: CanvasRenderingContext2D, text: string, maxWidth: number): string => {
+  if (maxWidth <= 0) return '';
+  if (CtxUi.measureText(text).width <= maxWidth) return text;
+  const chars = Array.from(text);
+  while (chars.length > 1) {
+    chars.pop();
+    const candidate = `${chars.join('')}…`;
+    if (CtxUi.measureText(candidate).width <= maxWidth) return candidate;
+  }
+  return '…';
+};
+
+/**
+ * 绘制单个研究项卡片(背包界面上部的研究项展示区使用)。
+ * 左:类别色图标 / 中:名称 + 实际属性加成 / 右上:等级(有上限时显示 当前/上限)。
+ */
+const H_drawInventoryResearchCard = (
+  CtxUi: CanvasRenderingContext2D,
+  rect: { x: number; y: number; width: number; height: number },
+  entry: { tag: string; level: number; value: number }
+) => {
+  const definition = H_getResearchDefinition(entry.tag);
+  const legendary = definition?.category === 'legendary';
+  const accent = legendary ? RESEARCH_LEGENDARY_COLOR : RESEARCH_NORMAL_COLOR;
+  const cut = Math.max(3, Math.min(rect.width, rect.height) * 0.2);
+
+  CtxUi.save();
+
+  // 背板(切角 + 类别配色)
+  createChamferRect(CtxUi, rect.x, rect.y, rect.width, rect.height, cut);
+  const grad = CtxUi.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height);
+  grad.addColorStop(0, legendary ? 'rgba(58, 44, 16, 0.72)' : 'rgba(12, 32, 52, 0.72)');
+  grad.addColorStop(1, legendary ? 'rgba(28, 20, 8, 0.6)' : 'rgba(6, 16, 28, 0.6)');
+  CtxUi.fillStyle = grad;
+  CtxUi.fill();
+  CtxUi.strokeStyle = legendary ? 'rgba(255, 207, 77, 0.55)' : 'rgba(79, 168, 255, 0.5)';
+  CtxUi.lineWidth = 1;
+  createChamferRect(CtxUi, rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1, cut);
+  CtxUi.stroke();
+
+  // 左侧类别色条
+  CtxUi.fillStyle = accent;
+  CtxUi.globalAlpha = 0.9;
+  CtxUi.fillRect(rect.x + 2, rect.y + cut * 0.6, 2, Math.max(4, rect.height - cut * 1.2));
+  CtxUi.globalAlpha = 1;
+
+  // 图标
+  H_drawResearchGlyph(
+    CtxUi,
+    entry.tag,
+    rect.x + rect.height * 0.44,
+    rect.y + rect.height * 0.5,
+    Math.min(rect.height * 0.66, rect.width * 0.26),
+    accent
+  );
+
+  // 等级(右上角)
+  CtxUi.textAlign = 'right';
+  CtxUi.textBaseline = 'top';
+  CtxUi.font = `bold ${Math.max(9, rect.height * 0.2)}px Consolas, "Courier New", monospace`;
+  CtxUi.fillStyle = accent;
+  const levelText = definition && definition.maxLevel !== null
+    ? `Lv.${entry.level}/${definition.maxLevel}`
+    : `Lv.${entry.level}`;
+  CtxUi.fillText(levelText, rect.x + rect.width - 6, rect.y + 3);
+
+  // 名称 + 实际属性加成
+  const textX = rect.x + rect.height * 0.86;
+  const textWidth = Math.max(0, rect.x + rect.width - 6 - textX);
+  CtxUi.textAlign = 'left';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.font = `bold ${Math.max(10, rect.height * 0.23)}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.fillStyle = legendary ? '#ffe6a3' : '#dff0ff';
+  CtxUi.fillText(
+    H_fitText(CtxUi, definition?.name ?? entry.tag, textWidth),
+    textX,
+    rect.y + rect.height * 0.36
+  );
+
+  CtxUi.font = `${Math.max(9, rect.height * 0.19)}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.fillStyle = 'rgba(196, 214, 230, 0.92)';
+  // 不动堡垒额外展示"当前剩余 / 该等级上限"的实际状态
+  const effectText = entry.tag === 'immovable_fortress'
+    ? `剩余 ${Math.round(Math.max(0, entry.value))} / ${Math.round(RESEARCH_FORTRESS_ABSORB_PER_LEVEL * entry.level)}`
+    : H_getResearchEffectText(entry.tag, entry.level);
+  CtxUi.fillText(H_fitText(CtxUi, effectText, textWidth), textX, rect.y + rect.height * 0.7);
+
+  CtxUi.restore();
+};
+
 const drawInventoryPanel = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   // 玩家死亡时自动关闭背包(玩家尚未同步到本地时不关闭,否则首帧会被误关)
   if (inventoryVisible && playerEntity && (playerEntity.isDead || playerEntity.health <= 0)) {
@@ -3988,6 +4160,67 @@ const drawInventoryPanel = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasE
   CtxUi.moveTo(layout.panelX + layout.padding, headerLineY);
   CtxUi.lineTo(panelRight - layout.padding, headerLineY);
   CtxUi.stroke();
+
+  // ---- 研究项展示区(利用缩小的背包腾出的上部分空间) ----
+  const researchEntries = Array.isArray(playerEntity.research)
+    ? playerEntity.research.filter((entry) => entry !== null && typeof entry.tag === 'string')
+    : [];
+  const researchLabelFontSize = Math.max(11, layout.slotSize * 0.22);
+  const researchLabelY = layout.researchY - layout.labelHeight / 2;
+  CtxUi.font = `bold ${researchLabelFontSize}px "Microsoft YaHei", Arial, sans-serif`;
+  CtxUi.fillStyle = 'rgba(224, 253, 255, 0.92)';
+  CtxUi.fillText('专研', layout.panelX + layout.padding, researchLabelY);
+  const researchTitleWidth = CtxUi.measureText('专研').width;
+  CtxUi.font = `${Math.max(10, layout.slotSize * 0.19)}px Consolas, "Courier New", monospace`;
+  CtxUi.fillStyle = 'rgba(122, 214, 240, 0.8)';
+  CtxUi.fillText(
+    researchEntries.length > 0 ? `${researchEntries.length} 项已研究` : 'RESEARCH',
+    layout.panelX + layout.padding + researchTitleWidth + 12,
+    researchLabelY + 1
+  );
+
+  if (researchEntries.length === 0) {
+    // 尚未获得任何研究项:显示占位提示
+    const placeholder = {
+      x: layout.researchX,
+      y: layout.researchY,
+      width: layout.researchWidth,
+      height: layout.researchHeight
+    };
+    CtxUi.save();
+    CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.18)';
+    CtxUi.lineWidth = 1;
+    CtxUi.setLineDash([6, 6]);
+    createChamferRect(CtxUi, placeholder.x, placeholder.y, placeholder.width, placeholder.height, 6);
+    CtxUi.stroke();
+    CtxUi.setLineDash([]);
+    CtxUi.font = `${Math.max(10, layout.slotSize * 0.2)}px "Microsoft YaHei", Arial, sans-serif`;
+    CtxUi.fillStyle = 'rgba(140, 190, 215, 0.75)';
+    CtxUi.textAlign = 'center';
+    CtxUi.fillText(
+      '暂无研究项',
+      placeholder.x + placeholder.width / 2,
+      placeholder.y + placeholder.height / 2
+    );
+    CtxUi.textAlign = 'left';
+    CtxUi.restore();
+  } else {
+    const maxResearchCards = INVENTORY_RESEARCH_COLUMNS * INVENTORY_RESEARCH_MAX_ROWS;
+    for (let i = 0; i < researchEntries.length && i < maxResearchCards; i++) {
+      const col = i % INVENTORY_RESEARCH_COLUMNS;
+      const row = Math.floor(i / INVENTORY_RESEARCH_COLUMNS);
+      H_drawInventoryResearchCard(
+        CtxUi,
+        {
+          x: layout.researchX + col * (layout.researchCardWidth + layout.researchGap),
+          y: layout.researchY + row * (layout.researchCardHeight + layout.researchGap),
+          width: layout.researchCardWidth,
+          height: layout.researchCardHeight
+        },
+        researchEntries[i]
+      );
+    }
+  }
 
   // ---- 持有物标签 ----
   const labelFontSize = Math.max(11, layout.slotSize * 0.22);
@@ -4439,6 +4672,474 @@ const drawEntities = () => {
 /**
  * 绘制重生界面按钮
  */
+////////////////////
+// 专研(Research)界面 -->
+////////////////////
+
+/** 专研界面是否处于活动状态(有待选项或正在播放动画) */
+const H_isResearchOverlayActive = (): boolean => {
+  return researchUiPhase !== 'idle' || researchUiOptions.length > 0;
+};
+
+/** 绘制专研研究项的矢量图标(不依赖外部贴图),以 (cx,cy) 为中心、size 为整体尺寸 */
+const H_drawResearchGlyph = (
+  ctx: CanvasRenderingContext2D,
+  tag: string,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string
+) => {
+  const s = size;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(2, s * 0.12);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  switch (tag) {
+    case 'move_speed': {
+      for (let i = 0; i < 3; i++) {
+        const x = cx - s * 0.36 + i * s * 0.32;
+        ctx.beginPath();
+        ctx.moveTo(x, cy - s * 0.32);
+        ctx.lineTo(x + s * 0.22, cy);
+        ctx.lineTo(x, cy + s * 0.32);
+        ctx.stroke();
+      }
+      break;
+    }
+    case 'fire_rate': {
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.42, cy);
+      ctx.lineTo(cx + s * 0.24, cy);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx + s * 0.22, cy - s * 0.2);
+      ctx.lineTo(cx + s * 0.44, cy);
+      ctx.lineTo(cx + s * 0.22, cy + s * 0.2);
+      ctx.closePath();
+      ctx.fill();
+      for (let i = -1; i <= 1; i++) {
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(cx - s * 0.42, cy + i * s * 0.24);
+        ctx.lineTo(cx - s * 0.16, cy + i * s * 0.24);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      break;
+    }
+    case 'cooldown': {
+      ctx.beginPath();
+      ctx.arc(cx, cy, s * 0.38, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx, cy - s * 0.24);
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + s * 0.2, cy + s * 0.08);
+      ctx.stroke();
+      break;
+    }
+    case 'stamina': {
+      ctx.beginPath();
+      ctx.moveTo(cx + s * 0.12, cy - s * 0.42);
+      ctx.lineTo(cx - s * 0.24, cy + s * 0.06);
+      ctx.lineTo(cx + s * 0.02, cy + s * 0.06);
+      ctx.lineTo(cx - s * 0.12, cy + s * 0.42);
+      ctx.lineTo(cx + s * 0.26, cy - s * 0.08);
+      ctx.lineTo(cx, cy - s * 0.08);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'health': {
+      const arm = s * 0.15;
+      const len = s * 0.42;
+      ctx.fillRect(cx - arm, cy - len, arm * 2, len * 2);
+      ctx.fillRect(cx - len, cy - arm, len * 2, arm * 2);
+      break;
+    }
+    case 'death_keep': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - s * 0.42);
+      ctx.lineTo(cx + s * 0.34, cy - s * 0.26);
+      ctx.lineTo(cx + s * 0.34, cy + s * 0.06);
+      ctx.quadraticCurveTo(cx + s * 0.34, cy + s * 0.34, cx, cy + s * 0.44);
+      ctx.quadraticCurveTo(cx - s * 0.34, cy + s * 0.34, cx - s * 0.34, cy + s * 0.06);
+      ctx.lineTo(cx - s * 0.34, cy - s * 0.26);
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    }
+    case 'immovable_fortress': {
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.4, cy + s * 0.34);
+      ctx.lineTo(cx - s * 0.4, cy - s * 0.08);
+      ctx.lineTo(cx - s * 0.24, cy - s * 0.08);
+      ctx.lineTo(cx - s * 0.24, cy - s * 0.34);
+      ctx.lineTo(cx - s * 0.06, cy - s * 0.34);
+      ctx.lineTo(cx - s * 0.06, cy - s * 0.08);
+      ctx.lineTo(cx + s * 0.06, cy - s * 0.08);
+      ctx.lineTo(cx + s * 0.06, cy - s * 0.34);
+      ctx.lineTo(cx + s * 0.24, cy - s * 0.34);
+      ctx.lineTo(cx + s * 0.24, cy - s * 0.08);
+      ctx.lineTo(cx + s * 0.4, cy - s * 0.08);
+      ctx.lineTo(cx + s * 0.4, cy + s * 0.34);
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    }
+    case 'lucky_star': {
+      const points = 5;
+      const outer = s * 0.44;
+      const inner = outer * 0.44;
+      ctx.beginPath();
+      for (let i = 0; i < points * 2; i++) {
+        const radius = i % 2 === 0 ? outer : inner;
+        const angle = -Math.PI / 2 + (i * Math.PI) / points;
+        const px = cx + Math.cos(angle) * radius;
+        const py = cy + Math.sin(angle) * radius;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    default: {
+      ctx.beginPath();
+      ctx.arc(cx, cy, s * 0.36, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+};
+
+/** 按字符自动换行绘制文本(适配中文),返回下一行 y 坐标 */
+const H_drawWrappedText = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines: number
+): number => {
+  const chars = Array.from(text);
+  let line = '';
+  let drawn = 0;
+  let cursorY = y;
+  for (let i = 0; i < chars.length; i++) {
+    const test = line + chars[i];
+    if (ctx.measureText(test).width > maxWidth && line.length > 0) {
+      if (drawn >= maxLines) break;
+      ctx.fillText(line, x, cursorY);
+      drawn++;
+      cursorY += lineHeight;
+      line = chars[i];
+    } else {
+      line = test;
+    }
+  }
+  if (line.length > 0 && drawn < maxLines) {
+    ctx.fillText(line, x, cursorY);
+    cursorY += lineHeight;
+  }
+  return cursorY;
+};
+
+/** 绘制单个专研候选卡片(顶部小卡片样式:左侧图标 + 右侧名称/说明/效果) */
+const H_drawResearchCard = (
+  ctx: CanvasRenderingContext2D,
+  rect: { x: number; y: number; width: number; height: number },
+  tag: string,
+  alpha: number,
+  selected: boolean,
+  hovered: boolean,
+  pulse: number
+) => {
+  const def = H_getResearchDefinition(tag);
+  if (!def) return;
+  const legendary = def.category === 'legendary';
+  const accent = legendary ? RESEARCH_LEGENDARY_COLOR : RESEARCH_NORMAL_COLOR;
+  const currentLevel = playerEntity ? H_getResearchLevel(playerEntity.research, tag) : 0;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // 背板
+  const grad = ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.height);
+  if (legendary) {
+    grad.addColorStop(0, 'rgba(48, 36, 12, 0.94)');
+    grad.addColorStop(1, 'rgba(22, 16, 6, 0.94)');
+  } else {
+    grad.addColorStop(0, 'rgba(10, 26, 44, 0.94)');
+    grad.addColorStop(1, 'rgba(6, 14, 26, 0.94)');
+  }
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = selected ? 26 : (hovered ? 16 : 8) * (0.7 + pulse * 0.3);
+  ctx.fillStyle = grad;
+  createChamferRect(ctx, rect.x, rect.y, rect.width, rect.height, 12);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // 斜纹质感
+  ctx.save();
+  createChamferRect(ctx, rect.x, rect.y, rect.width, rect.height, 12);
+  ctx.clip();
+  drawSlantedStripes(
+    ctx,
+    rect.x,
+    rect.y,
+    rect.width,
+    rect.height,
+    12,
+    legendary ? 'rgba(255, 207, 77, 0.06)' : 'rgba(79, 168, 255, 0.06)'
+  );
+  ctx.restore();
+
+  // 描边
+  ctx.strokeStyle = selected ? accent : (legendary ? 'rgba(255, 207, 77, 0.55)' : 'rgba(79, 168, 255, 0.5)');
+  ctx.lineWidth = selected ? 2.2 : 1.2;
+  createChamferRect(ctx, rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1, 12);
+  ctx.stroke();
+
+  // 左侧图标
+  const iconCx = rect.x + 32;
+  const iconCy = rect.y + rect.height / 2;
+  ctx.beginPath();
+  ctx.arc(iconCx, iconCy, 22, 0, Math.PI * 2);
+  ctx.fillStyle = legendary ? 'rgba(255, 207, 77, 0.12)' : 'rgba(79, 168, 255, 0.12)';
+  ctx.fill();
+  ctx.strokeStyle = legendary ? 'rgba(255, 207, 77, 0.65)' : 'rgba(79, 168, 255, 0.6)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  H_drawResearchGlyph(ctx, tag, iconCx, iconCy, 26, accent);
+
+  // 右侧文本区
+  const textX = rect.x + 60;
+  const textRight = rect.x + rect.width - 12;
+
+  const nextLevel = def.maxLevel !== null ? Math.min(def.maxLevel, currentLevel + 1) : currentLevel + 1;
+
+  // 名称
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 15px "Microsoft YaHei", Arial, sans-serif';
+  ctx.fillStyle = legendary ? '#ffe6a3' : '#dff0ff';
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 10;
+  ctx.fillText(def.name, textX, rect.y + 24);
+  ctx.shadowBlur = 0;
+
+  // 等级(右对齐)
+  ctx.font = '11px "Microsoft YaHei", Arial, sans-serif';
+  ctx.fillStyle = legendary ? 'rgba(255, 224, 150, 0.88)' : 'rgba(150, 205, 255, 0.88)';
+  ctx.textAlign = 'right';
+  ctx.fillText(currentLevel > 0 ? `Lv.${currentLevel} → Lv.${nextLevel}` : `新研究 · Lv.${nextLevel}`, textRight, rect.y + 24);
+  ctx.textAlign = 'left';
+
+  // 说明
+  ctx.font = '11px "Microsoft YaHei", Arial, sans-serif';
+  ctx.fillStyle = 'rgba(196, 214, 230, 0.82)';
+  H_drawWrappedText(ctx, def.description, textX, rect.y + 46, textRight - textX, 14, 2);
+
+  // 效果(高亮)
+  ctx.font = 'bold 12px "Microsoft YaHei", Arial, sans-serif';
+  ctx.fillStyle = accent;
+  ctx.fillText(H_getResearchEffectText(tag, nextLevel), textX, rect.y + rect.height - 14);
+
+  ctx.restore();
+};
+
+/**
+ * 绘制专研界面(顶部小卡片形式,不遮挡视野、不影响操作)。
+ * 卡片横向排列在画布顶部居中位置,同时注册选项卡的悬停/点击事件区域。
+ */
+const drawResearchOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
+  // 移除旧的选项卡区域,避免重复注册
+  eventArea = eventArea.filter(area => !area.id.startsWith(RESEARCH_OVERLAY_EVENT_PREFIX));
+
+  const now = performance.now();
+  const dt = researchUiAnimLast > 0 ? Math.min(0.1, (now - researchUiAnimLast) / 1000) : 0;
+  researchUiAnimLast = now;
+  researchUiAnimTime += dt;
+
+  const pending = playerEntity && !playerEntity.isDead && Array.isArray(playerEntity.researchPendingOptions)
+    ? playerEntity.researchPendingOptions.filter((tag) => typeof tag === 'string' && tag.length > 0)
+    : [];
+
+  // idle 阶段跟随权威端的待选项(出现则展开,清空则收起)
+  if (researchUiPhase === 'idle') {
+    if (pending.length > 0) {
+      // 若与刚结算的选项相同,说明服务端尚未清空(网络延迟),在抑制时长内保持收起避免重复弹出;
+      // 超过抑制时长后即使标签相同也允许再次展示,保证跨级补发的抽取机会不会被吞掉。
+      const sameAsResolved = researchUiResolvedTags.length === pending.length
+        && pending.every((tag) => researchUiResolvedTags.includes(tag))
+        && (now - researchUiResolvedAt) < RESEARCH_RESOLVED_SUPPRESS_MS;
+      if (!sameAsResolved) {
+        researchUiOptions = pending;
+      }
+    } else {
+      if (researchUiOptions.length > 0) {
+        researchUiOptions = [];
+      }
+      researchUiResolvedTags = [];
+    }
+  }
+
+  // 阶段推进
+  if (researchUiPhase === 'confirm') {
+    if ((now - researchUiPhaseStart) / 1000 >= RESEARCH_CONFIRM_DURATION) {
+      researchUiPhase = 'closing';
+      researchUiPhaseStart = now;
+    }
+  } else if (researchUiPhase === 'closing') {
+    if ((now - researchUiPhaseStart) / 1000 >= RESEARCH_CLOSE_DURATION) {
+      researchUiPhase = 'idle';
+      researchUiSelectedTag = null;
+      researchUiResolvedTags = [...researchUiOptions];
+      researchUiResolvedAt = now;
+      researchUiOptions = [];
+      researchUiAnimLast = 0;
+      return;
+    }
+  }
+
+  if (researchUiOptions.length === 0) return;
+
+  const { width } = H_getCanvasCssSize(CANVAS);
+
+  const closeProgress = researchUiPhase === 'closing'
+    ? Math.min(1, (now - researchUiPhaseStart) / 1000 / RESEARCH_CLOSE_DURATION)
+    : 0;
+  const overlayAlpha = 1 - closeProgress;
+  const selectedTag = researchUiSelectedTag;
+  const pulse = 0.5 + 0.5 * Math.sin(researchUiAnimTime * 2.4);
+
+  CtxUi.save();
+  CtxUi.globalAlpha = overlayAlpha;
+
+  // 顶部轻量渐变(不遮挡玩法视野,仅提升小卡片可读性)
+  const backdropHeight = RESEARCH_TOP_OFFSET + RESEARCH_CARD_HEIGHT + 20;
+  const backdrop = CtxUi.createLinearGradient(0, 0, 0, backdropHeight);
+  backdrop.addColorStop(0, 'rgba(2, 6, 16, 0.62)');
+  backdrop.addColorStop(1, 'rgba(2, 6, 16, 0)');
+  CtxUi.fillStyle = backdrop;
+  CtxUi.fillRect(0, 0, width, backdropHeight);
+
+  // 标题(顶部居中,小字号)
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.font = 'bold 15px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.shadowColor = 'rgba(120, 210, 255, 0.6)';
+  CtxUi.shadowBlur = 14;
+  CtxUi.fillStyle = '#eaf6ff';
+  CtxUi.fillText('专研 · 选择一项研究以提升自身能力', width / 2, RESEARCH_TOP_OFFSET - 24);
+  CtxUi.shadowBlur = 0;
+
+  // 选项卡布局(整体在顶部居中)
+  const count = researchUiOptions.length;
+  const gap = RESEARCH_CARD_GAP;
+  const totalWidth = count * RESEARCH_CARD_WIDTH + (count - 1) * gap;
+  const startX = (width - totalWidth) / 2;
+  const cardY = RESEARCH_TOP_OFFSET;
+
+  for (let i = 0; i < count; i++) {
+    const tag = researchUiOptions[i];
+    const baseRect = {
+      x: startX + i * (RESEARCH_CARD_WIDTH + gap),
+      y: cardY,
+      width: RESEARCH_CARD_WIDTH,
+      height: RESEARCH_CARD_HEIGHT
+    };
+    const hovered = researchUiPhase === 'idle'
+      && hoveredArea?.id === `${RESEARCH_OVERLAY_EVENT_PREFIX}${i}`;
+    const isSelected = selectedTag === tag;
+
+    // 缩放:悬停略放大;选中阶段选中项放大、其余缩小
+    let scale = 1;
+    if (researchUiPhase === 'confirm') {
+      scale = isSelected ? 1.05 + 0.05 * pulse : 0.95;
+    } else if (researchUiPhase === 'closing') {
+      scale = isSelected ? 1.1 : 0.92;
+    } else if (hovered) {
+      scale = 1.03;
+    }
+
+    // 透明度:选中阶段未选中项变暗
+    let alpha = 1;
+    if (researchUiPhase === 'confirm') {
+      alpha = isSelected ? 1 : 0.3;
+    } else if (researchUiPhase === 'closing') {
+      alpha = isSelected ? 1 : 0.12;
+    }
+
+    const cx = baseRect.x + baseRect.width / 2;
+    const cy = baseRect.y + baseRect.height / 2;
+    CtxUi.save();
+    CtxUi.translate(cx, cy - closeProgress * 16);
+    CtxUi.scale(scale, scale);
+    CtxUi.translate(-cx, -cy);
+    H_drawResearchCard(
+      CtxUi,
+      baseRect,
+      tag,
+      alpha,
+      isSelected && researchUiPhase !== 'idle',
+      hovered,
+      pulse
+    );
+    CtxUi.restore();
+
+    // 选中时的扩散光环
+    if (isSelected && researchUiPhase === 'confirm') {
+      const ringProgress = Math.min(1, (now - researchUiPhaseStart) / 1000 / RESEARCH_CONFIRM_DURATION);
+      const def = H_getResearchDefinition(tag);
+      const accent = def?.category === 'legendary' ? RESEARCH_LEGENDARY_COLOR : RESEARCH_NORMAL_COLOR;
+      CtxUi.save();
+      CtxUi.globalAlpha = overlayAlpha * (1 - ringProgress) * 0.8;
+      CtxUi.strokeStyle = accent;
+      CtxUi.lineWidth = 2;
+      CtxUi.beginPath();
+      CtxUi.arc(cx, cy, 30 + ringProgress * 130, 0, Math.PI * 2);
+      CtxUi.stroke();
+      CtxUi.restore();
+    }
+
+    // 事件区域(idle 阶段才注册,避免动画期间误点)
+    if (researchUiPhase === 'idle') {
+      eventArea.push({
+        id: `${RESEARCH_OVERLAY_EVENT_PREFIX}${i}`,
+        rect: baseRect,
+        type: 'button',
+        cursor: 'pointer',
+        onClick: () => {
+          if (researchUiPhase !== 'idle') return;
+          if (!researchUiOptions.includes(tag)) return;
+          researchUiSelectedTag = tag;
+          researchUiPhase = 'confirm';
+          researchUiPhaseStart = performance.now();
+          // 立即把选择提交给权威端;界面动画继续按本地状态播放
+          if (playerEntity) {
+            sendClientInstruct(Instruct.I_ResearchChoose(playerEntity.id, tag));
+          }
+          drawUI();
+        }
+      });
+    }
+  }
+
+  CtxUi.restore();
+};
+
+////////////////////
+// <-- 专研(Research)界面
+////////////////////
+
 const drawDeathOverlayButton = (
   CtxUi: CanvasRenderingContext2D,
   rect: { x: number; y: number; width: number; height: number },
@@ -4488,17 +5189,72 @@ const drawDeathOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
   const playerDead = !playerEntity || playerEntity.isDead || playerEntity.health <= 0;
   if (!playerDead) return;
 
+  // 本次死亡明细(掉落经验/物品/技能 + 专研降级)
+  const report = playerEntity?.lastDeathReport ?? null;
+  const droppedExp = Math.max(0, Math.round(report?.droppedExp ?? 0));
+  const droppedItems = Array.isArray(report?.items) ? report!.items : [];
+  const droppedSkills = Array.isArray(report?.skillTags) ? report!.skillTags : [];
+  const downgrades = Array.isArray(report?.researchDowngrades) ? report!.researchDowngrades : [];
+
+  // 列表行截断上限:超出时用「… 等 N 项」占用最后一行,保证面板不无限变高
+  const H_clampDeathLines = (total: number, cap: number, build: (index: number) => string): string[] => {
+    if (total <= 0) return [];
+    if (total <= cap) {
+      return Array.from({ length: total }, (_unused, index) => build(index));
+    }
+    const lines = Array.from({ length: cap }, (_unused, index) => build(index));
+    lines[cap - 1] = `… 等 ${total} 项`;
+    return lines;
+  };
+
+  const expLines = [droppedExp > 0 ? `-${droppedExp} EXP` : '无经验掉落'];
+  const itemLines = H_clampDeathLines(droppedItems.length, 4, (index) => {
+    const stack = droppedItems[index];
+    const name = stack.name || H_getItemDefinition(stack.tag).name || stack.tag;
+    return `${name} ×${stack.count}`;
+  });
+  const skillLines = H_clampDeathLines(droppedSkills.length, 3, (index) => {
+    const tag = droppedSkills[index];
+    return `技能 · ${H_getSkillByTag(tag)?.name ?? tag}`;
+  });
+  const downgradeLines = H_clampDeathLines(downgrades.length, 4, (index) => {
+    const entry = downgrades[index];
+    const name = H_getResearchDefinition(entry.tag)?.name ?? entry.tag;
+    return entry.to > 0 ? `${name}  Lv.${entry.from} → Lv.${entry.to}` : `${name}  Lv.${entry.from} → 已移除`;
+  });
+
+  // 面板尺寸
+  const lineH = 17;
+  const sectionHeaderH = 18;
+  const sectionGap = 6;
+  const sections = [
+    { header: '掉落经验', lines: expLines, headerColor: '#7ce0ff', lineColor: 'rgba(214, 236, 248, 0.9)' },
+    { header: '掉落物品', lines: itemLines, headerColor: '#ffcf7a', lineColor: 'rgba(226, 236, 245, 0.9)' },
+    { header: '掉落技能', lines: skillLines, headerColor: '#8ef0c8', lineColor: 'rgba(214, 244, 232, 0.9)' },
+    { header: '专研降级', lines: downgradeLines, headerColor: '#ffa2ad', lineColor: 'rgba(255, 214, 219, 0.9)' }
+  ];
+  const emptyState = droppedItems.length === 0 && droppedSkills.length === 0 && downgrades.length === 0;
+
+  let bodyHeight = 0;
+  for (const section of sections) {
+    const count = section.lines.length > 0 ? section.lines.length : 1;
+    bodyHeight += sectionHeaderH + count * lineH + sectionGap;
+  }
+  if (emptyState) bodyHeight += lineH;
+
+  const buttonHeight = 44;
+  const panelWidth = Math.min(420, Math.max(300, width - 40));
+  const panelHeight = 62 + bodyHeight + 14 + buttonHeight + 26;
+  const panelX = (width - panelWidth) / 2;
+  const panelY = Math.max(12, (height - panelHeight) / 2);
+  const contentX = panelX + 22;
+  const contentWidth = panelWidth - 44;
+
   CtxUi.save();
 
   // 全屏半透明遮罩
-  CtxUi.fillStyle = 'rgba(2, 4, 10, 0.62)';
+  CtxUi.fillStyle = 'rgba(2, 4, 10, 0.66)';
   CtxUi.fillRect(0, 0, width, height);
-
-  // 面板布局
-  const panelWidth = Math.min(340, Math.max(280, width - 48));
-  const panelHeight = 310;
-  const panelX = (width - panelWidth) / 2;
-  const panelY = (height - panelHeight) / 2;
 
   // 面板背景与描边
   const panelGradient = CtxUi.createLinearGradient(panelX, panelY, panelX, panelY + panelHeight);
@@ -4518,31 +5274,58 @@ const drawDeathOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
   CtxUi.stroke();
 
   // 死亡标题
-  CtxUi.font = 'bold 34px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.font = 'bold 32px "Microsoft YaHei", Arial, sans-serif';
   CtxUi.textAlign = 'center';
   CtxUi.textBaseline = 'middle';
   CtxUi.shadowColor = 'rgba(255, 90, 104, 0.55)';
   CtxUi.shadowBlur = 18;
   CtxUi.fillStyle = '#ff5a68';
-  CtxUi.fillText('你已阵亡', panelX + panelWidth / 2, panelY + 58);
+  CtxUi.fillText('你已阵亡', panelX + panelWidth / 2, panelY + 40);
   CtxUi.shadowBlur = 0;
 
-  // 游戏积分
-  CtxUi.font = '14px "Microsoft YaHei", Arial, sans-serif';
-  CtxUi.fillStyle = 'rgba(190, 220, 235, 0.8)';
-  CtxUi.fillText('游戏积分', panelX + panelWidth / 2, panelY + 112);
-  CtxUi.font = 'bold 40px Consolas, "Courier New", monospace';
-  CtxUi.shadowColor = 'rgba(255, 217, 106, 0.5)';
-  CtxUi.shadowBlur = 16;
-  CtxUi.fillStyle = '#ffd96a';
-  CtxUi.fillText(`${Math.floor(playerEntity?.player_score ?? 0)}`, panelX + panelWidth / 2, panelY + 154);
-  CtxUi.shadowBlur = 0;
+  // 标题下分割线
+  CtxUi.strokeStyle = 'rgba(91, 221, 255, 0.25)';
+  CtxUi.beginPath();
+  CtxUi.moveTo(contentX, panelY + 64);
+  CtxUi.lineTo(contentX + contentWidth, panelY + 64);
+  CtxUi.stroke();
 
-  // 按钮布局
+  // 区块内容
+  CtxUi.textAlign = 'left';
+  CtxUi.textBaseline = 'middle';
+  let cursorY = panelY + 64 + 14;
+  for (const section of sections) {
+    CtxUi.font = 'bold 13px "Microsoft YaHei", Arial, sans-serif';
+    CtxUi.fillStyle = section.headerColor;
+    CtxUi.fillText(section.header, contentX, cursorY);
+    cursorY += sectionHeaderH;
+
+    CtxUi.font = '13px "Microsoft YaHei", Arial, sans-serif';
+    CtxUi.fillStyle = section.lineColor;
+    if (section.lines.length === 0) {
+      CtxUi.fillStyle = 'rgba(150, 170, 185, 0.6)';
+      CtxUi.fillText('（无）', contentX + 10, cursorY);
+      cursorY += lineH;
+    } else {
+      for (const line of section.lines) {
+        CtxUi.fillText(H_fitText(CtxUi, line, contentWidth - 10), contentX + 10, cursorY);
+        cursorY += lineH;
+      }
+    }
+    cursorY += sectionGap;
+  }
+
+  if (emptyState) {
+    CtxUi.font = '12px "Microsoft YaHei", Arial, sans-serif';
+    CtxUi.fillStyle = 'rgba(150, 170, 185, 0.68)';
+    CtxUi.fillText('本次死亡没有掉落任何物品或技能', contentX, cursorY);
+    cursorY += lineH;
+  }
+
+  // 按钮布局(面板底部居中)
   const buttonGap = 16;
-  const buttonWidth = Math.min(130, (panelWidth - 48 - buttonGap) / 2);
-  const buttonHeight = 44;
-  const buttonsY = panelY + 210;
+  const buttonWidth = Math.min(140, (panelWidth - 48 - buttonGap) / 2);
+  const buttonsY = panelY + panelHeight - buttonHeight - 22;
   const totalButtonsWidth = buttonWidth * 2 + buttonGap;
   const buttonsX = panelX + (panelWidth - totalButtonsWidth) / 2;
 
@@ -4598,6 +5381,7 @@ const drawUI = () => {
   drawInventoryPanel(ctxUi, UI_CANVAS.value);
   drawDebugTerminal(ctxUi, UI_CANVAS.value);
   drawKeyboardSettingsPanel(ctxUi, UI_CANVAS.value);
+  drawResearchOverlay(ctxUi, UI_CANVAS.value);
   drawDeathOverlay(ctxUi, UI_CANVAS.value);
 };
 
@@ -4779,6 +5563,7 @@ const DEBUG_COMMAND_SPECS = [
   { name: '/collision', args: ['on', 'off', 'toggle'] },
   { name: '/facing', args: ['on', 'off', 'toggle'] },
   { name: '/show_tag', args: ['on', 'off', 'toggle'] },
+  { name: '/show_level', args: ['on', 'off', 'toggle'] },
   { name: '/show_hunger', args: ['on', 'off', 'toggle'] },
   { name: '/show_health', args: ['on', 'off', 'toggle'] },
   { name: '/show_debug_board', args: ['on', 'off', 'toggle'] },
@@ -4856,6 +5641,7 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       pushDebugTerminalLog('/collision [on|off|toggle]');
       pushDebugTerminalLog('/facing [on|off|toggle]');
       pushDebugTerminalLog('/show_tag [on|off|toggle]');
+      pushDebugTerminalLog('/show_level [on|off|toggle]');
       pushDebugTerminalLog('/show_hunger [on|off|toggle]');
       pushDebugTerminalLog('/show_health [on|off|toggle]');
       pushDebugTerminalLog('/perception_range [on|off|toggle]');
@@ -4875,6 +5661,7 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       pushDebugTerminalLog(`CollisionBoxes: ${entityDebugFlags.showCollisionBoxes ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`FacingArrow: ${entityDebugFlags.showFacingDirection ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`TagText: ${entityDebugFlags.showTag ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`LevelText: ${entityDebugFlags.showLevel ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`HungerText: ${entityDebugFlags.showHunger ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`HealthText: ${entityDebugFlags.showHealth ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`InterestRange: ${entityDebugFlags.showInterestRange ? 'ON' : 'OFF'}`);
@@ -4907,6 +5694,10 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
     }
     case 'show_tag':{
       applyDebugFlagCommand('TagText', entityDebugFlags.showTag, args, (v) => { entityDebugFlags.showTag = v; });
+      break;
+    }
+    case 'show_level':{
+      applyDebugFlagCommand('LevelText', entityDebugFlags.showLevel, args, (v) => { entityDebugFlags.showLevel = v; });
       break;
     }
     case 'show_hunger':{
@@ -4950,6 +5741,7 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       entityDebugFlags.showCollisionBoxes = nextValue;
       entityDebugFlags.showFacingDirection = nextValue;
       entityDebugFlags.showTag = nextValue;
+      entityDebugFlags.showLevel = nextValue;
       entityDebugFlags.showHunger = nextValue;
       entityDebugFlags.showHealth = nextValue;
       entityDebugFlags.showInterestRange = nextValue;
@@ -5019,6 +5811,8 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
   // 背包(调试终端未打开时生效)
   if (!debugTerminalVisible && noModifier && bindingId === 'toggleInventory' && !e.repeat) {
     e.preventDefault();
+    // 专研界面打开时不允许切换到背包
+    if (H_isResearchOverlayActive()) return;
     if (!playerEntity) {
       pushDebugTerminalLog('[WARN] Player not ready, cannot open inventory.');
       return;
@@ -5386,6 +6180,8 @@ const onMouseMove = (e: MouseEvent) => {
     cursorManager?.setNowCursorType(inventoryDragPayload ? 'move' : 'pointer');
     return;
   }
+
+  // 专研顶部小卡片不拦截鼠标事件:悬停/点击由通用的事件区域机制处理(见下方通用分支)
 
   const hitArea = H_getHitEventArea(mouseX, mouseY);
   hoveredArea = hitArea;

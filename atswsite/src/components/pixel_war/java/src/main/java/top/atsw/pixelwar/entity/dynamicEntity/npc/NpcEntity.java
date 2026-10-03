@@ -49,6 +49,22 @@ public abstract class NpcEntity extends DynamicEntity {
     public int killScore = 1;
     /** 战利品配置(击杀后按概率掉落),默认空数组 */
     public List<Loot> loot = new ArrayList<>();
+    /**
+     * 主人(玩家)的射速倍率,由世界每帧同步。
+     * 从者(ownerId != null)开火间隔按该倍率缩放,实现"从者子弹射速同步受玩家专研影响"。
+     */
+    public double ownerFireRateMultiplier = 1;
+    /**
+     * 最后一次对本次击杀产生贡献的玩家 id(用于"幸运之星"结算战利品加成)。
+     * 仅服务端使用,不参与渲染。
+     */
+    public Long lastKillerPlayerId;
+    /** NPC 等级(默认 0);等级越高能力越强,由刷怪逻辑在创建后调用 applyNpcLevel 设置 */
+    public int level;
+    /** 首次应用等级时的基础移动速度(用于在基础值上叠加等级增益,避免重复叠加) */
+    private Double baseMinMoveSpeed;
+    private Double baseMaxMoveSpeed;
+    private Double baseSpeed;
 
     protected NpcEntity(Geometry.Vec2 position, Long ownerId, Long teamId, String name,
                         String attitude, double pickupRange, String tag) {
@@ -60,6 +76,76 @@ public abstract class NpcEntity extends DynamicEntity {
         this.killScore = 1;
         // NPC 默认携带的游戏经验值
         this.gameExp = 2;
+    }
+
+    /**
+     * 行为循环的时间推进量。
+     *
+     * <p>无主 NPC 返回原 dt;玩家从者的开火节奏按其主人的射速倍率加速
+     * (倍率 &gt; 1 时冷却流逝更快 → 开火更频繁)。</p>
+     */
+    protected double getActionDelta(double dt) {
+        if (ownerId == null) {
+            return dt;
+        }
+        double multiplier = (Double.isFinite(ownerFireRateMultiplier) && ownerFireRateMultiplier > 0)
+                ? ownerFireRateMultiplier : 1;
+        return dt * multiplier;
+    }
+
+    // ==================================================================
+    // 等级
+    // ==================================================================
+
+    /** 等级上限(子类覆盖;同时决定刷怪时使用的等级概率表) */
+    public int maxLevel() {
+        return 5;
+    }
+
+    /** 每级移动速度增益(px/s,子类覆盖:红像素为 40,其余为 20) */
+    protected double moveSpeedBonusPerLevel() {
+        return 20;
+    }
+
+    /** 每级子弹速度增益(px/s) */
+    public double getBulletSpeedBonus() {
+        return level * 60;
+    }
+
+    /** 本 NPC 发射子弹时的速度(基础子弹速度 + 等级增益) */
+    protected double getBulletMoveSpeed() {
+        return BulletEntity.MOVE_SPEED + getBulletSpeedBonus();
+    }
+
+    /**
+     * 应用 NPC 等级:设置等级并重算与等级相关的属性。
+     *
+     * <p>由刷怪逻辑在创建实体后调用;构造阶段等级恒为 0(即各公式的基准值)。
+     * 重复调用是幂等的(移动速度始终基于首次调用的基础值重新计算)。</p>
+     */
+    public void applyNpcLevel(int level) {
+        int clamped = Math.max(0, Math.min(maxLevel(), level));
+        this.level = clamped;
+        applyMoveSpeedBonus();
+        onNpcLevelApplied();
+    }
+
+    /** 在基础移动速度上叠加 等级 × 每级增益 */
+    private void applyMoveSpeedBonus() {
+        if (baseMinMoveSpeed == null) {
+            baseMinMoveSpeed = minMoveSpeed;
+            baseMaxMoveSpeed = maxMoveSpeed;
+            baseSpeed = speed;
+        }
+        double bonus = moveSpeedBonusPerLevel() * level;
+        minMoveSpeed = baseMinMoveSpeed + bonus;
+        maxMoveSpeed = baseMaxMoveSpeed + bonus;
+        speed = baseSpeed + bonus;
+    }
+
+    /** 等级变化时重算等级相关属性(生命/经验/攻击间隔等),由子类覆盖 */
+    protected void onNpcLevelApplied() {
+        // 默认无额外等级属性
     }
 
     /** 生成权重(0,1],用于按权重随机刷新 */

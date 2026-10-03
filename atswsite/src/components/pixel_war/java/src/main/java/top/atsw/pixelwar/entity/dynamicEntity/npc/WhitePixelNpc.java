@@ -50,10 +50,10 @@ public class WhitePixelNpc extends NpcEntity {
                 actionBefore(context);
                 return;
             }
-            actionCooldownRemaining -= context.deltaTime;
+            actionCooldownRemaining -= getActionDelta(context.deltaTime);
             while (actionCooldownRemaining <= 0 && isMoving && !isDead) {
                 action(context);
-                actionCooldownRemaining += ACTION_INTERVAL;
+                actionCooldownRemaining += getActionInterval();
             }
         } else {
             // 被玩家吸附情况下不考虑移动的条件
@@ -67,10 +67,10 @@ public class WhitePixelNpc extends NpcEntity {
                 actionBefore(context);
                 return;
             }
-            actionCooldownRemaining -= context.deltaTime;
+            actionCooldownRemaining -= getActionDelta(context.deltaTime);
             while (actionCooldownRemaining <= 0 && !isDead) {
                 action(context);
-                actionCooldownRemaining += ACTION_INTERVAL;
+                actionCooldownRemaining += getActionInterval();
             }
         }
     }
@@ -79,7 +79,7 @@ public class WhitePixelNpc extends NpcEntity {
     public void actionBefore(ActionContext context) {
         actionLoopRunning = true;
         action(context);
-        actionCooldownRemaining = ACTION_INTERVAL;
+        actionCooldownRemaining = getActionInterval();
     }
 
     /** 结束行动循环:清除运行标记与冷却(对应 TS 版 actionAfter) */
@@ -104,7 +104,19 @@ public class WhitePixelNpc extends NpcEntity {
                 id,
                 teamId,
                 "",
-                bulletColor));
+                bulletColor,
+                getBulletMoveSpeed()));
+    }
+
+    /** 当前攻击间隔(秒):随等级缩短(ACTION_INTERVAL - 0.1 × Level) */
+    protected double getActionInterval() {
+        return Math.max(0.1, ACTION_INTERVAL - 0.1 * level);
+    }
+
+    /** 等级变化时重算等级相关属性(经验值随等级提升) */
+    @Override
+    protected void onNpcLevelApplied() {
+        this.gameExp = 2 + level * 2;
     }
 
     /**

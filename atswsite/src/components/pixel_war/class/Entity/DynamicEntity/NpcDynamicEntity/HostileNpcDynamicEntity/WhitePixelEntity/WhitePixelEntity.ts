@@ -36,6 +36,36 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     // 白色像素不拾取任何物品。
   }
 
+  /** 当前攻击间隔(秒):随等级缩短(ACTION_INTERVAL - 0.1 × Level) */
+  protected getActionInterval(): number {
+    return Math.max(0.1, WhitePixelEntity.ACTION_INTERVAL - 0.1 * this.level);
+  }
+
+  /** 等级变化时重算等级相关属性(经验值随等级提升) */
+  protected override onNpcLevelApplied(): void {
+    this.game_exp = 2 + this.level * 2;
+  }
+
+  /** 按当前等级发射一颗子弹(子弹速度随等级提升) */
+  private spawnLevelBullet(context: ActionLoopContext, bulletColor: string): void {
+    const direction = this.getNormalizedFacingDirection();
+    const spawnDistance = this.width * 0.6;
+    context.spawnBullet(
+      new OrdinaryBulletDynamicEntity(
+        {
+          x: this.position.x + direction.x * spawnDistance,
+          y: this.position.y + direction.y * spawnDistance,
+        },
+        direction,
+        this.id,
+        this.teamId,
+        '',
+        bulletColor,
+        this.getBulletMoveSpeed()
+      )
+    );
+  }
+
   public override actionLoop(context: ActionLoopContext): void {
     if(this.ownerId === null){// 普通情况下只能在移动时射击
       if (this.isDead || !this.isMoving) {
@@ -50,10 +80,10 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
         return;
       }
 
-      this.actionCooldownRemaining -= context.deltaTime;
+      this.actionCooldownRemaining -= this.getActionDelta(context.deltaTime);
       while (this.actionCooldownRemaining <= 0 && this.isMoving && !this.isDead) {
         this.action(context);
-        this.actionCooldownRemaining += WhitePixelEntity.ACTION_INTERVAL;
+        this.actionCooldownRemaining += this.getActionInterval();
       }
     }
     else{// 被玩家吸附情况下不考虑移动的条件
@@ -69,10 +99,10 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
         return;
       }
 
-      this.actionCooldownRemaining -= context.deltaTime;
+      this.actionCooldownRemaining -= this.getActionDelta(context.deltaTime);
       while (this.actionCooldownRemaining <= 0 && !this.isDead) {
         this.action(context);
-        this.actionCooldownRemaining += WhitePixelEntity.ACTION_INTERVAL;
+        this.actionCooldownRemaining += this.getActionInterval();
       }
     }
   }
@@ -135,7 +165,7 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
   public override actionBefore(context: ActionLoopContext): void {
     this.isActionLoopRunning = true;
     this.action(context);
-    this.actionCooldownRemaining = WhitePixelEntity.ACTION_INTERVAL;
+    this.actionCooldownRemaining = this.getActionInterval();
   }
 
   public override actionAfter(_context: ActionLoopContext): void {
@@ -429,6 +459,9 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
         }
       }
     }
+
+    // NPC 等级徽标(/show_level)
+    this.drawNpcLevelBadge(ctx, worldToScreen, debugFlags);
     /////// 调试信息end
   }
 

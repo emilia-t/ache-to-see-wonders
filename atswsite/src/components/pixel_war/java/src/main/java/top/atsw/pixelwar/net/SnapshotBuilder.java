@@ -10,6 +10,7 @@ import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
 import top.atsw.pixelwar.entity.itemEntity.ItemEntity;
 import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
 import top.atsw.pixelwar.game.Inventory;
+import top.atsw.pixelwar.game.Research;
 import top.atsw.pixelwar.protocol.Protocol;
 import top.atsw.pixelwar.world.World;
 
@@ -95,7 +96,8 @@ public final class SnapshotBuilder {
                     npc.isMoving,
                     npc.mapColor,
                     npc.killScore,
-                    npc.deathEffectTimer));
+                    npc.deathEffectTimer,
+                    npc.level));
         }
 
         List<Protocol.BulletSnapshot> bullets = new ArrayList<>();
@@ -209,7 +211,41 @@ public final class SnapshotBuilder {
                 player.playerRule.fireCooldownMax,
                 toCooldownList(player.equippedSkillCooldowns),
                 toInventoryDto(player.inventory),
-                player.getAllServantIds());
+                player.getAllServantIds(),
+                toResearchList(player.research),
+                new ArrayList<>(player.researchPendingOptions),
+                toDeathReport(player.lastDeathReport));
+    }
+
+    /** 玩家死亡明细 -> 协议 DTO(null 表示尚未死亡或已重生) */
+    private static Protocol.DeathReportDto toDeathReport(PlayerEntity.DeathDrop report) {
+        if (report == null) {
+            return null;
+        }
+        List<Protocol.DeathItemDto> items = new ArrayList<>(report.items().size());
+        for (PlayerEntity.ItemStack stack : report.items()) {
+            items.add(new Protocol.DeathItemDto(stack.tag(), stack.name(), stack.count()));
+        }
+        List<Protocol.ResearchDowngradeDto> downgrades =
+                new ArrayList<>(report.researchDowngrades().size());
+        for (PlayerEntity.ResearchDowngrade downgrade : report.researchDowngrades()) {
+            downgrades.add(new Protocol.ResearchDowngradeDto(
+                    downgrade.tag(), downgrade.from(), downgrade.to()));
+        }
+        return new Protocol.DeathReportDto(
+                report.droppedExp(),
+                items,
+                new ArrayList<>(report.skillTags()),
+                downgrades);
+    }
+
+    /** 专研记录 -> 协议 DTO 列表 */
+    private static List<Protocol.ResearchEntryDto> toResearchList(List<Research.State> states) {
+        List<Protocol.ResearchEntryDto> list = new ArrayList<>(states.size());
+        for (Research.State state : states) {
+            list.add(new Protocol.ResearchEntryDto(state.tag, state.level, state.value));
+        }
+        return list;
     }
 
     /**
