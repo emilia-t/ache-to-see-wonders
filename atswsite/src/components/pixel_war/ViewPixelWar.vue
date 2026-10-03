@@ -30,29 +30,12 @@ import {
   EffectManager,
   NumericalManager,
   Entity,
-  EmptyEntity,
   StaticEntity,
-  BoxStaticEntity,
-  WallStaticEntity,
-  CurbStaticEntity,
-  CurbStaticEntity8Length,
   ItemEntity,
-  HealingGemItemEntity,
-  RedPixelBombEntity,
   NpcDynamicEntity,
   PlayerDynamicEntity,
-  WhitePixelEntity,
-  WhitePixelVa2Entity,
-  RedPixelEntity,
-  SkyBluePixelEntity,
-  PurpleShieldEntity,
-  GoldenDodgeXa4Entity,
   DodgeSkill,
   BulletDynamicEntity,
-  BuckshotBulletDynamicEntity,
-  SniperBulletDynamicEntity,
-  LaserBulletDynamicEntity,
-  OrdinaryBulletDynamicEntity,
   GrenadeDynamicEntity,
   ExpOrbDynamicEntity,
   SkillOrbDynamicEntity,
@@ -73,12 +56,13 @@ import {
   H_inventoryDestroyEntry,
   H_inventoryDestroyEquipped,
   H_ensurePlayerInventory,
-  H_getSkillByTag,
-  H_getItemDefinition,
-  H_getAllSkills,
   H_drawSkillIconTexture,
   H_preloadSkillIconTextures
 } from '@/components/pixel_war/class';
+// 注册表层(技能表 / 物品表 / 实体工厂)统一从 registry/ 导入
+import { H_getSkillByTag, H_getAllSkills } from '@/components/pixel_war/registry/SkillRegistry';
+import { H_getItemDefinition } from '@/components/pixel_war/registry/ItemRegistry';
+import { H_createEntityFromSnapshot } from '@/components/pixel_war/registry/EntityFactory';
 
 // 底部状态栏技能信息类型
 type BottomStatusSkill = {
@@ -1100,144 +1084,6 @@ const H_hydrateEntitySnapshot = <T extends Entity>(entity: T, snapshot: T): T =>
   entity.texture = texture;
   entity.updateCollisionBox();
   return entity;
-};
-
-const H_getBulletDirectionFromSnapshot = (snapshot: any): Point => {
-  const velocity = snapshot.velocity || { x: 1, y: 0 };
-  const len = Math.hypot(velocity.x, velocity.y);
-  if (len < 0.0001) return { x: 1, y: 0 };
-  return {
-    x: velocity.x / len,
-    y: velocity.y / len,
-  };
-};
-
-const H_createEntityFromSnapshot = (snapshot: any): Entity => {
-  // 静态实体
-  if (snapshot.type === 'static') {
-    const tag = snapshot.tag;
-    switch (tag) {
-      case 'wall':
-        return new WallStaticEntity(snapshot.position, snapshot.name, tag);
-      case 'curb':
-        return new CurbStaticEntity(snapshot.position, snapshot.name, tag);
-      case 'curb8':
-        return new CurbStaticEntity8Length(snapshot.position, snapshot.direction);
-      case 'box':
-        return new BoxStaticEntity(snapshot.position, snapshot.name, tag);
-    }
-  }
-  // 物体实体
-  if (snapshot.type === 'item') {
-    const tag = snapshot.tag;
-    switch (tag) {
-      case 'healing_gem':
-        return new HealingGemItemEntity(snapshot.position, snapshot.name, tag);
-    }
-  }
-  // 动态实体
-  const kind = snapshot.kind as DynamicEntityKind;
-  if (kind === 'npc') {
-    const tag = snapshot.tag;
-    switch (tag){
-      case 'white_pixel':
-        return new WhitePixelEntity(
-          snapshot.position,
-          snapshot.ownerId,
-          snapshot.teamId
-        );
-      case 'white_pixel_va2':
-        return new WhitePixelVa2Entity(
-          snapshot.position,
-          snapshot.ownerId,
-          snapshot.teamId
-        );
-      case 'red_pixel':
-        return new RedPixelEntity(
-          snapshot.position,
-          snapshot.ownerId,
-          snapshot.teamId
-        );
-      case 'sky_blue_pixel':
-        return new SkyBluePixelEntity(
-          snapshot.position,
-          snapshot.ownerId,
-          snapshot.teamId
-        );
-      case 'purple_shield':
-        return new PurpleShieldEntity(
-          snapshot.position,
-          snapshot.ownerId,
-          snapshot.teamId
-        );
-      case 'golden_dodge_xa4':
-        return new GoldenDodgeXa4Entity(
-          snapshot.position,
-          snapshot.ownerId,
-          snapshot.teamId
-        );
-    }
-  }
-  else if(kind === 'player'){
-    return new PlayerDynamicEntity(snapshot.position, snapshot.name, snapshot.isme);
-  }
-  else if(kind === 'bullet'){
-    const bulletTag = snapshot.tag as BulletTag;
-    switch(bulletTag){
-      case 'ordinary_bullet':
-        return new OrdinaryBulletDynamicEntity(
-          snapshot.position,
-          H_getBulletDirectionFromSnapshot(snapshot),
-          snapshot.ownerId,
-          snapshot.teamId,
-          snapshot.name,
-          snapshot.bulletColor
-        );
-      case 'laser_bullet':
-        return new LaserBulletDynamicEntity(
-          snapshot.position,
-          H_getBulletDirectionFromSnapshot(snapshot),
-          snapshot.ownerId,
-          snapshot.teamId,
-          snapshot.name
-        );
-      case 'sniper_bullet':
-        return new SniperBulletDynamicEntity(
-          snapshot.position,
-          H_getBulletDirectionFromSnapshot(snapshot),
-          snapshot.ownerId,
-          snapshot.teamId,
-          snapshot.name
-        );
-      case 'buckshot_bullet':
-        return new BuckshotBulletDynamicEntity(
-          snapshot.position,
-          H_getBulletDirectionFromSnapshot(snapshot),
-          snapshot.ownerId,
-          snapshot.teamId,
-          snapshot.name
-        );
-    }
-  }
-  else if(kind === 'exp_orb'){
-    return new ExpOrbDynamicEntity(snapshot.position, snapshot.value);
-  }
-  else if(kind === 'skill_orb'){
-    return new SkillOrbDynamicEntity(snapshot.position, snapshot.skillTag);
-  }
-  else{//grenade
-    const grenadeTag = snapshot.tag;
-    switch (grenadeTag){
-      case 'red_pixel_bomb':{
-        return new RedPixelBombEntity(
-          snapshot.position,
-          snapshot.ownerId,
-          snapshot.teamId
-        );
-      }
-    }
-  }
-  return new EmptyEntity();
 };
 
 // 从服务端实体快照获取可渲染实体的辅助函数，包含缓存和插值状态管理

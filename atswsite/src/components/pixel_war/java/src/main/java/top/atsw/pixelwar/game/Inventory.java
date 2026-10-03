@@ -1,13 +1,13 @@
 package top.atsw.pixelwar.game;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 背包与物品注册表(由前端 TS 版 class/Inventory/Inventory.ts 与 class/ItemRegistry/ItemRegistry.ts 迁移)。
+ * 背包(由前端 TS 版 class/Inventory/Inventory.ts 迁移)。
+ *
+ * <p>物品定义与物品注册表已移至 {@code top.atsw.pixelwar.registry} 包
+ * (ItemDefinition / ItemRegistry),便于从包结构直接定位。</p>
  *
  * <p>背包规则与 TS 版一致:</p>
  * <ul>
@@ -101,65 +101,7 @@ public final class Inventory {
         }
     }
 
-    /** 物品定义(名称/说明/堆叠上限/使用效果) */
-    public static final class ItemDefinition {
-        public final String tag;
-        public final String name;
-        public final String description;
-        public final String color;
-        public final String icon;
-        public final double heal;
-        public final int maxStack;
-
-        public ItemDefinition(String tag, String name, String description, String color, String icon, double heal, int maxStack) {
-            this.tag = tag;
-            this.name = name;
-            this.description = description;
-            this.color = color;
-            this.icon = icon;
-            this.heal = heal;
-            this.maxStack = maxStack;
-        }
-    }
-
-    /**
-     * 物品注册表:物品 tag -> 物品定义。
-     * 背包展示、堆叠上限与"使用物品"的效果均按 tag 在此查找。
-     */
-    public static final class ItemRegistry {
-        private static final Map<String, ItemDefinition> REGISTRY = new LinkedHashMap<>();
-
-        static {
-            register(new ItemDefinition("healing_gem", "治疗宝石", "使用后立即恢复 10 点生命值",
-                    "#7ef0b0", "gem", 10, ITEM_MAX_STACK));
-        }
-
-        private ItemRegistry() {
-        }
-
-        private static void register(ItemDefinition definition) {
-            REGISTRY.put(definition.tag, definition);
-        }
-
-        /** 按物品标签获取定义;未注册的物品返回"未知物品"兜底定义 */
-        public static ItemDefinition get(String tag) {
-            ItemDefinition definition = REGISTRY.get(tag);
-            if (definition != null) {
-                return definition;
-            }
-            String safeTag = tag == null ? "" : tag;
-            return new ItemDefinition(safeTag, safeTag.isEmpty() ? "未知物品" : safeTag, "未知物品",
-                    "#9fe8ff", "square", 0, ITEM_MAX_STACK);
-        }
-
-        public static boolean isValid(String tag) {
-            return REGISTRY.containsKey(tag);
-        }
-
-        public static List<ItemDefinition> all() {
-            return new ArrayList<>(REGISTRY.values());
-        }
-    }
+    /** 物品定义(ItemDefinition)与物品注册表(ItemRegistry)已移至 top.atsw.pixelwar.registry 包 */
 
     // ==================================================================
     // 基础工具

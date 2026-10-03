@@ -30,8 +30,8 @@ import {
   H_inventoryRemoveEntry,
   H_normalizePlayerInventory
 } from '@/components/pixel_war/class/Inventory/Inventory';
-import { H_getSkillByTag } from '@/components/pixel_war/class/Skill/index';
-import { H_getItemDefinition } from '@/components/pixel_war/class/ItemRegistry/ItemRegistry';
+import { H_getSkillByTag } from '@/components/pixel_war/registry/SkillRegistry';
+import { H_getItemDefinition } from '@/components/pixel_war/registry/ItemRegistry';
 import type { Skill } from '@/components/pixel_war/class/Skill/Skill';
 
 type PlayerDodgeState = {

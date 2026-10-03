@@ -5,7 +5,6 @@ import type { Point, DynamicEntitieList, GameConfig, EntityDebugFlags } from '@/
 
 /**
  * 经验球实体（exp_orb）
- * 参考《我的世界》经验球设计:
  * - 独立动态实体,物理碰撞体积统一
  * - 视觉大小与颜色随内含经验值变化(共 11 档),价值≥17 时中心出现橙色核心
  * - 会向附近的存活玩家飘行,被玩家拾取后为玩家增加游戏经验

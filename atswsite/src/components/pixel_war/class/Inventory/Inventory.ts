@@ -1,6 +1,6 @@
 import type { InventoryEntry, PlayerInventory } from '@/components/pixel_war/interface/Interface';
 import type { Skill } from '@/components/pixel_war/class/Skill/Skill';
-import { H_getSkillByTag } from '@/components/pixel_war/class/Skill/index';
+import { H_getSkillByTag } from '@/components/pixel_war/registry/SkillRegistry';
 
 /**
  * 背包实现说明

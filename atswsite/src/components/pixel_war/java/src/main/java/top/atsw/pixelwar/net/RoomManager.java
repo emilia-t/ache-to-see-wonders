@@ -3,6 +3,7 @@ package top.atsw.pixelwar.net;
 import top.atsw.pixelwar.config.PixelWarProperties;
 import top.atsw.pixelwar.core.GameConfig;
 import top.atsw.pixelwar.game.Skill;
+import top.atsw.pixelwar.registry.SkillRegistry;
 import top.atsw.pixelwar.world.World;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -32,7 +33,7 @@ public class RoomManager {
     private final ObjectMapper mapper;
     private final PixelWarProperties properties;
     private final GameConfig gameConfig;
-    private final Skill.Provider skills = new Skill.Registry();
+    private final Skill.Provider skills = new SkillRegistry();
 
     public RoomManager(ObjectMapper mapper, PixelWarProperties properties) {
         this.mapper = mapper;

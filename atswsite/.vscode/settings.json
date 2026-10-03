@@ -1,0 +1,18 @@
+{
+  // 统一源码以 UTF-8 读写,避免中文注释出现乱码
+  "files.encoding": "utf8",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  // 换行符统一为 LF
+  "files.eol": "\n",
+  "[java]": {
+    "files.encoding": "utf8",
+    "editor.tabSize": 4
+  },
+  "[vue]": {
+    "editor.tabSize": 2
+  },
+  "[typescript]": {
+    "editor.tabSize": 2
+  }
+}

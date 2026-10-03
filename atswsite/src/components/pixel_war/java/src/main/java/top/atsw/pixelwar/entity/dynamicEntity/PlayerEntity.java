@@ -6,6 +6,8 @@ import top.atsw.pixelwar.entity.WorldView;
 import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
 import top.atsw.pixelwar.game.Inventory;
 import top.atsw.pixelwar.game.Skill;
+import top.atsw.pixelwar.registry.ItemDefinition;
+import top.atsw.pixelwar.registry.ItemRegistry;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -330,7 +332,7 @@ public final class PlayerEntity extends DynamicEntity {
         if (count <= 0) {
             return 0;
         }
-        Inventory.ItemDefinition definition = Inventory.ItemRegistry.get(itemTag);
+        ItemDefinition definition = ItemRegistry.get(itemTag);
         return Inventory.addItem(inventory, itemTag, itemName, count, definition.color, definition.maxStack);
     }
 
@@ -347,7 +349,7 @@ public final class PlayerEntity extends DynamicEntity {
         if (entry == null || !Inventory.KIND_ITEM.equals(entry.kind)) {
             return false;
         }
-        Inventory.ItemDefinition definition = Inventory.ItemRegistry.get(entry.tag);
+        ItemDefinition definition = ItemRegistry.get(entry.tag);
         if (definition.heal > 0) {
             if (health >= healthMax) {
                 return false;

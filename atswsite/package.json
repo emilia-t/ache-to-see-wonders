@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
+    "check:contract": "node src/components/pixel_war/tools/check-contract.mjs",
     "format": "prettier --write src/"
   },
   "dependencies": {

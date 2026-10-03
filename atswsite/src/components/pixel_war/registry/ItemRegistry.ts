@@ -4,6 +4,8 @@ import { INVENTORY_ITEM_MAX_STACK } from '@/components/pixel_war/class/Inventory
 /**
  * 物品注册表:物品 tag -> 物品定义
  * 背包展示、堆叠上限与"使用物品"的效果均按 tag 在此查找。
+ *
+ * 对应 Java 侧:java/.../registry/ItemRegistry.java
  */
 const ITEM_REGISTRY: ReadonlyMap<string, ItemDefinition> = new Map<string, ItemDefinition>([
   [

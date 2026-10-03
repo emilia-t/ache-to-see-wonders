@@ -1,4 +1,7 @@
-import { OrdinaryBulletDynamicEntity,HostileNpcDynamicEntity,ItemEntity,StaticEntity } from '@/components/pixel_war/class';
+import { OrdinaryBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
+import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
+import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
+import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { Point,DynamicEntitieList,GameConfig,ActionLoopContext,EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 
 class WhitePixelEntity extends HostileNpcDynamicEntity {

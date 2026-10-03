@@ -25,7 +25,6 @@ export type { SkillTagType, SkillCastContext, SkillTrigger } from './Skill/Skill
 export { Va2ShootSkill } from './Skill/Skills/Va2ShootSkill/Va2ShootSkill';
 export { Xa4ShootSkill } from './Skill/Skills/Xa4ShootSkill/Xa4ShootSkill';
 export { DodgeSkill } from './Skill/Skills/DodgeSkill/DodgeSkill';
-export { SKILL_REGISTRY, H_getSkillByTag, H_getAllSkills, H_isSkillTagValid } from './Skill/index';
 export {
   H_preloadSkillIconTextures,
   H_isSkillIconTextureReady,
@@ -67,13 +66,6 @@ export {
   H_inventoryDestroySlot,
   H_inventoryDestroyEquipped
 } from './Inventory/Inventory';
-// ItemRegistry(物品定义表)
-export {
-  ITEM_REGISTRY,
-  H_getItemDefinition,
-  H_getAllItemDefinitions,
-  H_isItemTagValid
-} from './ItemRegistry/ItemRegistry';
 // NpcDynamicEntity and its subclasses
 export { NpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NpcDynamicEntity';
 export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
@@ -101,55 +93,3 @@ export { BoxStaticEntity } from './Entity/StaticEntity/BoxStaticEntity/BoxStatic
 export { CurbStaticEntity } from './Entity/StaticEntity/CurbStaticEntity/CurbStaticEntity';
 export { CurbStaticEntity8Length } from './Entity/StaticEntity/CurbStaticEntity/CurbStaticEntity8Length/CurbStaticEntity8Length';
 export { WallStaticEntity } from './Entity/StaticEntity/WallStaticEntity/WallStaticEntity';
-
-export const PrototypeChain = {
-  "CursorManager": "CursorManager",
-  "EffectManager": "EffectManager",
-  "NumericalManager": "NumericalManager",
-  "Entity": {
-    "DynamicEntity": {
-      "BulletDynamicEntity": {
-        "BuckshotBulletDynamicEntity": "BuckshotBulletDynamicEntity",
-        "LaserBulletDynamicEntity": "LaserBulletDynamicEntity",
-        "OrdinaryBulletDynamicEntity": "OrdinaryBulletDynamicEntity",
-        "SniperBulletDynamicEntity": "SniperBulletDynamicEntity"
-      },
-      "GrenadeDynamicEntity": {
-        "FragGrenadeDynamicEntity": "FragGrenadeDynamicEntity",
-        "SmokeGrenadeDynamicEntity": "SmokeGrenadeDynamicEntity",
-        "StunGrenadeDynamicEntity": "StunGrenadeDynamicEntity",
-        "RedPixelBombEntity": "RedPixelBombEntity"
-      },
-      "ExpOrbDynamicEntity": "ExpOrbDynamicEntity",
-      "SkillOrbDynamicEntity": "SkillOrbDynamicEntity",
-      "NpcDynamicEntity": {
-        "FriendlyNpcDynamicEntity": {
-          "SkyBluePixelEntity": "SkyBluePixelEntity",
-          "PurpleShieldEntity": "PurpleShieldEntity"
-        },
-        "HostileNpcDynamicEntity": {
-          "WhitePixelEntity": {
-            "WhitePixelVa2Entity":"WhitePixelVa2Entity"
-          },
-          "RedPixelEntity": "RedPixelEntity",
-          "GoldenDodgeXa4Entity": "GoldenDodgeXa4Entity"
-        },
-        "NeutralNpcDynamicEntity": "NeutralNpcDynamicEntity"
-      },
-      "PlayerDynamicEntity": "PlayerDynamicEntity"
-    },
-    "EmptyEntity": "EmptyEntity",
-    "ItemEntity": {
-      "FoodItemEntity": {
-        "HealingGemItemEntity": "HealingGemItemEntity"
-      }
-    },
-    "StaticEntity": {
-      "BoxStaticEntity": "BoxStaticEntity",
-      "CurbStaticEntity": {
-        "CurbStaticEntity8Length":"CurbStaticEntity8Length"
-      },
-      "WallStaticEntity": "WallStaticEntity"
-    }
-  }
-};

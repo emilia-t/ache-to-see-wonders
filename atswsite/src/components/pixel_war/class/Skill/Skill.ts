@@ -118,6 +118,7 @@ abstract class Skill {
     return this.cooldownRemaining.get(ownerId) ?? 0;
   }
 
+  
   /**
    * 设置指定持有者的冷却剩余(秒),不大于 0 视为冷却结束
    */

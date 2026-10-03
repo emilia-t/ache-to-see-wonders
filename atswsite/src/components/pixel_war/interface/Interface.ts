@@ -8,7 +8,7 @@ import type { NpcDynamicEntity } from '@/components/pixel_war/class/Entity/Dynam
 import type { PlayerDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 import type { ExpOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/ExpOrbDynamicEntity/ExpOrbDynamicEntity';
 import type { SkillOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/SkillOrbDynamicEntity/SkillOrbDynamicEntity';
-import type { DynamicEntity } from '../class';
+import type { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 
 export interface Resolution { width: number; height: number }
 export interface PenPoint {x: number; y: number; g: number};//g是压力值，0-1通过鼠标移动速度模拟

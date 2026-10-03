@@ -2,14 +2,11 @@ package top.atsw.pixelwar.game;
 
 import top.atsw.pixelwar.core.Geometry;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 技能定义(由前端 TS 版 class/Skill/Skill.ts 迁移)。
+ * 技能定义
  *
  * <p>技能由"技能球"授予玩家,装配到装配区后决定玩家的开火方式。
  * 服务端只负责技能效果(生成子弹等),图标/贴图等纯展示信息随技能标签下发给客户端。</p>
@@ -197,43 +194,5 @@ public abstract class Skill {
             return 0;
         }
         return Math.min(1, Math.max(0, currentCooldown(ownerId) / max));
-    }
-
-    /**
-     * 技能注册表:技能 tag -> 技能实例(对应 TS 版 class/Skill/index.ts)。
-     */
-    public static final class Registry implements Provider {
-        private static final Map<String, Skill> SKILLS = new LinkedHashMap<>();
-        /** 共享实例(技能表为静态数据,可安全复用) */
-        public static final Registry INSTANCE = new Registry();
-
-        static {
-            register(new Va2ShootSkill());
-            register(new Xa4ShootSkill());
-            register(new DodgeSkill());
-        }
-
-        public Registry() {
-        }
-
-        private static void register(Skill skill) {
-            SKILLS.put(skill.tag(), skill);
-        }
-
-        @Override
-        public Skill byTag(String tag) {
-            if (tag == null) {
-                return null;
-            }
-            return SKILLS.get(tag);
-        }
-
-        public boolean isValid(String tag) {
-            return tag != null && SKILLS.containsKey(tag);
-        }
-
-        public List<Skill> all() {
-            return new ArrayList<>(SKILLS.values());
-        }
     }
 }

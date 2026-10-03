@@ -1,0 +1,22 @@
+# 统一编码 / 换行 / 缩进规范
+# 约定(与仓库根 .gitattributes 的 `* text=auto eol=lf` 保持一致):
+#   - 全部源码:UTF-8
+#   - 缩进:2 空格;Java 为 4 空格
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.java]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab

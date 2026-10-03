@@ -2,7 +2,7 @@ import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { PlayerDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 import type { Point, DynamicEntitieList, GameConfig, EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
-import { H_getSkillByTag } from '@/components/pixel_war/class/Skill/index';
+import { H_getSkillByTag } from '@/components/pixel_war/registry/SkillRegistry';
 
 /**
  * 技能球实体(kind: skill_orb)

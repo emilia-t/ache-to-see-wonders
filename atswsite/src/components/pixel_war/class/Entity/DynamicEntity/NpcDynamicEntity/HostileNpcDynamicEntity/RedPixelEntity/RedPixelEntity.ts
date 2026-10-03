@@ -1,5 +1,5 @@
-import { HostileNpcDynamicEntity } from '@/components/pixel_war/class';
-import { RedPixelBombEntity } from '@/components/pixel_war/class';
+import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
+import { RedPixelBombEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/GrenadeDynamicEntity/RedPixelBombEntity/RedPixelBombEntity';
 import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { GameConfig, Point } from '@/components/pixel_war/interface/Interface';

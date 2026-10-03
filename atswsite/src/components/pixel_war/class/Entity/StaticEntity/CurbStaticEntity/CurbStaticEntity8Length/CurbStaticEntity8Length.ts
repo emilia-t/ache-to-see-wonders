@@ -1,4 +1,4 @@
-import { CurbStaticEntity } from '@/components/pixel_war/class';
+import { CurbStaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/CurbStaticEntity/CurbStaticEntity';
 import type { Point } from '@/components/pixel_war/interface/Interface';
 
 type Direction = 'up' | 'down' | 'left' | 'right';
