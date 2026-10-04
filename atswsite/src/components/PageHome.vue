@@ -1239,6 +1239,7 @@ ul.icon{
   gap: 12px;
   margin-bottom: 16px;
   flex-wrap: wrap;
+  font-size: 16.5px;
 }
 
 .stat-item {
@@ -1328,6 +1329,7 @@ ul.icon{
   .crd-stats {
     gap: 8px;
     margin-bottom: 12px;
+    font-size: 16px;
   }
   
   .stat-item {
@@ -1345,7 +1347,7 @@ ul.icon{
   }
   
   .crd-box {
-    min-height: 260px; /* 确保卡片有最小高度 */
+    min-height: 220px; /* 确保卡片有最小高度 */
   }
   
   .crd-image-container {
@@ -1368,6 +1370,7 @@ ul.icon{
   .crd-stats {
     gap: 6px;
     margin-bottom: 10px;
+    font-size: 14px;
   }
   
   .stat-item {
@@ -1408,10 +1411,15 @@ ul.icon{
   .crd-stats {
     gap: 4px;
     margin-bottom: 8px;
+    font-size: 13px;
   }
   
   .stat-item {
     font-size: 0.65rem;
+  }
+
+  .crd-box {
+    min-height: 220px; /* 确保卡片有最小高度 */
   }
 }
 

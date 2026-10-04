@@ -18,6 +18,18 @@
     "version": "1",
     "list":[
       {
+        "key": "home",
+        "title": "当前页面是看板主页哦~",
+        "description": "当前页面是看板主页哦~",
+        "cover": "/cover/kanban_1.png",
+        "targetUrl": "/home",
+        "mode": "single_person",
+        "online_count": 0,
+        "online_state": false,
+        "visit_count": 0,
+        "heart_count": 0
+      },
+      {
         "key": "cc1",
         "title": "3D象棋",
         "description": "在线和朋友下象棋，自由的放置棋子~",
