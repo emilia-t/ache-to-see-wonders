@@ -143,16 +143,26 @@ const setupSeamlessLoop = () => {
   });
 };
 
+// 判断是否为外部链接（带协议的绝对地址，例如 http://127.0.0.1:12345）
+const isExternalUrl = (url: string): boolean => /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(url);
+
 // 导航函数
-const navigateToVideo = () => {
-  if (currentTargetUrl.value && typeof currentTargetUrl.value === 'string') {
-    window.open(currentTargetUrl.value, '_blank');
+const navigateToProject = (url: string) => {
+  if (!url || typeof url !== 'string') {
+    return;
+  }
+  if (isExternalUrl(url)) {
+    // 外部网页：在新标签页打开，并断开与本站的 window.opener 关联
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } else {
+    // 站内路由：保持原有行为
+    window.open(url, '_blank');
   }
 };
 
-const navigateToProject = (url: string) => {
-  if (url) {
-    window.open(url, '_blank');
+const navigateToVideo = () => {
+  if (currentTargetUrl.value && typeof currentTargetUrl.value === 'string') {
+    navigateToProject(currentTargetUrl.value);
   }
 };
 
@@ -343,7 +353,7 @@ onUnmounted(() => {
                   <li class="trial"></li>
                 </ul>
             </div>
-            <span class="btn-text">试做型</span>
+            <span class="btn-text">应用列表</span>
           </button>
           <button 
             class="switch-btn" :class="activeTab == 'module' ? 'active':''"
@@ -405,7 +415,17 @@ onUnmounted(() => {
                 <div class="crd-info">
                   <h3 class="crd-title">{{ value.title }}</h3>
                   <!-- 统计信息 -->
-                  <div class="crd-stats" v-if="value.mode!=='single_person'">
+                  <div class="crd-stats" v-if="value.mode==='external_link'">
+                    <div>
+                      🔗外部链接
+                    </div>
+                  </div>
+                  <div class="crd-stats" v-else-if="value.mode==='single_person'">
+                    <div>
+                      🏃单人项目
+                    </div>
+                  </div>
+                  <div class="crd-stats" v-else>
                     <div class="stat-item">
                       <span class="stat-icon">👁️</span>
                       <span class="stat-value">{{ value.visit_count || 0 }}</span>
@@ -417,11 +437,6 @@ onUnmounted(() => {
                     <div v-if="value.online_state" class="stat-item online">
                       <span class="stat-icon">🟢</span>
                       <span class="stat-value">{{ value.online_count || 0 }}在线</span>
-                    </div>
-                  </div>
-                  <div class="crd-stats" v-if="value.mode==='single_person'">
-                    <div>
-                      🏃单人项目
                     </div>
                   </div>
                 </div>
@@ -1119,7 +1134,7 @@ ul.icon{
   /* 例如图标原始尺寸是60x60，想显示为30x30，则缩放0.5 */
 }
 
-/*** 试作型box样式 ***/
+/*** 作品box样式 ***/
 /* 卡片容器 */
 .cards-container {
   display: grid;

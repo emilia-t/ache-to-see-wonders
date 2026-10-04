@@ -18,7 +18,9 @@ interface HomePageTrialCardConfig {
   title: string
   description: string
   cover: string
+  /** 卡片的跳转地址：站内路由（如 /chinese-chess）或外部绝对地址（如 http://127.0.0.1:12345） */
   targetUrl: string
+  /** 'online_multiplayer' 在线多人 / 'single_person' 单人项目 / 'external_link' 外部链接 */
   mode: string
   online_count: number
   online_state: boolean
