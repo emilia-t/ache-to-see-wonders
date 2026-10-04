@@ -8,6 +8,8 @@ import type { Point, DynamicEntitieList, GameConfig, ActionLoopContext } from "@
  */
 class WhitePixelVa2Entity extends WhitePixelEntity {
   public static GENERATE_WEIGHT = 0.4;
+  /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+  public static readonly NAME: string = '斜射白色像素';
 
   // 锁定水平移动方向: 1 = 向右, -1 = 向左
   private moveDirectionX: 1 | -1;

@@ -15,6 +15,8 @@ public class WhitePixelVa2Npc extends WhitePixelNpc {
 
     /** 生成权重 */
     public static final double GENERATE_WEIGHT = 0.4;
+    /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+    public static final String NAME = "斜射白色像素";
     /** 掉落技能球的概率 */
     public static final double LOOT_ODDS = 0.4;
 
@@ -36,6 +38,11 @@ public class WhitePixelVa2Npc extends WhitePixelNpc {
     @Override
     public double generateWeight() {
         return GENERATE_WEIGHT;
+    }
+
+    @Override
+    public String displayName() {
+        return NAME;
     }
 
     /** 等级变化时重算等级相关属性(va2 的经验值公式与白像素不同:2 + Level × 3) */

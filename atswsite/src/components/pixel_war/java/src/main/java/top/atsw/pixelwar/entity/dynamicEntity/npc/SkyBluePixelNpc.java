@@ -13,6 +13,8 @@ public class SkyBluePixelNpc extends NpcEntity {
 
     /** 生成权重 */
     public static final double GENERATE_WEIGHT = 0.2;
+    /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+    public static final String NAME = "天蓝像素";
     /** 主动靠近玩家的判定范围(px) */
     private static final double APPROACH_RANGE = 220;
     /** 靠近玩家后保持的距离(px) */
@@ -48,6 +50,11 @@ public class SkyBluePixelNpc extends NpcEntity {
     @Override
     public double generateWeight() {
         return GENERATE_WEIGHT;
+    }
+
+    @Override
+    public String displayName() {
+        return NAME;
     }
 
     @Override

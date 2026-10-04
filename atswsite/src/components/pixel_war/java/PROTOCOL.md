@@ -67,7 +67,7 @@
 > 为节省带宽，**等级 0 时该字段不下发**，客户端缺省视为 0。刷怪时按等级概率表随机等级
 > （上限 5 用 45/25/15/8/5/2%，上限 2 用 65/25/10%）。
 
-`PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / fireCooldownNow / fireCooldownMax / equippedSkillCooldowns / inventory / servantIds / research / researchPendingOptions / lastDeathReport`
+`PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / fireCooldownNow / fireCooldownMax / equippedSkillCooldowns / inventory / servantIds / research / researchPendingOptions / deathRespawnDelay / deathRespawnRemaining / lastDamagerName / lastDeathReport`
 
 > 说明：`invincibleTimer`、`dodgeCooldownNow`、`dodgeCooldownMax` 已从玩家规则中移除。
 > 玩家不再有无敌时间；闪避冷却改由玩家装配的「闪现」技能自带的内置CD计时器管理
@@ -94,6 +94,14 @@
 > ```
 > `researchDowngrades` 中 `to == 0` 表示该研究项已被移除；死亡时所有专研项降低 1 级，降至 0 级则移除。
 > `droppedExp = min(215, ceil((等级折算总经验 + 当前经验) × 0.6))`。客户端据该字段在死亡界面展示掉落与降级信息。
+>
+> `deathRespawnDelay` / `deathRespawnRemaining`：死亡后需等待的复活时间与剩余时间（秒，量化到 2 位小数）。
+> 等待时间 `X = 3 + 死亡时等级 / 3`（整数，上限 30），在等级被清零前按死亡时的等级计算；
+> 未死亡时两者均为 0。服务端会拒绝等待时间未结束的 `respawn` 请求，客户端据剩余时间展示复活倒计时。
+>
+> `lastDamagerName`：最近一次对玩家造成伤害的来源显示名，用于死亡界面提示「你被 xxx 击倒了」。
+> 玩家 → 玩家名；玩家的从者 NPC → 从者所属玩家名；无主 NPC → NPC 类型名称（各 NPC 的静态 `NAME`，
+> 如「红色像素」）；玩家离开地图范围 → 「地图边界」。未受伤时为空串。
 
 `inventory` 与前端结构一致：
 

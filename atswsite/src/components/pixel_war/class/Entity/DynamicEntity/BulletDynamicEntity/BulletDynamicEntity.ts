@@ -46,6 +46,19 @@ const H_colorWithAlpha = (color: string, alpha: number): string => {
   return `rgba(${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)}, ${a})`;
 };
 
+/**
+ * 将 CSS 颜色向白色混合(amount = 0 保持原色,1 为纯白)。
+ * 用于"拖尾越长颜色越浅";解析失败时返回原色,保证不影响渲染。
+ */
+const H_lightenColor = (color: string, amount: number): string => {
+  const t = Math.max(0, Math.min(1, amount));
+  if (t <= 0) return color;
+  const rgb = H_parseCssColor(color);
+  if (!rgb) return color;
+  const mix = (channel: number) => Math.round(channel + (255 - channel) * t);
+  return `rgb(${mix(rgb.r)}, ${mix(rgb.g)}, ${mix(rgb.b)})`;
+};
+
 abstract class BulletDynamicEntity extends DynamicEntity {
   public static readonly WIDTH = 8;
   public static readonly HEIGHT = 8;
@@ -59,6 +72,16 @@ abstract class BulletDynamicEntity extends DynamicEntity {
   public static readonly TRAIL_LENGTH_RATIO = 5;// 拖尾长度 = 弹体长度 × 该比例
   public static readonly TRAIL_MIN_LENGTH = 26;// 拖尾最短长度,单位px
   public static readonly TRAIL_WIDTH_RATIO = 1;// 拖尾宽度 = 弹体宽度 × 该比例(与弹体等宽,恒定不渐尖)
+  /**
+   * 拖尾长度随射速缩放的倍率上下限(基准射速 = MOVE_SPEED,此时倍率恒为 1)。
+   * 射速越快 → 倍率越大 → 拖尾越长;超出 1 的部分同时决定拖尾的变淡/变浅程度。
+   */
+  public static readonly TRAIL_SPEED_SCALE_MIN = 0.5;
+  public static readonly TRAIL_SPEED_SCALE_MAX = 2.5;
+  /** 拖尾因变长而不透明度衰减的强度:长度每超出基准 1 倍,叠加段透明度按 (1 + 该值 × 倍数) 递减 */
+  public static readonly TRAIL_LENGTH_FADE_RATIO = 0.55;
+  /** 拖尾因变长而向白色混合的强度:长度每超出基准 1 倍,颜色向白色混合该比例 */
+  public static readonly TRAIL_LENGTH_LIGHTEN_RATIO = 0.45;
   public static readonly GLOW_CORE_ALPHA = 0.5;// 发光中心透明度(靠近弹体中心最亮)
   public static readonly GLOW_MID_ALPHA = 0.2;// 发光中段透明度
 
@@ -122,8 +145,25 @@ abstract class BulletDynamicEntity extends DynamicEntity {
   }
 
   /**
+   * 拖尾长度相对基准射速(MOVE_SPEED)的缩放倍率。
+   *
+   * 射速越快 → 倍率越大 → 拖尾越长;基准射速下恒为 1(拖尾长度与旧版本完全一致)。
+   */
+  protected getTrailSpeedScale(): number {
+    const base = BulletDynamicEntity.MOVE_SPEED;
+    const speed = Number.isFinite(this.speed) && this.speed > 0 ? this.speed : base;
+    const raw = speed / base;
+    return Math.min(
+      BulletDynamicEntity.TRAIL_SPEED_SCALE_MAX,
+      Math.max(BulletDynamicEntity.TRAIL_SPEED_SCALE_MIN, raw)
+    );
+  }
+
+  /**
    * 绘制子弹通用视觉:拖尾 + 发光 + 弹体
    * 1. 拖尾:沿运动反方向的条状矩形(恒定宽度,不渐尖),尾端完全透明、靠近弹体最亮
+   *    - 长度与射速正相关(基准射速下与旧版本一致,见 getTrailSpeedScale)
+   *    - 拖尾越长颜色越淡:不透明度随长度倍率递减,颜色同时向白色混合
    * 2. 发光:以弹体中心为圆心的径向渐变圆,直径 = 弹体长度 × 2,颜色同子弹基色,靠近中心最亮
    * 3. 弹体:以碰撞盒中心为中心的矩形
    * 拖尾与发光使用叠加混合(lighter),在深色场景中呈现霓虹辉光效果。
@@ -142,10 +182,19 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     const color = this.bulletColor || BulletDynamicEntity.DEFAULT_COLOR;
     const halfLength = bodyLength / 2;
     const halfWidth = bodyWidth / 2;
-    // 拖尾长度随弹体长度等比变化,并限制下限避免短弹拖尾过短
-    const trailLength = Math.max(
+    // 拖尾长度:基础长度(随弹体长度等比变化,并有限下限)再乘以射速倍率
+    const trailSpeedScale = this.getTrailSpeedScale();
+    const baseTrailLength = Math.max(
       BulletDynamicEntity.TRAIL_MIN_LENGTH,
       bodyLength * BulletDynamicEntity.TRAIL_LENGTH_RATIO
+    );
+    const trailLength = baseTrailLength * trailSpeedScale;
+    // 拖尾越长越淡:超出基准射速的倍率越大,不透明度越低、颜色越浅(向白色混合)
+    const extraScale = Math.max(0, trailSpeedScale - 1);
+    const trailFade = 1 / (1 + BulletDynamicEntity.TRAIL_LENGTH_FADE_RATIO * extraScale);
+    const trailColor = H_lightenColor(
+      color,
+      BulletDynamicEntity.TRAIL_LENGTH_LIGHTEN_RATIO * extraScale
     );
     const trailHeadX = -halfLength;
     const trailTailX = trailHeadX - trailLength;
@@ -159,9 +208,9 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     // ---- 拖尾:恒定宽度的条状矩形,尾端透明、靠近弹体最亮 ----
     const trailThickness = Math.max(1.5, bodyWidth * BulletDynamicEntity.TRAIL_WIDTH_RATIO);
     const trailGradient = ctx.createLinearGradient(trailTailX, 0, trailHeadX, 0);
-    trailGradient.addColorStop(0, H_colorWithAlpha(color, 0));
-    trailGradient.addColorStop(0.5, H_colorWithAlpha(color, 0.16));
-    trailGradient.addColorStop(1, H_colorWithAlpha(color, 0.65));
+    trailGradient.addColorStop(0, H_colorWithAlpha(trailColor, 0));
+    trailGradient.addColorStop(0.5, H_colorWithAlpha(trailColor, 0.16 * trailFade));
+    trailGradient.addColorStop(1, H_colorWithAlpha(trailColor, 0.65 * trailFade));
     ctx.fillStyle = trailGradient;
     ctx.fillRect(trailTailX, -trailThickness / 2, trailLength, trailThickness);
 

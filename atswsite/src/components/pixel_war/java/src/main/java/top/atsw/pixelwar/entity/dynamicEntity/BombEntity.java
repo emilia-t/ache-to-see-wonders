@@ -23,6 +23,13 @@ public final class BombEntity extends DynamicEntity {
     public double explosionDamage;
     public Long ownerId;
     public Long teamId;
+    /**
+     * 生成者的显示名称(兜底用)。
+     *
+     * <p>红像素引爆时自身会立刻被清理,等到炸弹爆炸时按 ownerId 已查不到生成者,
+     * 因此生成时把名称记录下来,保证死亡界面仍能显示「你被 红色像素 击倒了」。</p>
+     */
+    public String damageSourceName = "";
 
     public BombEntity(Geometry.Vec2 position, Long ownerId, Long teamId) {
         this(position, ownerId, teamId, DEFAULT_COUNTDOWN, DEFAULT_RADIUS, DEFAULT_DAMAGE);

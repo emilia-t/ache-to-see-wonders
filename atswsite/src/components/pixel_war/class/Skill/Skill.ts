@@ -4,7 +4,7 @@ import type { Point } from '@/components/pixel_war/interface/Interface';
  * 技能标签
  * 新增技能时需在此登记,并在 class/Skill/index.ts 的技能注册表中实例化
  */
-export type SkillTagType = 'va2_shoot_skill' | 'xa4_shoot_skill' | 'dodge_skill';
+export type SkillTagType = 'va2_shoot_skill' | 'xa4_shoot_skill' | 'oa18_shoot_skill' | 'dodge_skill';
 
 /**
  * 技能触发方式

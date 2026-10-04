@@ -138,6 +138,16 @@ export const H_toPlayerEntity = (
   researchPendingOptions: privateState && Array.isArray(privateState.researchPendingOptions)
     ? privateState.researchPendingOptions
     : [],
+  // 死亡等待时间与伤害来源(仅本人可见;用于死亡界面倒计时与「你被 xxx 击倒了」)
+  deathRespawnDelay: privateState && Number.isFinite(privateState.deathRespawnDelay)
+    ? (privateState.deathRespawnDelay as number)
+    : 0,
+  deathRespawnRemaining: privateState && Number.isFinite(privateState.deathRespawnRemaining)
+    ? (privateState.deathRespawnRemaining as number)
+    : 0,
+  lastDamagerName: privateState && typeof privateState.lastDamagerName === 'string'
+    ? privateState.lastDamagerName
+    : '',
   // 最近一次死亡结算明细(仅本人可见;用于死亡界面展示掉落与专研降级)
   lastDeathReport: privateState && privateState.lastDeathReport
     ? privateState.lastDeathReport

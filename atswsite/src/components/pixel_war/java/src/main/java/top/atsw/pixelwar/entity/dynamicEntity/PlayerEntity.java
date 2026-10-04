@@ -63,6 +63,18 @@ public final class PlayerEntity extends DynamicEntity {
     public static final double DEATH_DROP_COEFFICIENT = 0.6;
     /** 单次死亡掉落经验的上限(避免高等级玩家爆炸式掉落导致卡顿) */
     public static final double DEATH_DROP_EXP_MAX = 215;
+    /** 复活等待时间基准(秒):X = 3 + 等级 / 3 */
+    public static final int RESPAWN_DELAY_BASE_SECONDS = 3;
+    /** 复活等待时间的等级除数(等级 / 该值向下取整) */
+    public static final int RESPAWN_DELAY_LEVEL_DIVISOR = 3;
+    /** 复活等待时间上限(秒) */
+    public static final int RESPAWN_DELAY_MAX_SECONDS = 30;
+    /** 玩家脱离地图范围后,每受到 1 点伤害所需的游戏刻数 */
+    public static final int OUT_OF_MAP_TICKS_PER_DAMAGE = 10;
+    /** 玩家脱离地图范围后,每次结算受到的伤害值 */
+    public static final double OUT_OF_MAP_DAMAGE = 1;
+    /** 玩家脱离地图范围致死时,死亡界面展示的击杀者名称 */
+    public static final String OUT_OF_MAP_KILLER_NAME = "地图边界";
 
     /** 从者网格边长(15 × 15,中心格 (7,7) 为玩家本体不可占用) */
     public static final int SERVANT_GRID_SIZE = 15;
@@ -169,6 +181,22 @@ public final class PlayerEntity extends DynamicEntity {
     /** 最近一次死亡结算明细(仅用于死亡界面展示,重生时清空) */
     public DeathDrop lastDeathReport;
 
+    /**
+     * 最近一次对玩家造成伤害的来源显示名(用于死亡界面「你被 xxx 击倒了」)。
+     * 由 {@code World} 在施加伤害时写入:玩家名 / 从者所属玩家名 / NPC 类型名称 / 「地图边界」。
+     */
+    public String lastDamagerName = "";
+    /** 本次死亡需要等待的复活时间(秒),由死亡时的等级决定;未死亡时为 0 */
+    public double deathRespawnDelay;
+    /** 复活等待的剩余时间(秒),由权威端每帧递减;未死亡时为 0 */
+    public double deathRespawnRemaining;
+    /**
+     * 地图外伤害计时(累计的游戏刻数)。
+     * 玩家脱离地图范围时累加,每达到 {@link #OUT_OF_MAP_TICKS_PER_DAMAGE} 刻结算 1 点伤害;
+     * 回到地图内或死亡时清零。
+     */
+    private int outOfMapTickCounter;
+
     /** 未疾跑时的基础移动速度(由从者数量决定) */
     private double baseMoveSpeed = MOVE_SPEED;
     /** 体力亏空后等待恢复的剩余时间(秒) */
@@ -235,6 +263,18 @@ public final class PlayerEntity extends DynamicEntity {
             total += getExpToNextLevel(l);
         }
         return total + Math.max(0, currentExp);
+    }
+
+    /**
+     * 计算玩家死亡后的复活等待时间(秒):X = 3 + 等级 / 3。
+     * 结果取整且不超过 {@link #RESPAWN_DELAY_MAX_SECONDS}。
+     *
+     * @param level 死亡时的游戏等级
+     */
+    public static int getRespawnDelaySeconds(int level) {
+        int safeLevel = Math.max(0, level);
+        int seconds = RESPAWN_DELAY_BASE_SECONDS + safeLevel / RESPAWN_DELAY_LEVEL_DIVISOR;
+        return Math.min(RESPAWN_DELAY_MAX_SECONDS, seconds);
     }
 
     /** 增加游戏经验,经验足够时自动提升游戏等级 */
@@ -478,6 +518,13 @@ public final class PlayerEntity extends DynamicEntity {
         researchPendingOptions.clear();
         researchPendingRolls = 0;
 
+        // 复活等待时间:X = 3 + 等级 / 3(整数,上限 30 秒)。
+        // 必须在等级被清零之前按「死亡时的等级」计算,否则重生等待时间恒为基础值。
+        deathRespawnDelay = getRespawnDelaySeconds(gameLevel);
+        deathRespawnRemaining = deathRespawnDelay;
+        // 死亡后不再累计地图外伤害
+        outOfMapTickCounter = 0;
+
         // 死亡不掉落:按当前等级决定背包条目是否被保护(读取发生在专研降级之前)
         takeInventoryForDeathDrop(items, skillTags);
 
@@ -537,6 +584,11 @@ public final class PlayerEntity extends DynamicEntity {
         // 清空上一次死亡明细(死亡界面随重生关闭)
         this.lastDeathReport = null;
         this.researchPendingRolls = 0;
+        // 清空死亡等待与伤害来源记录
+        this.lastDamagerName = "";
+        this.deathRespawnDelay = 0;
+        this.deathRespawnRemaining = 0;
+        this.outOfMapTickCounter = 0;
         // 重生后技能内置CD一并清空(无敌时长已从玩家规则中移除)
         resetEquippedSkillCooldowns(skills);
         this.resetServantGrid();
@@ -667,6 +719,60 @@ public final class PlayerEntity extends DynamicEntity {
             return;
         }
         super.applyDamage(amount);
+    }
+
+    /**
+     * 推进与死亡相关的玩家状态(由世界 tick 每帧调用;即使玩家已死亡也必须调用,
+     * 因为死亡期间 {@link #update} 会直接返回):
+     * <ul>
+     *   <li>递减复活等待时间;</li>
+     *   <li>玩家位于地图范围外时,按「每 10 游戏刻 1 点伤害」结算越界惩罚。</li>
+     * </ul>
+     */
+    public void updateDeathAndOutOfMapState(double dt, GameConfig config) {
+        if (isDead) {
+            // 剩余时间量化到 2 位小数。
+            // 协议下发时本字段会被量化到 2 位小数,若权威端保留全精度残留值(例如 3.0 连续
+            // 减去 0.02 后只剩 8.9E-16),客户端会读到 0 并请求复活,而权威端判定 "> 0" 拒绝,
+            // 表现为"自动复活偶发失效"。统一按同一精度推进即可消除该竞态。
+            deathRespawnRemaining = Math.max(0, Math.round((deathRespawnRemaining - dt) * 100.0) / 100.0);
+            outOfMapTickCounter = 0;
+            return;
+        }
+        updateOutOfMapDamage(config);
+    }
+
+    /** 是否可以复活:玩家已死亡,且复活等待时间已结束 */
+    public boolean canRespawnNow() {
+        return isDead && deathRespawnRemaining <= 0;
+    }
+
+    /**
+     * 地图外伤害:玩家离开地图范围(穿越 Curb)后,每 10 游戏刻受到 1 点伤害。
+     * 伤害来源记为「地图边界」,用于死亡界面提示。
+     */
+    private void updateOutOfMapDamage(GameConfig config) {
+        if (isDead) {
+            outOfMapTickCounter = 0;
+            return;
+        }
+        boolean outside =
+                position.x < config.worldMinX || position.x > config.worldMaxX
+                        || position.y < config.worldMinY || position.y > config.worldMaxY;
+        if (!outside) {
+            outOfMapTickCounter = 0;
+            return;
+        }
+        outOfMapTickCounter++;
+        while (outOfMapTickCounter >= OUT_OF_MAP_TICKS_PER_DAMAGE) {
+            outOfMapTickCounter -= OUT_OF_MAP_TICKS_PER_DAMAGE;
+            lastDamagerName = OUT_OF_MAP_KILLER_NAME;
+            applyDamage(OUT_OF_MAP_DAMAGE);
+            if (isDead) {
+                outOfMapTickCounter = 0;
+                break;
+            }
+        }
     }
 
     /** 疾跑必须满足:按住 Shift 且处于移动过程中 */

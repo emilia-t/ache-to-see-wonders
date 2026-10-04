@@ -11,6 +11,7 @@ import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.SkillOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.GoldenDodgeXa4Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.PurpleFireworkOa18Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.PurpleShieldNpc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.RedPixelNpc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.SkyBluePixelNpc;
@@ -296,13 +297,56 @@ public final class World implements WorldView {
         return null;
     }
 
-    /** 重生玩家(随机出生点) */
+    /** 重生玩家(随机出生点)。死亡等待时间(X = 3 + 等级 / 3,上限 30 秒)未结束时忽略请求。 */
     public void respawnPlayer(long playerId) {
         PlayerEntity player = getPlayerById(playerId);
         if (player == null) {
             return;
         }
+        if (!player.canRespawnNow()) {
+            return;
+        }
         player.respawn(randomSpawnPoint(), skills);
+    }
+
+    /**
+     * 把「造成伤害的实体 id」(子弹 / 炸弹的 ownerId)解析为死亡界面要展示的名称。
+     *
+     * <ul>
+     *   <li>玩家 → 玩家名;</li>
+     *   <li>玩家的从者 NPC → 该从者所属玩家名;</li>
+     *   <li>无主 NPC → 该 NPC 类型的显示名称(静态 NAME,例如「红色像素」)。</li>
+     * </ul>
+     *
+     * @return 展示名称;来源为 null 或无法解析时返回空串(由调用方决定兜底文案)
+     */
+    private String resolveDamagerName(Long sourceEntityId) {
+        if (sourceEntityId == null) {
+            return "";
+        }
+        PlayerEntity player = getPlayerById(sourceEntityId);
+        if (player != null) {
+            return player.playerName == null ? "" : player.playerName;
+        }
+        NpcEntity npc = getNpcById(sourceEntityId);
+        if (npc != null) {
+            if (npc.ownerId != null) {
+                PlayerEntity owner = getPlayerById(npc.ownerId);
+                if (owner != null) {
+                    return owner.playerName == null ? "" : owner.playerName;
+                }
+            }
+            return npc.displayName();
+        }
+        return "";
+    }
+
+    /** 记录玩家受到的伤害来源(用于死亡界面「你被 xxx 击倒了」) */
+    private void recordDamageSource(PlayerEntity target, Long sourceEntityId) {
+        String name = resolveDamagerName(sourceEntityId);
+        if (!name.isEmpty()) {
+            target.lastDamagerName = name;
+        }
     }
 
     /**
@@ -383,6 +427,8 @@ public final class World implements WorldView {
     /** 玩家与 NPC 的位置更新、死亡特效推进、从者断连处理 */
     private void updateDynamicEntities(double dt) {
         for (PlayerEntity player : players) {
+            // 复活等待时间与地图外伤害:死亡期间 update() 会直接返回,必须在这里单独推进
+            player.updateDeathAndOutOfMapState(dt, config);
             player.update(dt, this, config);
             player.updateDamageEffect(dt);
             player.updateDeathEffect(dt);
@@ -501,6 +547,10 @@ public final class World implements WorldView {
                 double hitRadius = entity.width * 0.45 + bullet.width * 0.5;
                 if (hitDistance <= hitRadius) {
                     boolean wasAlive = !entity.isDead;
+                    // 记录伤害来源(用于死亡界面「你被 xxx 击倒了」)
+                    if (entity instanceof PlayerEntity playerTarget) {
+                        recordDamageSource(playerTarget, bullet.ownerId);
+                    }
                     entity.applyDamage(bullet.damage);
                     if (wasAlive && entity.isDead && entity instanceof NpcEntity killerTarget) {
                         creditKill(bullet.ownerId, bullet.teamId, killerTarget);
@@ -570,6 +620,15 @@ public final class World implements WorldView {
                 }
                 if (Geometry.distance(player.position.x, player.position.y, bomb.position.x, bomb.position.y)
                         <= bomb.explosionRadius) {
+                    // 记录伤害来源(用于死亡界面「你被 xxx 击倒了」):
+                    // 优先按 ownerId 解析,生成者已被清理时退回生成时记录的名称
+                    String damagerName = resolveDamagerName(bomb.ownerId);
+                    if (damagerName.isEmpty()) {
+                        damagerName = bomb.damageSourceName;
+                    }
+                    if (!damagerName.isEmpty()) {
+                        player.lastDamagerName = damagerName;
+                    }
                     player.applyDamage(bomb.explosionDamage);
                 }
             }
@@ -867,10 +926,11 @@ public final class World implements WorldView {
 
     /**
      * 按权重随机创建一个 NPC。
-     * 权重与 TS 版一致:白像素 0.8、va2 0.4、天蓝像素 0.2、红像素 0.1、紫盾 0.08、金色闪避者 0.11。
+     * 权重与 TS 版一致:白像素 0.8、va2 0.4、天蓝像素 0.2、红像素 0.1、紫盾 0.08、
+     * 金色闪避者 0.11、紫色烟花 oa18 0.21。
      */
     private NpcEntity createRandomNpc(Geometry.Vec2 position) {
-        double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08 + 0.11;
+        double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08 + 0.11 + 0.21;
         double random = Math.random() * total;
         NpcEntity npc;
         if (random < 0.8) {
@@ -883,6 +943,8 @@ public final class World implements WorldView {
             npc = new RedPixelNpc(position, null, null);
         } else if ((random -= 0.1) < 0.11) {
             npc = new GoldenDodgeXa4Npc(position, null, null);
+        } else if ((random -= 0.11) < 0.21) {
+            npc = new PurpleFireworkOa18Npc(position, null, null);
         } else {
             npc = new PurpleShieldNpc(position, null, null);
         }

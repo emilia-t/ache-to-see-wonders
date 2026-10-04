@@ -214,6 +214,9 @@ public final class SnapshotBuilder {
                 player.getAllServantIds(),
                 toResearchList(player.research),
                 new ArrayList<>(player.researchPendingOptions),
+                player.deathRespawnDelay,
+                player.deathRespawnRemaining,
+                player.lastDamagerName == null ? "" : player.lastDamagerName,
                 toDeathReport(player.lastDeathReport));
     }
 

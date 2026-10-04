@@ -24,6 +24,7 @@ export { Skill } from './Skill/Skill';
 export type { SkillTagType, SkillCastContext, SkillTrigger } from './Skill/Skill';
 export { Va2ShootSkill } from './Skill/Skills/Va2ShootSkill/Va2ShootSkill';
 export { Xa4ShootSkill } from './Skill/Skills/Xa4ShootSkill/Xa4ShootSkill';
+export { Oa18ShootSkill } from './Skill/Skills/Oa18ShootSkill/Oa18ShootSkill';
 export { DodgeSkill } from './Skill/Skills/DodgeSkill/DodgeSkill';
 export {
   H_preloadSkillIconTextures,
@@ -93,6 +94,7 @@ export { WhitePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/Hostil
 export { WhitePixelVa2Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelVa2Entity/WhitePixelVa2Entity';
 export { RedPixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/RedPixelEntity/RedPixelEntity';
 export { GoldenDodgeXa4Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/GoldenDodgeXa4Entity/GoldenDodgeXa4Entity';
+export { PurpleFireworkOa18Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/PurpleFireworkOa18Entity/PurpleFireworkOa18Entity';
 // NeutralNpcDynamicEntity
 export { NeutralNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/NeutralNpcDynamicEntity';
 // PlayerDynamicEntity

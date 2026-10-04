@@ -20,6 +20,8 @@ public class PurpleShieldNpc extends NpcEntity {
 
     /** 生成权重 */
     public static final double GENERATE_WEIGHT = 0.08;
+    /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+    public static final String NAME = "紫盾";
 
     /** 基础/最大生命值(= 出生时的防护小方块数量) */
     public static final double HEALTH_MAX = 4;
@@ -75,6 +77,11 @@ public class PurpleShieldNpc extends NpcEntity {
     @Override
     public double generateWeight() {
         return GENERATE_WEIGHT;
+    }
+
+    @Override
+    public String displayName() {
+        return NAME;
     }
 
     @Override

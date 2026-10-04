@@ -12,6 +12,7 @@ import { WhitePixelEntity } from '@/components/pixel_war/class/Entity/DynamicEnt
 import { WhitePixelVa2Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelVa2Entity/WhitePixelVa2Entity';
 import { RedPixelEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/RedPixelEntity/RedPixelEntity';
 import { GoldenDodgeXa4Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/GoldenDodgeXa4Entity/GoldenDodgeXa4Entity';
+import { PurpleFireworkOa18Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/PurpleFireworkOa18Entity/PurpleFireworkOa18Entity';
 import { SkyBluePixelEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/SkyBluePixelEntity/SkyBluePixelEntity';
 import { PurpleShieldEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/PurpleShieldEntity/PurpleShieldEntity';
 // 玩家与弹体
@@ -114,6 +115,12 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
         );
       case 'golden_dodge_xa4':
         return new GoldenDodgeXa4Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'purple_firework_oa18':
+        return new PurpleFireworkOa18Entity(
           snapshot.position,
           snapshot.ownerId,
           snapshot.teamId

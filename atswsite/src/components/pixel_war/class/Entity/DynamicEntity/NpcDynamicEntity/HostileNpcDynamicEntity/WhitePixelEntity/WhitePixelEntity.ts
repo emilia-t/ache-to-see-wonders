@@ -6,6 +6,8 @@ import type { Point,DynamicEntitieList,GameConfig,ActionLoopContext,EntityDebugF
 
 class WhitePixelEntity extends HostileNpcDynamicEntity {
   public static GENERATE_WEIGHT = 0.8;
+  /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+  public static readonly NAME: string = '白色像素';
   private static readonly ACTION_INTERVAL = 1;
 
   private isActionLoopRunning: boolean;

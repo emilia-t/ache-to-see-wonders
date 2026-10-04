@@ -27,6 +27,7 @@ import {
   SkyBluePixelEntity,
   PurpleShieldEntity,
   GoldenDodgeXa4Entity,
+  PurpleFireworkOa18Entity,
   DodgeSkill,
   HealingGemItemEntity,
   GrenadeDynamicEntity,
@@ -36,6 +37,7 @@ import {
 
 import gameConfig from '@/components/pixel_war/service/GameConfig';
 import { H_rollNpcLevel } from '@/components/pixel_war/registry/NpcLevelTable';
+import { H_resolveDamagerName } from '@/components/pixel_war/class/Entity/DynamicEntity/damageSource';
 
 ////////////////////
 // 常量区-->
@@ -75,7 +77,8 @@ const SPAWNABLE_NPC_CLASSES = [
   WhitePixelVa2Entity,
   SkyBluePixelEntity,
   PurpleShieldEntity,
-  GoldenDodgeXa4Entity
+  GoldenDodgeXa4Entity,
+  PurpleFireworkOa18Entity
   // more
 ] as const;
 
@@ -316,6 +319,8 @@ const getRandomRespawnPoint = (): Point => {
 const respawnPlayer = (playerId: number): void => {
   const player = getPlayerDynamicEntityById(playerId);
   if (!player) return;
+  // 死亡等待时间(X = 3 + 等级 / 3,上限 30 秒)未结束时不允许复活
+  if (!player.canRespawnNow()) return;
   player.respawn(getRandomRespawnPoint());
 };
 
@@ -612,6 +617,11 @@ const updateBulletEntities = (deltaTime: number): boolean => {
 
       if (hitDistance <= hitRadius) {// 受击
         const wasAlive = !entity.isDead;
+        // 记录伤害来源(用于死亡界面「你被 xxx 击倒了」)
+        if (entity instanceof PlayerDynamicEntity) {
+          const damagerName = H_resolveDamagerName(MAP_DATA.dynamicEntitie, bullet.ownerId);
+          if (damagerName) entity.lastDamagerName = damagerName;
+        }
         entity.applyDamage(bullet.damage);
         if (wasAlive && entity.isDead && entity instanceof NpcDynamicEntity && bullet.ownerId !== null) {
           const owner = getPlayerDynamicEntityById(bullet.ownerId);
@@ -1125,6 +1135,10 @@ const updateDynamicEntities = (deltaTime: number) => {
     entity.update(deltaTime, MAP_DATA.staticEntities, MAP_DATA.dynamicEntitie, GCFG);
     entity.updateDamageEffect(deltaTime);
     entity.updateDeathEffect(deltaTime);
+    // 死亡等待时间与地图外伤害:死亡期间 update() 会直接返回,必须在这里单独推进
+    if (entity instanceof PlayerDynamicEntity) {
+      entity.updateDeathAndOutOfMapState(deltaTime, GCFG);
+    }
     if(entity instanceof NpcDynamicEntity){
       resolvePlayerServantDead(entity);
     }
@@ -1510,6 +1524,16 @@ const handleInstruct = (instruct: InstructObject) => {
   switch (instruct.type) {
     case 'player_move_input': {
       if(gamePaused){break;}
+      // 死亡期间禁用移动指令(死亡时清空移动状态,避免重生后残留按键导致自动移动)
+      const movePlayer = getPlayerDynamicEntityById(instruct.data.playerId as number);
+      if (movePlayer && movePlayer.isDead) {
+        movePlayer.moveState.W = false;
+        movePlayer.moveState.A = false;
+        movePlayer.moveState.S = false;
+        movePlayer.moveState.D = false;
+        movePlayer.moveState.Shift = false;
+        break;
+      }
       refreshPlayerMoveState(
         instruct.data.moveState,
         instruct.data.playerId
@@ -1554,8 +1578,9 @@ const handleInstruct = (instruct: InstructObject) => {
 
     case 'inventory_update': {
       // 客户端提交最新的背包状态(装配调整/卸下/销毁),以服务端玩家实体为准进行覆盖
+      // 死亡期间忽略该指令,防止死亡时绕过限制改动背包(与多人服务端行为保持一致)
       const playerEntity = getPlayerDynamicEntityById(instruct.data.playerId as number);
-      if (playerEntity) {
+      if (playerEntity && !playerEntity.isDead) {
         playerEntity.applyInventoryState(instruct.data.inventory);
       }
       break;

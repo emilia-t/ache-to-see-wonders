@@ -457,6 +457,14 @@ const STAR_FIELD_TWINKLE_SPEED = 0.125; // 星星闪烁速度倍率,越小闪烁
 const EDGE_SCROLL_ZONE = 150;   // 开火模式下相机边缘滚动的触发区域宽度,单位px
 const EDGE_SCROLL_SPEED = 1200; // 开火模式下相机边缘滚动速度,单位px/秒
 const DEATH_OVERLAY_EVENT_PREFIX = 'death_overlay_'; // 重生界面按钮事件区域id前缀
+/** 死亡界面未知伤害来源的兜底显示名 */
+const DEATH_OVERLAY_UNKNOWN_DAMAGER = '未知';
+/** 死亡界面右上角「关闭 / 最小化」按钮边长(px) */
+const DEATH_OVERLAY_CORNER_BUTTON_SIZE = 26;
+/** 死亡界面「自动复活」勾选框边长(px) */
+const DEATH_OVERLAY_CHECKBOX_SIZE = 18;
+/** 自动复活请求的最小重试间隔(毫秒) */
+const DEATH_OVERLAY_AUTO_RESPAWN_RETRY_MS = 500;
 const MINIMAP_DESIGN_SIZE = 240;      // 设计稿(1920x1080)下的小地图边长,单位px
 const MINIMAP_DESIGN_MIN_EDGE = 1080; // 设计稿的短边尺寸,作为等比缩放的基准,单位px
 const MINIMAP_SIZE_MIN = 120;         // 小地图等比缩放后的最小边长,单位px
@@ -522,6 +530,21 @@ let offsetYY = 0;  // 原点在y轴上的偏移
 let prevPlayerIsDead: boolean | null = null; // 上一帧玩家是否死亡(用于检测首次进入与重生)
 let pendingCameraResetToPlayer = false;      // 相机是否需要重置到玩家(延迟到画布就绪后执行)
 let scale = 1;     // 缩放比例
+
+// ---- 死亡界面状态 ----
+/** 自动复活开关(默认启用并勾选) */
+let deathOverlayAutoRespawn = true;
+/** 死亡界面是否已关闭/最小化(关闭后玩家可拖动视角观察游戏世界) */
+let deathOverlayDismissed = false;
+/**
+ * 上一次自动复活请求的派发时刻(performance.now())。
+ *
+ * 自动复活采用「限频重试」而非只发一次:服务端会校验复活等待时间,若因时序/量化差异
+ * 被拒,后续帧还能再次请求,避免玩家永久卡在死亡界面。
+ */
+let deathAutoRespawnLastSentAt = Number.NEGATIVE_INFINITY;
+/** 上一次绘制时玩家是否处于死亡状态(用于检测死亡开始以复位界面状态) */
+let deathOverlayWasDead = false;
 
 let eventArea: Array<EventArea> = []; // 事件触发区域列表
 let mouseX = 0;
@@ -5145,10 +5168,16 @@ const drawDeathOverlayButton = (
   rect: { x: number; y: number; width: number; height: number },
   label: string,
   hovered: boolean,
-  primary: boolean
+  primary: boolean,
+  disabled: boolean = false
 ) => {
   CtxUi.save();
-  if (primary) {
+  if (disabled) {
+    CtxUi.fillStyle = 'rgba(255, 255, 255, 0.06)';
+    CtxUi.shadowBlur = 0;
+    CtxUi.strokeStyle = 'rgba(140, 165, 185, 0.35)';
+    CtxUi.lineWidth = 1;
+  } else if (primary) {
     CtxUi.fillStyle = hovered
       ? 'rgba(89, 227, 255, 0.95)'
       : 'rgba(47, 168, 255, 0.92)';
@@ -5163,7 +5192,7 @@ const drawDeathOverlayButton = (
   CtxUi.beginPath();
   createRoundRect(CtxUi, rect.x, rect.y, rect.width, rect.height, 8);
   CtxUi.fill();
-  if (!primary) {
+  if (disabled || !primary) {
     CtxUi.stroke();
   }
   CtxUi.shadowBlur = 0;
@@ -5171,23 +5200,149 @@ const drawDeathOverlayButton = (
   CtxUi.font = 'bold 16px "Microsoft YaHei", Arial, sans-serif';
   CtxUi.textAlign = 'center';
   CtxUi.textBaseline = 'middle';
-  CtxUi.fillStyle = primary ? '#03141a' : '#e8f6ff';
+  CtxUi.fillStyle = disabled ? 'rgba(180, 198, 212, 0.55)' : (primary ? '#03141a' : '#e8f6ff');
   CtxUi.fillText(label, rect.x + rect.width / 2, rect.y + rect.height / 2);
   CtxUi.restore();
 };
 
 /**
+ * 绘制死亡界面右上角的「关闭 / 最小化」按钮。
+ * - 启用自动复活时显示「关闭」(×):关闭界面后自动复活仍在后台倒计时进行;
+ * - 未启用自动复活时显示「最小化」(—):收起后需手动点击「立即复活」。
+ */
+const drawDeathOverlayCornerButton = (
+  CtxUi: CanvasRenderingContext2D,
+  rect: { x: number; y: number; width: number; height: number },
+  closeMode: boolean,
+  hovered: boolean
+) => {
+  CtxUi.save();
+  CtxUi.fillStyle = hovered ? 'rgba(255, 90, 104, 0.3)' : 'rgba(255, 255, 255, 0.07)';
+  CtxUi.strokeStyle = hovered ? 'rgba(255, 150, 160, 0.9)' : 'rgba(150, 180, 200, 0.55)';
+  CtxUi.lineWidth = 1.2;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, rect.x, rect.y, rect.width, rect.height, 7);
+  CtxUi.fill();
+  CtxUi.stroke();
+
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  const half = rect.width * 0.22;
+  CtxUi.strokeStyle = hovered ? '#ffd7db' : '#dcecf7';
+  CtxUi.lineWidth = 1.8;
+  CtxUi.beginPath();
+  if (closeMode) {
+    CtxUi.moveTo(cx - half, cy - half);
+    CtxUi.lineTo(cx + half, cy + half);
+    CtxUi.moveTo(cx + half, cy - half);
+    CtxUi.lineTo(cx - half, cy + half);
+  } else {
+    CtxUi.moveTo(cx - half - 2, cy);
+    CtxUi.lineTo(cx + half + 2, cy);
+  }
+  CtxUi.stroke();
+  CtxUi.restore();
+};
+
+/**
+ * 死亡界面被关闭/最小化后展示的小胶囊(点击可重新展开死亡界面)。
+ * 关闭/最小化期间玩家可以自由拖动视角观察游戏世界。
+ */
+const drawDeathOverlayChip = (
+  CtxUi: CanvasRenderingContext2D,
+  width: number,
+  respawnRemaining: number
+) => {
+  const chipWidth = 180;
+  const chipHeight = 40;
+  const chipX = (width - chipWidth) / 2;
+  const chipY = 14;
+  const hovered = hoveredArea?.id === `${DEATH_OVERLAY_EVENT_PREFIX}chip`;
+  CtxUi.save();
+  CtxUi.fillStyle = hovered ? 'rgba(255, 90, 104, 0.32)' : 'rgba(20, 12, 18, 0.82)';
+  CtxUi.strokeStyle = 'rgba(255, 120, 130, 0.75)';
+  CtxUi.lineWidth = 1;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, chipX, chipY, chipWidth, chipHeight, 10);
+  CtxUi.fill();
+  CtxUi.stroke();
+  CtxUi.font = 'bold 14px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  CtxUi.fillStyle = '#ffd7db';
+  const text = respawnRemaining > 0
+    ? `你已阵亡 · ${Math.ceil(respawnRemaining)}s 后复活`
+    : '你已阵亡 · 点击展开';
+  CtxUi.fillText(text, chipX + chipWidth / 2, chipY + chipHeight / 2);
+  CtxUi.restore();
+
+  eventArea.push({
+    id: `${DEATH_OVERLAY_EVENT_PREFIX}chip`,
+    rect: { x: chipX, y: chipY, width: chipWidth, height: chipHeight },
+    type: 'button',
+    cursor: 'pointer',
+    onClick: () => {
+      deathOverlayDismissed = false;
+      drawUI();
+    }
+  });
+};
+
+/** 本地玩家是否处于死亡状态(死亡界面活动期间) */
+const H_isPlayerDead = (): boolean =>
+  !!playerEntity && (playerEntity.isDead || playerEntity.health <= 0);
+
+/**
  * 绘制重生界面(死亡界面,渲染在 canvas-ui 层)
- * 同时负责注册/移除重生界面按钮的事件区域
+ * 同时负责注册/移除死亡界面按钮的事件区域
  */
 const drawDeathOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasElement) => {
   const { width, height } = H_getCanvasCssSize(CANVAS);
 
-  // 先移除旧的重生界面按钮区域,避免重复注册
+  // 先移除旧的死亡界面事件区域,避免重复注册
   eventArea = eventArea.filter(area => !area.id.startsWith(DEATH_OVERLAY_EVENT_PREFIX));
 
-  const playerDead = !playerEntity || playerEntity.isDead || playerEntity.health <= 0;
-  if (!playerDead) return;
+  const playerDead = H_isPlayerDead();
+  if (!playerDead) {
+    // 复活后复位界面状态(自动复活开关保留玩家的选择)
+    deathOverlayDismissed = false;
+    deathAutoRespawnLastSentAt = Number.NEGATIVE_INFINITY;
+    deathOverlayWasDead = false;
+    return;
+  }
+  if (!deathOverlayWasDead) {
+    // 刚进入死亡:复位关闭/最小化与自动复活发送时刻
+    deathOverlayWasDead = true;
+    deathOverlayDismissed = false;
+    deathAutoRespawnLastSentAt = Number.NEGATIVE_INFINITY;
+  }
+
+  // 复活等待时间:X = 3 + 等级 / 3(上限 30 秒),由权威端推进,客户端只负责展示
+  const respawnDelay = Math.max(0, Number(playerEntity?.deathRespawnDelay ?? 0));
+  const respawnRemaining = Math.max(0, Number(playerEntity?.deathRespawnRemaining ?? 0));
+  const respawnReady = respawnRemaining <= 0;
+
+  // 自动复活:等待结束后自动请求复活。
+  // 采用限频重试而非只发一次:服务端会再次校验等待时间,被拒时后续帧还会继续请求,
+  // 避免因时序/量化差异让玩家永久卡在死亡界面。
+  if (deathOverlayAutoRespawn && respawnReady) {
+    const nowMs = performance.now();
+    if (nowMs - deathAutoRespawnLastSentAt >= DEATH_OVERLAY_AUTO_RESPAWN_RETRY_MS) {
+      deathAutoRespawnLastSentAt = nowMs;
+      sendPlayerRespawn();
+    }
+  }
+
+  // 已关闭/最小化:只显示小胶囊,玩家可自由拖动视角观察世界
+  if (deathOverlayDismissed) {
+    drawDeathOverlayChip(CtxUi, width, respawnRemaining);
+    return;
+  }
+
+  // 击杀信息:「你被 xxx 击倒了」
+  // 死于其他玩家的从者 NPC → 显示该从者所属玩家;死于无主敌对 NPC → 显示 NPC 类型名称
+  const damagerName = (playerEntity?.lastDamagerName ?? '').trim();
+  const killText = `你被 ${damagerName || DEATH_OVERLAY_UNKNOWN_DAMAGER} 击倒了`;
 
   // 本次死亡明细(掉落经验/物品/技能 + 专研降级)
   const report = playerEntity?.lastDeathReport ?? null;
@@ -5242,9 +5397,14 @@ const drawDeathOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
   }
   if (emptyState) bodyHeight += lineH;
 
+  const killLineHeight = 26;   // 击杀信息行高
+  const countdownHeight = 28;  // 复活倒计时行高(含进度条)
+  const checkboxHeight = 36;   // 自动复活勾选框行高
+  const contentTop = 78;       // 标题+分割线之下正文的起始偏移
   const buttonHeight = 44;
-  const panelWidth = Math.min(420, Math.max(300, width - 40));
-  const panelHeight = 62 + bodyHeight + 14 + buttonHeight + 26;
+  const panelWidth = Math.min(440, Math.max(320, width - 40));
+  const panelHeight = contentTop + killLineHeight + countdownHeight + bodyHeight
+    + 12 + checkboxHeight + 10 + buttonHeight + 22;
   const panelX = (width - panelWidth) / 2;
   const panelY = Math.max(12, (height - panelHeight) / 2);
   const contentX = panelX + 22;
@@ -5290,10 +5450,35 @@ const drawDeathOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
   CtxUi.lineTo(contentX + contentWidth, panelY + 64);
   CtxUi.stroke();
 
-  // 区块内容
+  // 正文内容
   CtxUi.textAlign = 'left';
   CtxUi.textBaseline = 'middle';
-  let cursorY = panelY + 64 + 14;
+  let cursorY = panelY + contentTop;
+
+  // 击杀信息
+  CtxUi.font = 'bold 16px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.fillStyle = '#ffd0d6';
+  CtxUi.fillText(H_fitText(CtxUi, killText, contentWidth), contentX, cursorY);
+  cursorY += killLineHeight;
+
+  // 复活倒计时 + 进度条
+  CtxUi.font = 'bold 14px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.fillStyle = respawnReady ? '#8ef0c8' : '#7ce0ff';
+  const countdownText = respawnReady
+    ? '现在可以复活'
+    : `复活倒计时 ${Math.ceil(respawnRemaining)} 秒（共 ${Math.max(1, Math.round(respawnDelay))} 秒）`;
+  CtxUi.fillText(countdownText, contentX, cursorY);
+  const barY = cursorY + 12;
+  CtxUi.fillStyle = 'rgba(120, 160, 190, 0.22)';
+  CtxUi.fillRect(contentX, barY, contentWidth, 4);
+  const respawnProgress = respawnDelay > 0
+    ? H_clamp(1 - respawnRemaining / respawnDelay, 0, 1)
+    : 1;
+  CtxUi.fillStyle = respawnReady ? 'rgba(142, 240, 200, 0.9)' : 'rgba(124, 224, 255, 0.9)';
+  CtxUi.fillRect(contentX, barY, contentWidth * respawnProgress, 4);
+  cursorY += countdownHeight;
+
+  // 区块内容
   for (const section of sections) {
     CtxUi.font = 'bold 13px "Microsoft YaHei", Arial, sans-serif';
     CtxUi.fillStyle = section.headerColor;
@@ -5322,9 +5507,53 @@ const drawDeathOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
     cursorY += lineH;
   }
 
+  // 自动复活勾选框(默认启用并勾选);取消勾选后右上角按钮改为「最小化」
+  const checkboxRowY = cursorY + 6;
+  const checkboxRect = {
+    x: contentX,
+    y: checkboxRowY + (checkboxHeight - DEATH_OVERLAY_CHECKBOX_SIZE) / 2,
+    width: DEATH_OVERLAY_CHECKBOX_SIZE,
+    height: DEATH_OVERLAY_CHECKBOX_SIZE
+  };
+  const checkboxHovered = hoveredArea?.id === `${DEATH_OVERLAY_EVENT_PREFIX}autorespawn`;
+  CtxUi.save();
+  CtxUi.fillStyle = deathOverlayAutoRespawn
+    ? 'rgba(47, 168, 255, 0.9)'
+    : 'rgba(255, 255, 255, 0.06)';
+  CtxUi.strokeStyle = checkboxHovered ? 'rgba(140, 230, 255, 0.95)' : 'rgba(120, 190, 220, 0.7)';
+  CtxUi.lineWidth = 1.4;
+  CtxUi.beginPath();
+  createRoundRect(CtxUi, checkboxRect.x, checkboxRect.y, checkboxRect.width, checkboxRect.height, 4);
+  CtxUi.fill();
+  CtxUi.stroke();
+  if (deathOverlayAutoRespawn) {
+    // 勾选标记
+    CtxUi.strokeStyle = '#03141a';
+    CtxUi.lineWidth = 2.2;
+    CtxUi.beginPath();
+    CtxUi.moveTo(checkboxRect.x + 4, checkboxRect.y + checkboxRect.height * 0.55);
+    CtxUi.lineTo(checkboxRect.x + checkboxRect.width * 0.42, checkboxRect.y + checkboxRect.height - 4.5);
+    CtxUi.lineTo(checkboxRect.x + checkboxRect.width - 3.5, checkboxRect.y + 3.8);
+    CtxUi.stroke();
+  }
+  CtxUi.restore();
+
+  CtxUi.font = 'bold 14px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.fillStyle = checkboxHovered ? '#bfe9ff' : '#d7ecfa';
+  CtxUi.fillText('自动复活', checkboxRect.x + checkboxRect.width + 10, checkboxRect.y + checkboxRect.height / 2);
+  CtxUi.font = '12px "Microsoft YaHei", Arial, sans-serif';
+  CtxUi.fillStyle = 'rgba(150, 170, 185, 0.75)';
+  CtxUi.textAlign = 'right';
+  CtxUi.fillText(
+    deathOverlayAutoRespawn ? '倒计时结束后自动复活' : '需手动点击复活',
+    contentX + contentWidth,
+    checkboxRect.y + checkboxRect.height / 2
+  );
+  CtxUi.textAlign = 'left';
+
   // 按钮布局(面板底部居中)
   const buttonGap = 16;
-  const buttonWidth = Math.min(140, (panelWidth - 48 - buttonGap) / 2);
+  const buttonWidth = Math.min(150, (panelWidth - 48 - buttonGap) / 2);
   const buttonsY = panelY + panelHeight - buttonHeight - 22;
   const totalButtonsWidth = buttonWidth * 2 + buttonGap;
   const buttonsX = panelX + (panelWidth - totalButtonsWidth) / 2;
@@ -5335,9 +5564,10 @@ const drawDeathOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
   drawDeathOverlayButton(
     CtxUi,
     respawnRect,
-    '重生',
-    hoveredArea?.id === `${DEATH_OVERLAY_EVENT_PREFIX}respawn`,
-    true
+    respawnReady ? '立即复活' : `等待 ${Math.ceil(respawnRemaining)}s`,
+    respawnReady && hoveredArea?.id === `${DEATH_OVERLAY_EVENT_PREFIX}respawn`,
+    true,
+    !respawnReady
   );
   drawDeathOverlayButton(
     CtxUi,
@@ -5347,22 +5577,61 @@ const drawDeathOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasEle
     false
   );
 
+  // 右上角「关闭 / 最小化」按钮(启用自动复活时为关闭,否则为最小化)
+  const cornerSize = DEATH_OVERLAY_CORNER_BUTTON_SIZE;
+  const cornerRect = {
+    x: panelX + panelWidth - cornerSize - 12,
+    y: panelY + 12,
+    width: cornerSize,
+    height: cornerSize
+  };
+  drawDeathOverlayCornerButton(
+    CtxUi,
+    cornerRect,
+    deathOverlayAutoRespawn,
+    hoveredArea?.id === `${DEATH_OVERLAY_EVENT_PREFIX}corner`
+  );
+
   CtxUi.restore();
 
   // 注册按钮事件区域
-  eventArea.push({
-    id: `${DEATH_OVERLAY_EVENT_PREFIX}respawn`,
-    rect: respawnRect,
-    type: 'button',
-    cursor: 'pointer',
-    onClick: () => { sendPlayerRespawn(); }
-  });
+  // 复活按钮:仅等待时间结束后才注册(未就绪时不可点击)
+  if (respawnReady) {
+    eventArea.push({
+      id: `${DEATH_OVERLAY_EVENT_PREFIX}respawn`,
+      rect: respawnRect,
+      type: 'button',
+      cursor: 'pointer',
+      onClick: () => { sendPlayerRespawn(); }
+    });
+  }
   eventArea.push({
     id: `${DEATH_OVERLAY_EVENT_PREFIX}exit`,
     rect: exitRect,
     type: 'button',
     cursor: 'pointer',
     onClick: () => { router.push('/home'); }
+  });
+  eventArea.push({
+    id: `${DEATH_OVERLAY_EVENT_PREFIX}autorespawn`,
+    rect: { x: contentX, y: checkboxRowY, width: contentWidth, height: checkboxHeight },
+    type: 'button',
+    cursor: 'pointer',
+    onClick: () => {
+      deathOverlayAutoRespawn = !deathOverlayAutoRespawn;
+      drawUI();
+    }
+  });
+  eventArea.push({
+    id: `${DEATH_OVERLAY_EVENT_PREFIX}corner`,
+    rect: cornerRect,
+    type: 'button',
+    cursor: 'pointer',
+    onClick: () => {
+      // 关闭(自动复活开)或最小化(自动复活关)后,玩家可拖动视角观察世界
+      deathOverlayDismissed = true;
+      drawUI();
+    }
   });
 };
 
@@ -5813,12 +6082,38 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
     e.preventDefault();
     // 专研界面打开时不允许切换到背包
     if (H_isResearchOverlayActive()) return;
+    // 死亡期间禁止打开背包(需与死亡界面交互)
+    if (H_isPlayerDead()) return;
     if (!playerEntity) {
       pushDebugTerminalLog('[WARN] Player not ready, cannot open inventory.');
       return;
     }
     toggleInventory();
     return;
+  }
+
+  // 死亡期间:禁止一切"操作玩家 / 技能 / 背包"的快捷键(移动、疾跑、闪现、开火模式、视角等),
+  // 只保留调试终端(开发者工具,不属于游戏内操作)
+  if (H_isPlayerDead()) {
+    const terminalToggle = !debugTerminalVisible && noModifier && bindingId === 'toggleDebugTerminal' && !e.repeat;
+    if (terminalToggle) {
+      e.preventDefault();
+      debugTerminalVisible = true;
+      debugTerminalScrollOffset = 0;
+      debugTerminalHistoryIndex = -1;
+      debugTerminalInputDraft = '';
+      pushDebugTerminalLog('[SYS] Debug terminal opened. Type /help');
+      drawUI();
+      return;
+    }
+    if (!debugTerminalVisible) {
+      // 拦截所有游戏操作指令(不发送任何操作玩家的指令)
+      if (bindingId !== null || key === ' ' || key === 'enter' || key === 'escape') {
+        e.preventDefault();
+      }
+      return;
+    }
+    // 终端已打开时:继续走下方的终端输入处理
   }
 
   // 背包打开时,ESC 关闭背包
@@ -6143,7 +6438,8 @@ const onMousedown = (e: MouseEvent) => {
 
   if (H_getHitEventArea(screenX, screenY)) return;
 
-  if (e.button === 0 && playerFireMode) {
+  // 死亡期间禁止开火(仅允许拖动视角观察世界)
+  if (e.button === 0 && playerFireMode && !H_isPlayerDead()) {
     e.preventDefault();
     sendPlayerFireInput(TOscreen2Canvas(screenX, screenY));
     drawUI();

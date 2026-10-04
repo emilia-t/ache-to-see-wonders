@@ -62,6 +62,8 @@ const H_getBlinkTrailState = (owner: object): BlinkTrailState => {
 class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
   /** 生成权重(测试阶段可临时改为 0.99) */
   public static GENERATE_WEIGHT = 0.11;
+  /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+  public static readonly NAME: string = '金色闪避者';
 
   /** 主色调 */
   public static readonly MAIN_COLOR = '#eaba48';

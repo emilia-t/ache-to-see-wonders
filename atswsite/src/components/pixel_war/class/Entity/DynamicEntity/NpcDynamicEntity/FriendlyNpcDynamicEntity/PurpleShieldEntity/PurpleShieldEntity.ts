@@ -49,6 +49,8 @@ const H_getShieldOrbitState = (owner: object): ShieldOrbitState => {
 class PurpleShieldEntity extends FriendlyNpcDynamicEntity {
   /** 生成权重(需落在 (0,1] 区间) */
   public static GENERATE_WEIGHT = 0.08;
+  /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+  public static readonly NAME: string = '紫盾';
 
   /** 基础/最大生命值(= 出生时的防护小方块数量) */
   public static readonly HEALTH_MAX = 4;

@@ -1,6 +1,7 @@
 package top.atsw.pixelwar.registry;
 
 import top.atsw.pixelwar.game.DodgeSkill;
+import top.atsw.pixelwar.game.Oa18ShootSkill;
 import top.atsw.pixelwar.game.Skill;
 import top.atsw.pixelwar.game.Va2ShootSkill;
 import top.atsw.pixelwar.game.Xa4ShootSkill;
@@ -27,6 +28,7 @@ public final class SkillRegistry implements Skill.Provider {
     static {
         register(new Va2ShootSkill());
         register(new Xa4ShootSkill());
+        register(new Oa18ShootSkill());
         register(new DodgeSkill());
     }
 

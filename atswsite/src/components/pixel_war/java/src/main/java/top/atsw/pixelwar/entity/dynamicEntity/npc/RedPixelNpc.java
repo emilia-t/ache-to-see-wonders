@@ -15,6 +15,8 @@ public class RedPixelNpc extends NpcEntity {
 
     /** 生成权重 */
     public static final double GENERATE_WEIGHT = 0.1;
+    /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+    public static final String NAME = "红色像素";
     /** 进入此距离直接爆炸(px) */
     private static final double EXPLODE_RANGE = 60;
     /** 进入此距离开始预警(px) */
@@ -60,6 +62,11 @@ public class RedPixelNpc extends NpcEntity {
     @Override
     public double generateWeight() {
         return GENERATE_WEIGHT;
+    }
+
+    @Override
+    public String displayName() {
+        return NAME;
     }
 
     /** 每帧更新:追踪最近的存活玩家并判断是否进入预警/引爆范围 */
@@ -124,7 +131,10 @@ public class RedPixelNpc extends NpcEntity {
             return;
         }
         hasSpawnedDeathBomb = true;
-        context.spawnBomb.accept(new BombEntity(position.copy(), bombOwnerId, bombTeamId));
+        BombEntity bomb = new BombEntity(position.copy(), bombOwnerId, bombTeamId);
+        // 记录生成者显示名:红像素自身会立刻被清理,炸弹爆炸时按 ownerId 已查不到它
+        bomb.damageSourceName = displayName();
+        context.spawnBomb.accept(bomb);
     }
 
     private PlayerEntity nearestAlivePlayer(WorldView world) {

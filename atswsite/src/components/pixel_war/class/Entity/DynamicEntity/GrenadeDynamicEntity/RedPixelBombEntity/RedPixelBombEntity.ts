@@ -3,6 +3,7 @@ import {
     StaticEntity
 } 
 from "@/components/pixel_war/class";
+import { H_resolveDamagerName } from "@/components/pixel_war/class/Entity/DynamicEntity/damageSource";
 import type {
     Point,
     DynamicEntitieList, 
@@ -18,6 +19,13 @@ export class RedPixelBombEntity extends GrenadeDynamicEntity {
   private countdown: number;
   private explosionRadius: number;
   private explosionDamage: number;
+  /**
+   * 生成者的显示名称(兜底用)。
+   *
+   * 红像素引爆时自身会立刻被清理,等到炸弹爆炸时按 ownerId 已查不到生成者,
+   * 因此生成时把名称记录下来,保证死亡界面仍能显示「你被 红色像素 击倒了」。
+   */
+  public damageSourceName: string = '';
 
   constructor(
     position: Point,
@@ -62,6 +70,10 @@ export class RedPixelBombEntity extends GrenadeDynamicEntity {
 
     // 范围伤害 玩家
     if (dynamicEntitie.playerDynamicEntitys.length !== 0){
+        // 记录伤害来源(用于死亡界面「你被 xxx 击倒了」):优先按 ownerId 解析,
+        // 生成者已被清理时退回生成时记录的名称
+        const damagerName =
+          H_resolveDamagerName(dynamicEntitie, this.ownerId) || this.damageSourceName;
         for (const entity of dynamicEntitie.playerDynamicEntitys) {
             if (entity.isDead) continue;
             if (entity.id === this.ownerId) continue; // 避免伤害已经消失的生成者
@@ -70,6 +82,7 @@ export class RedPixelBombEntity extends GrenadeDynamicEntity {
                 entity.position.y - this.position.y
             );
             if (dist <= this.explosionRadius) {
+                if (damagerName) entity.lastDamagerName = damagerName;
                 entity.applyDamage(this.explosionDamage);
             }
         }

@@ -31,6 +31,8 @@ public class GoldenDodgeXa4Npc extends NpcEntity {
 
     /** 生成权重(测试阶段可临时改为 0.99) */
     public static final double GENERATE_WEIGHT = 0.11;
+    /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+    public static final String NAME = "金色闪避者";
 
     /** 主色调 */
     public static final String MAIN_COLOR = "#eaba48";
@@ -98,6 +100,11 @@ public class GoldenDodgeXa4Npc extends NpcEntity {
     @Override
     public double generateWeight() {
         return GENERATE_WEIGHT;
+    }
+
+    @Override
+    public String displayName() {
+        return NAME;
     }
 
     /** 偏好直线移动:强制以直线路径前往目标 */

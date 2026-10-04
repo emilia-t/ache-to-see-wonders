@@ -16,6 +16,8 @@ import type {
  */
 class SkyBluePixelEntity extends FriendlyNpcDynamicEntity {
   public static GENERATE_WEIGHT = 0.2; // 生成权重
+  /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+  public static readonly NAME: string = '天蓝像素';
 
   private static readonly APPROACH_RANGE = 220;        // 主动靠近玩家的判定范围(px)
   private static readonly APPROACH_KEEP_DISTANCE = 120; // 靠近玩家后保持的距离(px)

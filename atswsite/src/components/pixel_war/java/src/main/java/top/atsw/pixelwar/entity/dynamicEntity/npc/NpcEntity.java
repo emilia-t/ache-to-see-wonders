@@ -102,6 +102,16 @@ public abstract class NpcEntity extends DynamicEntity {
         return 5;
     }
 
+    /**
+     * NPC 类型的显示名称(用于击杀提示等 UI 文案,例如「你被 红色像素 击倒了」)。
+     *
+     * <p>名称不会随实例变化,因此各具体 NPC 统一把它配置为静态常量 {@code NAME},
+     * 再由本方法返回(静态字段不参与多态,必须显式覆盖本方法)。</p>
+     */
+    public String displayName() {
+        return tag;
+    }
+
     /** 每级移动速度增益(px/s,子类覆盖:红像素为 40,其余为 20) */
     protected double moveSpeedBonusPerLevel() {
         return 20;

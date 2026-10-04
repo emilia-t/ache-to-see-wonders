@@ -245,9 +245,20 @@ public final class Protocol {
             List<ResearchEntryDto> research,
             /** 待玩家选择的专研选项(空数组表示无待选界面) */
             List<String> researchPendingOptions,
+            /** 死亡后需等待的复活时间(秒):X = 3 + 等级 / 3,上限 30;未死亡为 0 */
+            double deathRespawnDelay,
+            /** 复活等待的剩余时间(秒),客户端据此展示复活倒计时;未死亡为 0 */
+            double deathRespawnRemaining,
+            /** 最近一次伤害来源显示名(死亡界面提示「你被 xxx 击倒了」);未受伤为空串 */
+            String lastDamagerName,
             /** 最近一次死亡结算明细(null 表示尚未死亡或已重生) */
             DeathReportDto lastDeathReport
     ) {
+
+        public PlayerPrivate {
+            deathRespawnDelay = quantize(deathRespawnDelay);
+            deathRespawnRemaining = quantize(deathRespawnRemaining);
+        }
     }
 
     /** 已研究的专研项:value 仅"不动堡垒"用于记录剩余吸收值,其余恒为 0 */

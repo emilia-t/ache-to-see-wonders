@@ -17,6 +17,8 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
   private static readonly WARN_RANGE = 140;     // 进入此距离开始闪烁警告
 
   public static GENERATE_WEIGHT = 0.1;
+  /** NPC 类型显示名称(用于击杀提示等 UI 文案) */
+  public static readonly NAME: string = '红色像素';
 
   private playerPosition: Point | null = null;
 
@@ -146,6 +148,8 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
 
       // 生成炸弹实体（直接通过 dynamicEntity 添加）
       const bomb = new RedPixelBombEntity({ ...this.position }, this.id, this.teamId);
+      // 记录生成者显示名:红像素自身会立刻被清理,炸弹爆炸时按 ownerId 已查不到它
+      bomb.damageSourceName = this.getDisplayName();
       dynamicEntity.grenadeDynamicEntitys.push(bomb);
       this.hasSpawnedDeathBomb = true; // 标记炸弹已生成
     }

@@ -112,6 +112,12 @@ export interface JavaPlayerPrivate {
   research: JavaResearchEntry[];
   /** 待玩家选择的专研选项(空数组表示无待选界面) */
   researchPendingOptions: string[];
+  /** 死亡后需等待的复活时间(秒):X = 3 + 等级 / 3,上限 30;未死亡为 0 */
+  deathRespawnDelay?: number;
+  /** 复活等待的剩余时间(秒),客户端据此展示复活倒计时;未死亡为 0 */
+  deathRespawnRemaining?: number;
+  /** 最近一次伤害来源显示名(死亡界面提示「你被 xxx 击倒了」);未受伤为空串 */
+  lastDamagerName?: string;
   /** 最近一次死亡结算明细(缺省/null 表示尚未死亡或已重生) */
   lastDeathReport?: JavaDeathReport | null;
 }

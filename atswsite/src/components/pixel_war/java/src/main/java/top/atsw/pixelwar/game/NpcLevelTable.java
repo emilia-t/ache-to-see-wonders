@@ -7,7 +7,7 @@ package top.atsw.pixelwar.game;
  * {@link top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity#applyNpcLevel(int)})。</p>
  * <ul>
  *   <li>等级上限为 5 的 NPC(白像素 / va2 / 金色闪避者)使用 6 档概率表;</li>
- *   <li>等级上限为 2 的 NPC(红像素 / 天蓝像素 / 紫盾)使用 3 档概率表。</li>
+ *   <li>等级上限为 2 的 NPC(红像素 / 天蓝像素 / 紫盾 / 紫色烟花 oa18)使用 3 档概率表。</li>
  * </ul>
  *
  * <p>两表在各自的有效等级范围内合计均为 100%;若有效等级概率总和不足 100%

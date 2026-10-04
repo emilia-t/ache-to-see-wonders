@@ -19,6 +19,25 @@ abstract class NpcDynamicEntity extends DynamicEntity {
   public static readonly HEIGHT = 25;
   public static readonly RENDER_SIZE = 21;// 身体渲染边长(仅视觉,碰撞体积仍为 WIDTH × HEIGHT)
   public static GENERATE_WEIGHT = 1;//随机刷新的权重 (0,1]
+  /**
+   * NPC 类型的显示名称。
+   *
+   * <p>名称不会随实例变化,因此统一配置在这里(由各具体 NPC 子类覆盖),
+   * 用于击杀提示等 UI 文案(例如"你被 红色像素 击倒了")。</p>
+   */
+  public static readonly NAME: string = '';
+
+  /**
+   * 取得本 NPC 的类型显示名称(读取子类的静态 {@link NpcDynamicEntity.NAME})。
+   * 未配置时退化为实例名或 tag,保证始终有可展示的文本。
+   */
+  public getDisplayName(): string {
+    const ctor = this.constructor as { NAME?: unknown };
+    const staticName = ctor?.NAME;
+    if (typeof staticName === 'string' && staticName.length > 0) return staticName;
+    if (this.name) return this.name;
+    return this.tag;
+  }
 
   public ownerId: number | null;  // 拥有者ID，null表示无主
   public teamId: number | null; // 拥有者ID，null表示无队伍

@@ -183,6 +183,30 @@ class PlayerDynamicEntity extends DynamicEntity {
   public static readonly DEATH_DROP_COEFFICIENT = 0.6;
   /** 单次死亡掉落经验的上限(避免高等级玩家爆炸式掉落导致卡顿) */
   public static readonly DEATH_DROP_EXP_MAX = 215;
+  /** 复活等待时间基准(秒):X = 3 + 等级 / 3 */
+  public static readonly RESPAWN_DELAY_BASE_SECONDS = 3;
+  /** 复活等待时间的等级除数(等级 / 该值向下取整) */
+  public static readonly RESPAWN_DELAY_LEVEL_DIVISOR = 3;
+  /** 复活等待时间上限(秒) */
+  public static readonly RESPAWN_DELAY_MAX_SECONDS = 30;
+  /** 玩家脱离地图范围后,每受到 1 点伤害所需的游戏刻数 */
+  public static readonly OUT_OF_MAP_TICKS_PER_DAMAGE = 10;
+  /** 玩家脱离地图范围后,每次结算受到的伤害值 */
+  public static readonly OUT_OF_MAP_DAMAGE = 1;
+  /** 玩家脱离地图范围致死时,死亡界面展示的击杀者名称 */
+  public static readonly OUT_OF_MAP_KILLER_NAME = '地图边界';
+
+  /**
+   * 计算玩家死亡后的复活等待时间(秒):X = 3 + 等级 / 3。
+   * 结果取整且不超过 {@link RESPAWN_DELAY_MAX_SECONDS}。
+   * @param level 死亡时的游戏等级
+   */
+  public static getRespawnDelaySeconds(level: number): number {
+    const safeLevel = Math.max(0, Math.floor(level));
+    const seconds = PlayerDynamicEntity.RESPAWN_DELAY_BASE_SECONDS
+      + Math.floor(safeLevel / PlayerDynamicEntity.RESPAWN_DELAY_LEVEL_DIVISOR);
+    return Math.min(PlayerDynamicEntity.RESPAWN_DELAY_MAX_SECONDS, seconds);
+  }
 
   /**
    * 获取从当前等级升到下一等级所需的游戏经验
@@ -259,6 +283,24 @@ class PlayerDynamicEntity extends DynamicEntity {
    * 仅用于死亡界面展示,随快照下发给本人;重生时清空。
    */
   public lastDeathReport: PlayerDeathDrop | null = null;
+  /**
+   * 最近一次对玩家造成伤害的来源显示名(用于死亡界面「你被 xxx 击倒了」)。
+   *
+   * 由权威端在施加伤害时写入(见 damageSource 模块):
+   * 玩家名 / 从者所属玩家名 / NPC 类型名称 / 「地图边界」。
+   */
+  public lastDamagerName: string = '';
+  /** 本次死亡需要等待的复活时间(秒),由死亡时的等级决定;未死亡时为 0 */
+  public deathRespawnDelay: number = 0;
+  /** 复活等待的剩余时间(秒),由权威端每帧递减;未死亡时为 0 */
+  public deathRespawnRemaining: number = 0;
+  /**
+   * 地图外伤害计时(累计的游戏刻数)。
+   *
+   * 玩家脱离地图范围时累加,每达到 {@link OUT_OF_MAP_TICKS_PER_DAMAGE} 刻结算 1 点伤害;
+   * 回到地图内或死亡时清零。
+   */
+  private outOfMapTickCounter: number = 0;
 
   private servantGrid:ServantGrid|null = null;
   private servantMap:ServantMap|null = null;
@@ -305,6 +347,10 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.researchPendingOptions = [];
     this.researchPendingRolls = 0;
     this.lastDeathReport = null;
+    this.lastDamagerName = '';
+    this.deathRespawnDelay = 0;
+    this.deathRespawnRemaining = 0;
+    this.outOfMapTickCounter = 0;
     this.staminaMax = PlayerDynamicEntity.BASE_STAMINA_MAX;
     this.stamina = this.staminaMax;
     this.isSprinting = false;
@@ -753,6 +799,65 @@ class PlayerDynamicEntity extends DynamicEntity {
   }
 
   /**
+   * 推进与死亡相关的玩家状态(由权威端每帧调用;即使玩家已死亡也必须调用,
+   * 因为死亡期间 update() 会直接返回):
+   * <ul>
+   *   <li>递减复活等待时间;</li>
+   *   <li>玩家位于地图范围外时,按「每 10 游戏刻 1 点伤害」结算越界惩罚。</li>
+   * </ul>
+   */
+  public updateDeathAndOutOfMapState(dt: number, gameConfig: GameConfig): void {
+    if (this.isDead) {
+      // 剩余时间量化到 2 位小数。
+      // 多人协议下发时本字段会被量化到 2 位小数,若权威端保留全精度残留值(例如 3.0 连续
+      // 减去 0.02 后只剩 8.9e-16),客户端会读到 0 并请求复活,而权威端判定 "> 0" 拒绝,
+      // 表现为"自动复活偶发失效"。统一按同一精度推进即可消除该竞态。
+      this.deathRespawnRemaining = Math.max(
+        0,
+        Math.round((this.deathRespawnRemaining - dt) * 100) / 100
+      );
+      this.outOfMapTickCounter = 0;
+      return;
+    }
+    this.updateOutOfMapDamage(gameConfig);
+  }
+
+  /** 是否可以复活:玩家已死亡,且复活等待时间已结束 */
+  public canRespawnNow(): boolean {
+    return this.isDead && this.deathRespawnRemaining <= 0;
+  }
+
+  /**
+   * 地图外伤害:玩家离开地图范围(穿越 Curb)后,每 10 游戏刻受到 1 点伤害。
+   * 伤害来源记为「地图边界」,用于死亡界面提示。
+   */
+  private updateOutOfMapDamage(gameConfig: GameConfig): void {
+    if (this.isDead) {
+      this.outOfMapTickCounter = 0;
+      return;
+    }
+    const outside =
+      this.position.x < gameConfig.worldMinX ||
+      this.position.x > gameConfig.worldMaxX ||
+      this.position.y < gameConfig.worldMinY ||
+      this.position.y > gameConfig.worldMaxY;
+    if (!outside) {
+      this.outOfMapTickCounter = 0;
+      return;
+    }
+    this.outOfMapTickCounter += 1;
+    while (this.outOfMapTickCounter >= PlayerDynamicEntity.OUT_OF_MAP_TICKS_PER_DAMAGE) {
+      this.outOfMapTickCounter -= PlayerDynamicEntity.OUT_OF_MAP_TICKS_PER_DAMAGE;
+      this.lastDamagerName = PlayerDynamicEntity.OUT_OF_MAP_KILLER_NAME;
+      this.applyDamage(PlayerDynamicEntity.OUT_OF_MAP_DAMAGE);
+      if (this.isDead) {
+        this.outOfMapTickCounter = 0;
+        break;
+      }
+    }
+  }
+
+  /**
    * 增加游戏经验，经验足够时自动提升游戏等级
    * @param amount 增加的经验值
    */
@@ -1050,6 +1155,13 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.researchPendingOptions = [];
     this.researchPendingRolls = 0;
 
+    // 复活等待时间:X = 3 + 等级 / 3(整数,上限 30 秒)。
+    // 必须在等级被清零之前按「死亡时的等级」计算,否则重生等待时间恒为基础值。
+    this.deathRespawnDelay = PlayerDynamicEntity.getRespawnDelaySeconds(this.game_level);
+    this.deathRespawnRemaining = this.deathRespawnDelay;
+    // 死亡后不再累计地图外伤害
+    this.outOfMapTickCounter = 0;
+
     // 死亡不掉落:按当前等级决定背包条目是否被保护(读取发生在专研降级之前)
     const inventoryDrop = this.takeInventoryForDeathDrop();
 
@@ -1125,6 +1237,11 @@ class PlayerDynamicEntity extends DynamicEntity {
     // 清空上一次死亡明细(死亡界面随重生关闭)
     this.lastDeathReport = null;
     this.researchPendingRolls = 0;
+    // 清空死亡等待与伤害来源记录
+    this.lastDamagerName = '';
+    this.deathRespawnDelay = 0;
+    this.deathRespawnRemaining = 0;
+    this.outOfMapTickCounter = 0;
     // 重生后技能内置CD一并清空(无敌时长已从玩家规则中移除)
     this.resetEquippedSkillCooldowns();
     // 重生是瞬移,重置拖尾状态避免把瞬移当成高速移动
