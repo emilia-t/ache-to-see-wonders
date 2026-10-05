@@ -147,9 +147,9 @@ export interface JavaNpc {
 /**
  * 子弹快照。
  *
- * 服务端只下发 id / position / velocity / ownerId / bulletColor:
- * 子弹只有一种类型(tag 恒为 ordinary_bullet)、碰撞体积恒为 8×8、伤害恒为 1 且由服务端裁决,
- * 对应的默认值在 ProtocolMapper 中补齐。
+ * 普通子弹只下发 id / position / velocity / ownerId / bulletColor:
+ * 子弹尺寸恒为 8×8、伤害恒为 1 且由服务端裁决,对应的默认值在 ProtocolMapper 中补齐。
+ * 线段型激光弹额外下发 tag 与激光参数(普通子弹这些字段缺省)。
  */
 export interface JavaBullet {
   id: number;
@@ -157,6 +157,18 @@ export interface JavaBullet {
   velocity: JavaVec;
   ownerId?: number | null;
   bulletColor?: string | null;
+  /** 子弹类型标签:普通子弹缺省(视为 ordinary_bullet) */
+  tag?: string | null;
+  /** 激光最大长度(px,已按围墙截断) */
+  laserMaxLength?: number | null;
+  /** 激光前端展开速度(px/s) */
+  laserExpandSpeed?: number | null;
+  /** 激光持续发光时长(秒) */
+  laserHoldSeconds?: number | null;
+  /** 激光已存在时长(秒) */
+  laserElapsed?: number | null;
+  /** 激光辉光色 */
+  laserGlowColor?: string | null;
 }
 
 export interface JavaGrenade {

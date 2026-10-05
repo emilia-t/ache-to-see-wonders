@@ -28,7 +28,8 @@ type FireworkPhase = 'wander' | 'shooting' | 'idle';
  *       (恰好扫满 360° 一圈);</li>
  *   <li>等级越高:环射节奏越快(每发间隔 5 - Level 刻)、移动速度越快(每级 +20);</li>
  *   <li>无拖尾;子弹颜色固定为自身的 #E6D7FF;</li>
- *   <li>被击杀后概率掉落「环射烟花」技能球。</li>
+ *   <li>被击杀后概率掉落「环射烟花」技能球;</li>
+ *   <li>被玩家吸附为从者后不再游走,改为每 n 秒(n = 5 - Level,最小 3 秒)发动一轮同样的逐发环射。</li>
  * </ul>
  */
 class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
@@ -66,6 +67,10 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
   private static readonly LOOT_ODDS = 0.05;
   /** idle 阶段的安全超时(游戏刻):长时间未获得新目标时允许再次扫射,避免永久停摆 */
   private static readonly IDLE_TIMEOUT_TICKS = 100;
+  /** 从者攻击间隔基准(秒):n = 5 - Level */
+  private static readonly SERVANT_ATTACK_INTERVAL_BASE = 5;
+  /** 从者攻击间隔下限(秒):n 至少为 3 */
+  private static readonly SERVANT_ATTACK_INTERVAL_MIN = 3;
 
   /** 当前行为阶段 */
   private phase: FireworkPhase = 'wander';
@@ -77,6 +82,17 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
   private currentAngleDeg = PurpleFireworkOa18Entity.START_ANGLE_DEG;
   /** idle 阶段已等待的游戏刻数 */
   private idleTickCounter = 0;
+
+  /** 从者:距下一轮环射的剩余秒数(<= 0 时发动新一轮) */
+  private servantAttackCooldown = 0;
+  /** 从者:当前是否处于一轮环射中 */
+  private servantSweeping = false;
+  /** 从者:本轮环射已发射的发数 */
+  private servantShotsFired = 0;
+  /** 从者:距下一发子弹的刻计数 */
+  private servantShotTickCounter = 0;
+  /** 从者:本轮环射的当前瞄准角度(角度制,每发递减 ANGLE_STEP_DEG) */
+  private servantAngleDeg = PurpleFireworkOa18Entity.START_ANGLE_DEG;
 
   constructor(
     position: Point,
@@ -141,7 +157,8 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
     gameConfig: GameConfig
   ): void {
     if (this.ownerId !== null) {
-      // 从者:瞬移到主人分配的格子中心,不自行游走(也不会发动环射,见 actionLoop)。
+      // 从者:瞬移到主人分配的格子中心,不自行游走。
+      // 攻击由 actionLoop 的从者分支处理(每隔 n 秒发动一轮环射)。
       // 同时重置行为阶段:从者可能因网格断连而被释放回野生状态(不会被杀死),
       // 若不重置会永久卡在“扫射中”(既不移动也不开火)。
       this.resetToWander();
@@ -196,17 +213,19 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
   }
 
   /**
-   * 扫射期间不重新分配游走目标,保证一轮 18 发完整打出。
+   * 扫射期间不重新分配游走目标,保证一轮 18 发完整打出;从者也不参与游走。
    */
   public override canGetNewWanderTarget(dt: number, staticEntities: StaticEntity[]): boolean {
+    if (this.ownerId !== null) return false;
     if (this.phase === 'shooting') return false;
     return super.canGetNewWanderTarget(dt, staticEntities);
   }
 
   /**
-   * 扫射期间停住是"有意为之"而非卡住,不触发长时间未位移的重新寻路。
+   * 扫射期间停住是"有意为之"而非卡住,不触发长时间未位移的重新寻路;从者同样不参与。
    */
   public override updateNoMovementWatchdog(_dt: number): boolean {
+    if (this.ownerId !== null) return false;
     if (this.phase === 'shooting') return false;
     return super.updateNoMovementWatchdog(_dt);
   }
@@ -246,13 +265,19 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
   ////////////////////
 
   /**
-   * 行为循环:仅负责"按刻节奏推进环形扫射"。
-   * 每 5 游戏刻(随等级缩短)发射一发;从者不发动该攻击。
+   * 行为循环:
+   * - 无主时按刻节奏推进环形扫射(每 getShotTickInterval() 刻一发);
+   * - 从者(被玩家吸附)每 n 秒(5 - Level,最小 3 秒)发动一轮同样的逐发扫射。
    */
   public override actionLoop(context: ActionLoopContext): void {
     if (this.isDead) return;
-    // 从者不发动环形扫射(避免从者持续刷出一整圈子弹)
-    if (this.ownerId !== null) return;
+
+    // 从者:不再自行游走,改为按固定时间间隔发动环射
+    if (this.ownerId !== null) {
+      this.servantActionLoop(context);
+      return;
+    }
+
     if (this.phase !== 'shooting') return;
 
     this.shotTickCounter += 1;
@@ -264,6 +289,51 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
     if (this.shotsFired >= PurpleFireworkOa18Entity.SHOT_COUNT) {
       this.finishShooting();
     }
+  }
+
+  /**
+   * 从者环射:每隔 n 秒(5 - Level,最小 3 秒)发动一轮逐发扫射。
+   *
+   * <p>攻击计时在扫射过程中持续递减,因此两轮扫射的"开始时刻"严格相隔 n 秒
+   * (而不是"扫射结束后再等 n 秒")。扫射节奏与无主时一致(每 getShotTickInterval() 刻一发),</p>
+   * 攻击节奏按主人的射速倍率缩放(getActionDelta),与其它从者一致。
+   */
+  private servantActionLoop(context: ActionLoopContext): void {
+    if (!context) return;
+
+    this.servantAttackCooldown -= this.getActionDelta(context.deltaTime);
+    if (!this.servantSweeping && this.servantAttackCooldown <= 0) {
+      // 计时到点:开始新一轮环射(首次吸附后立即开始)
+      this.servantSweeping = true;
+      this.servantShotsFired = 0;
+      this.servantShotTickCounter = 0;
+      this.servantAngleDeg = PurpleFireworkOa18Entity.START_ANGLE_DEG;
+      this.servantAttackCooldown = this.getServantAttackIntervalSeconds();
+    }
+
+    if (!this.servantSweeping) return;
+
+    this.servantShotTickCounter += 1;
+    if (this.servantShotTickCounter < this.getShotTickInterval()) return;
+
+    this.servantShotTickCounter = 0;
+    this.spawnSweepBullet(context, this.servantAngleDeg);
+    this.servantAngleDeg -= PurpleFireworkOa18Entity.ANGLE_STEP_DEG;
+    this.servantShotsFired += 1;
+    if (this.servantShotsFired >= PurpleFireworkOa18Entity.SHOT_COUNT) {
+      this.servantSweeping = false;
+      this.servantShotsFired = 0;
+      this.servantShotTickCounter = 0;
+      this.servantAngleDeg = PurpleFireworkOa18Entity.START_ANGLE_DEG;
+    }
+  }
+
+  /** 从者攻击间隔(秒):n = 5 - Level,且不小于 3 秒 */
+  private getServantAttackIntervalSeconds(): number {
+    return Math.max(
+      PurpleFireworkOa18Entity.SERVANT_ATTACK_INTERVAL_MIN,
+      PurpleFireworkOa18Entity.SERVANT_ATTACK_INTERVAL_BASE - this.level
+    );
   }
 
   /** 行为前置:无动作 */
@@ -281,9 +351,17 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
    * 初始角度为正西(180°),18 发后恰好回到起点。
    */
   public override action(context: ActionLoopContext): void {
+    this.spawnSweepBullet(context, this.currentAngleDeg);
+
+    // 顺时针旋转(世界坐标 y 轴向上,角度递减即顺时针)
+    this.currentAngleDeg -= PurpleFireworkOa18Entity.ANGLE_STEP_DEG;
+  }
+
+  /** 按指定角度发射一发普通子弹(无主扫射与从者扫射共用) */
+  private spawnSweepBullet(context: ActionLoopContext, angleDeg: number): void {
     if (this.isDead || !context) return;
 
-    const angleRad = (this.currentAngleDeg * Math.PI) / 180;
+    const angleRad = (angleDeg * Math.PI) / 180;
     const direction: Point = { x: Math.cos(angleRad), y: Math.sin(angleRad) };
     const spawnDistance = this.width * 0.6;
     context.spawnBullet(
@@ -300,9 +378,6 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
         this.getBulletMoveSpeed()
       )
     );
-
-    // 顺时针旋转(世界坐标 y 轴向上,角度递减即顺时针)
-    this.currentAngleDeg -= PurpleFireworkOa18Entity.ANGLE_STEP_DEG;
   }
 
   ////////////////////

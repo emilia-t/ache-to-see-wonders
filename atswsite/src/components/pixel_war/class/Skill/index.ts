@@ -8,6 +8,7 @@ export type { SkillTagType, SkillCastContext, SkillTrigger } from '@/components/
 export { Va2ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Va2ShootSkill/Va2ShootSkill';
 export { Xa4ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Xa4ShootSkill/Xa4ShootSkill';
 export { Oa18ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Oa18ShootSkill/Oa18ShootSkill';
+export { Ls1ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Ls1ShootSkill/Ls1ShootSkill';
 export { DodgeSkill } from '@/components/pixel_war/class/Skill/Skills/DodgeSkill/DodgeSkill';
 // 技能图标贴图(resource/skill_icon 下的 100px × 100px PNG)
 export {

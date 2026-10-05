@@ -336,17 +336,44 @@ public final class Protocol {
     /**
      * 子弹快照。
      *
-     * <p>子弹只有一种类型(BulletEntity 为 final 且 tag 恒为 ordinary_bullet)、
-     * 尺寸恒为 8×8、伤害恒为 1,且命中由服务端裁决,这些字段均不再下发。
-     * 本项目子弹数量最多(实测可达 400+ / 帧),该裁剪收益最大。</p>
+     * <p>普通子弹尺寸恒为 8×8、伤害恒为 1,且命中由服务端裁决,这些字段不再下发;
+     * 仅当子弹是线段型激光弹(LaserBulletEntity)时才额外下发 tag 与激光参数,
+     * 客户端据此还原"展开 → 渐亮 → 持续发光 → 渐暗"动画。普通子弹的激光字段为 null,
+     * 由 {@code @JsonInclude(NON_NULL)} 自动略去。</p>
      */
     public record BulletSnapshot(
             long id,
             Vec position,
             Vec velocity,
             Long ownerId,
-            String bulletColor
+            String bulletColor,
+            /** 子弹类型标签:普通子弹为 null(视为 ordinary_bullet) */
+            String tag,
+            /** 激光最大长度(px,已按围墙截断) */
+            Double laserMaxLength,
+            /** 激光前端展开速度(px/s) */
+            Double laserExpandSpeed,
+            /** 激光持续发光时长(秒) */
+            Double laserHoldSeconds,
+            /** 激光已存在时长(秒) */
+            Double laserElapsed,
+            /** 激光辉光色 */
+            String laserGlowColor
     ) {
+        public BulletSnapshot {
+            if (laserMaxLength != null) {
+                laserMaxLength = quantize(laserMaxLength);
+            }
+            if (laserExpandSpeed != null) {
+                laserExpandSpeed = quantize(laserExpandSpeed);
+            }
+            if (laserHoldSeconds != null) {
+                laserHoldSeconds = quantize(laserHoldSeconds);
+            }
+            if (laserElapsed != null) {
+                laserElapsed = quantize(laserElapsed);
+            }
+        }
     }
 
     /**

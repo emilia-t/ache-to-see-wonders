@@ -6,7 +6,7 @@ export { DynamicEntity } from './Entity/DynamicEntity/DynamicEntity';
 // BulletDynamicEntity and its subclasses
 export { BulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/BulletDynamicEntity';
 export { BuckshotBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/BuckshotBulletDynamicEntity/BuckshotBulletDynamicEntity';
-export { LaserBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/LaserBulletDynamicEntity/LaserBulletDynamicEntity';
+export { LaserBulletDynamicEntity, H_setLaserClockPaused, H_isLaserClockPaused } from './Entity/DynamicEntity/BulletDynamicEntity/LaserBulletDynamicEntity/LaserBulletDynamicEntity';
 export { OrdinaryBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
 export { SniperBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/SniperBulletDynamicEntity/SniperBulletDynamicEntity';
 // GrenadeDynamicEntity and its subclasses
@@ -25,6 +25,7 @@ export type { SkillTagType, SkillCastContext, SkillTrigger } from './Skill/Skill
 export { Va2ShootSkill } from './Skill/Skills/Va2ShootSkill/Va2ShootSkill';
 export { Xa4ShootSkill } from './Skill/Skills/Xa4ShootSkill/Xa4ShootSkill';
 export { Oa18ShootSkill } from './Skill/Skills/Oa18ShootSkill/Oa18ShootSkill';
+export { Ls1ShootSkill } from './Skill/Skills/Ls1ShootSkill/Ls1ShootSkill';
 export { DodgeSkill } from './Skill/Skills/DodgeSkill/DodgeSkill';
 export {
   H_preloadSkillIconTextures,
@@ -95,6 +96,7 @@ export { WhitePixelVa2Entity } from './Entity/DynamicEntity/NpcDynamicEntity/Hos
 export { RedPixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/RedPixelEntity/RedPixelEntity';
 export { GoldenDodgeXa4Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/GoldenDodgeXa4Entity/GoldenDodgeXa4Entity';
 export { PurpleFireworkOa18Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/PurpleFireworkOa18Entity/PurpleFireworkOa18Entity';
+export { OnahauLoneLs1Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/OnahauLoneLs1Entity/OnahauLoneLs1Entity';
 // NeutralNpcDynamicEntity
 export { NeutralNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/NeutralNpcDynamicEntity';
 // PlayerDynamicEntity

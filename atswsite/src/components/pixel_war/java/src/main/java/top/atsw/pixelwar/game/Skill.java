@@ -23,6 +23,15 @@ public abstract class Skill {
         void spawn(Geometry.Vec2 position, Geometry.Vec2 direction, String bulletColor);
     }
 
+    /**
+     * 技能生成激光弹的回调(对应 TS 版 SkillCastContext.spawnLaserBullet)。
+     * 由服务端注入,避免技能直接依赖实体模块。
+     */
+    public interface LaserSpawner {
+        void spawn(Geometry.Vec2 position, Geometry.Vec2 direction, String bulletColor,
+                   double length, double expandSpeed, int durationTicks, double damage, String glowColor);
+    }
+
     /** 技能释放上下文(对应 TS 版 SkillCastContext) */
     public static final class CastContext {
         public Geometry.Vec2 position;
@@ -32,10 +41,21 @@ public abstract class Skill {
         public String bulletColor = "";
         public double spawnDistance = 10;
         public BulletSpawner bulletSpawner;
+        public LaserSpawner laserSpawner;
 
         public void spawnBullet(Geometry.Vec2 position, Geometry.Vec2 direction, String bulletColor) {
             if (bulletSpawner != null) {
                 bulletSpawner.spawn(position, direction, bulletColor);
+            }
+        }
+
+        /** 生成一束激光弹(服务端未注入回调时无任何效果,技能应自行退化为普通子弹) */
+        public void spawnLaser(Geometry.Vec2 position, Geometry.Vec2 direction, String bulletColor,
+                              double length, double expandSpeed, int durationTicks,
+                              double damage, String glowColor) {
+            if (laserSpawner != null) {
+                laserSpawner.spawn(position, direction, bulletColor,
+                        length, expandSpeed, durationTicks, damage, glowColor);
             }
         }
     }
@@ -134,6 +154,31 @@ public abstract class Skill {
 
     /** 释放技能 */
     public abstract void cast(CastContext context);
+
+    /**
+     * 持续施法总时长(秒),0 表示瞬时释放(默认)。
+     *
+     * <p>服务端在释放技能后会把施法者的开火冷却至少延长到该时长,
+     * 避免一次持续施法尚未结束就被下一次开火打断(如「环射烟花」的逐发扫射)。</p>
+     */
+    public double getCastDuration() {
+        return 0;
+    }
+
+    /**
+     * 推进持续施法(默认无实现)。
+     *
+     * <p>由服务端每帧对玩家装配区中的技能调用;持续型技能(如「环射烟花」的逐发扫射)
+     * 在此按 dt 生成子弹。技能实例在注册表中共享,因此实现方必须按 ownerId 分别记录状态。</p>
+     */
+    public void tickCast(long ownerId, double dt) {
+        // 默认无持续施法
+    }
+
+    /** 清除某个持有者的持续施法状态(重生等场合调用,默认无实现) */
+    public void clearCast(long ownerId) {
+        // 默认无持续施法
+    }
 
     /** 当前冷却剩余(秒),对应 TS 版 Skill.getCurrentCooldown */
     public double currentCooldown(long ownerId) {

@@ -41,7 +41,7 @@ public final class Research {
     /** 体力:疾跑体力消耗的下限(点/秒) */
     public static final double STAMINA_DRAIN_MIN = 6;
     /** 生命:每级提升的生命上限(具体数值) */
-    public static final double HEALTH_MAX_BONUS_PER_LEVEL = 20;
+    public static final double HEALTH_MAX_BONUS_PER_LEVEL = 2;
     /** 死亡不掉落:每级增加的保护概率 */
     public static final double DEATH_KEEP_CHANCE_PER_LEVEL = 0.2;
     /** 不动堡垒:每级增加的最大吸收值 */

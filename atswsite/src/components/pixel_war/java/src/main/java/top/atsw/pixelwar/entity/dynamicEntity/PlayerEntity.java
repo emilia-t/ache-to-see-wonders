@@ -348,12 +348,19 @@ public final class PlayerEntity extends DynamicEntity {
     /**
      * 推进技能装配区中所有技能的内置CD计时器(每帧调用),并把剩余CD写入快照字段。
      * 技能冷却按玩家实体 id 分别记录,因此多个玩家装配同一技能时互不影响。
+     * 同时在此推进持续型技能(如「环射烟花」的逐发扫射)。
      */
     private void updateEquippedSkillCooldowns(double dt, Skill.Provider skills) {
         for (int slot = 0; slot < equippedSkillCooldowns.length; slot++) {
             String tag = slot < inventory.equippedSkills.length ? inventory.equippedSkills[slot] : null;
             Skill skill = (tag == null || skills == null) ? null : skills.byTag(tag);
-            if (skill == null || !skill.hasCooldown()) {
+            if (skill == null) {
+                equippedSkillCooldowns[slot] = 0;
+                continue;
+            }
+            // 推进持续型技能(如「环射烟花」的逐发扫射)
+            skill.tickCast(id, dt);
+            if (!skill.hasCooldown()) {
                 equippedSkillCooldowns[slot] = 0;
                 continue;
             }
@@ -361,7 +368,7 @@ public final class PlayerEntity extends DynamicEntity {
         }
     }
 
-    /** 清空技能装配区中所有技能的内置CD(重生时调用) */
+    /** 清空技能装配区中所有技能的内置CD与持续施法状态(重生时调用) */
     private void resetEquippedSkillCooldowns(Skill.Provider skills) {
         Arrays.fill(equippedSkillCooldowns, 0);
         if (skills == null) {
@@ -374,6 +381,7 @@ public final class PlayerEntity extends DynamicEntity {
             Skill skill = skills.byTag(tag);
             if (skill != null) {
                 skill.clearCooldown(id);
+                skill.clearCast(id);
             }
         }
     }

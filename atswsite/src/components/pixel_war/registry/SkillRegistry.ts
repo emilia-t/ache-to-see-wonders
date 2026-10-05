@@ -1,6 +1,7 @@
 import { Va2ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Va2ShootSkill/Va2ShootSkill';
 import { Xa4ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Xa4ShootSkill/Xa4ShootSkill';
 import { Oa18ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Oa18ShootSkill/Oa18ShootSkill';
+import { Ls1ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Ls1ShootSkill/Ls1ShootSkill';
 import { DodgeSkill } from '@/components/pixel_war/class/Skill/Skills/DodgeSkill/DodgeSkill';
 import type { Skill } from '@/components/pixel_war/class/Skill/Skill';
 
@@ -16,6 +17,7 @@ const SKILL_REGISTRY: ReadonlyMap<string, Skill> = new Map<string, Skill>([
   [Va2ShootSkill.TAG, new Va2ShootSkill()],
   [Xa4ShootSkill.TAG, new Xa4ShootSkill()],
   [Oa18ShootSkill.TAG, new Oa18ShootSkill()],
+  [Ls1ShootSkill.TAG, new Ls1ShootSkill()],
   [DodgeSkill.TAG, new DodgeSkill()]
 ]);
 

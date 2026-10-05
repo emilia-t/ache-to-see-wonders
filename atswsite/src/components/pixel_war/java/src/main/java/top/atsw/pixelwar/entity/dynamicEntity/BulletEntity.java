@@ -9,8 +9,11 @@ import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
  *
  * <p>子弹沿固定速度直线飞行,撞墙或超过存活时间后标记移除;
  * 与动态实体的命中判定由世界模块统一处理(空间哈希加速)。</p>
+ *
+ * <p>激光弹({@link LaserBulletEntity})作为子类复用同一套字段与列表,但其 tag 为
+ * {@code laser_bullet} 且几何形状为"线段",命中判定走独立分支。</p>
  */
-public final class BulletEntity extends DynamicEntity {
+public class BulletEntity extends DynamicEntity {
 
     public static final double WIDTH = 8;
     public static final double HEIGHT = 8;
@@ -45,7 +48,17 @@ public final class BulletEntity extends DynamicEntity {
      */
     public BulletEntity(Geometry.Vec2 position, Geometry.Vec2 direction, Long ownerId, Long teamId,
                         String name, String bulletColor, double moveSpeed) {
-        super(position, WIDTH, HEIGHT, name == null ? "" : name, "bullet", "ordinary_bullet");
+        this(position, direction, ownerId, teamId, name, bulletColor, moveSpeed, "ordinary_bullet");
+    }
+
+    /**
+     * 构造一颗带指定类型标签的子弹(供激光弹等子类复用)。
+     *
+     * @param tag 子弹类型标签('ordinary_bullet' / 'laser_bullet' ...),随快照下发给客户端
+     */
+    protected BulletEntity(Geometry.Vec2 position, Geometry.Vec2 direction, Long ownerId, Long teamId,
+                           String name, String bulletColor, double moveSpeed, String tag) {
+        super(position, WIDTH, HEIGHT, name == null ? "" : name, "bullet", tag);
         this.rangeType = "short";
         this.fillColor = "#ffd84d";
         double speedValue = (Double.isFinite(moveSpeed) && moveSpeed > 0) ? moveSpeed : MOVE_SPEED;

@@ -193,6 +193,8 @@ export interface EntityDebugFlags {
   showFacingDirection: boolean;
   showMovementRange: boolean;
   showInterestRange: boolean;
+  /** 显示镭射线的攻击范围(激光命中判定带 + 幽蓝孤光的攻击方向预览) */
+  showLaserLine: boolean;
 }
 
 export interface Tick {

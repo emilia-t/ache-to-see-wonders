@@ -15,7 +15,8 @@ import top.atsw.pixelwar.game.Oa18ShootSkill;
  *       (恰好扫满 360° 一圈);</li>
  *   <li>等级越高:环射节奏越快(每发间隔 5 - Level 刻)、移动速度越快(每级 +20);</li>
  *   <li>无拖尾;子弹颜色固定为自身的 #E6D7FF;</li>
- *   <li>被击杀后概率掉落「环射烟花」技能球。</li>
+ *   <li>被击杀后概率掉落「环射烟花」技能球;</li>
+ *   <li>被玩家吸附为从者后不再游走,改为每 n 秒(n = 5 - Level,最小 3 秒)发动一轮同样的逐发环射。</li>
  * </ul>
  */
 public class PurpleFireworkOa18Npc extends NpcEntity {
@@ -54,6 +55,10 @@ public class PurpleFireworkOa18Npc extends NpcEntity {
     private static final double LOOT_ODDS = 0.05;
     /** idle 阶段的安全超时(游戏刻):长时间未获得新目标时允许再次扫射,避免永久停摆 */
     private static final int IDLE_TIMEOUT_TICKS = 100;
+    /** 从者攻击间隔基准(秒):n = 5 - Level */
+    private static final double SERVANT_ATTACK_INTERVAL_BASE = 5;
+    /** 从者攻击间隔下限(秒):n 至少为 3 */
+    private static final double SERVANT_ATTACK_INTERVAL_MIN = 3;
 
     /** 行为阶段:wander(游走) / shooting(环射) / idle(等待新目标) */
     private enum Phase {
@@ -71,6 +76,17 @@ public class PurpleFireworkOa18Npc extends NpcEntity {
     private double currentAngleDeg = START_ANGLE_DEG;
     /** idle 阶段已等待的游戏刻数 */
     private int idleTickCounter;
+
+    /** 从者:距下一轮环射的剩余秒数(<= 0 时发动新一轮) */
+    private double servantAttackCooldown;
+    /** 从者:当前是否处于一轮环射中 */
+    private boolean servantSweeping;
+    /** 从者:本轮环射已发射的发数 */
+    private int servantShotsFired;
+    /** 从者:距下一发子弹的刻计数 */
+    private int servantShotTickCounter;
+    /** 从者:本轮环射的当前瞄准角度(角度制) */
+    private double servantAngleDeg = START_ANGLE_DEG;
 
     public PurpleFireworkOa18Npc(Geometry.Vec2 position, Long ownerId, Long teamId) {
         super(position, ownerId, teamId, "", "hostile", 0, "purple_firework_oa18");
@@ -126,7 +142,8 @@ public class PurpleFireworkOa18Npc extends NpcEntity {
     @Override
     public void update(double dt, WorldView world, GameConfig config) {
         if (ownerId != null) {
-            // 从者:瞬移到主人分配的格子中心,不自行游走(也不会发动环射,见 actionLoop)。
+            // 从者:瞬移到主人分配的格子中心,不自行游走。
+            // 攻击由 actionLoop 的从者分支处理(每隔 n 秒发动一轮环射)。
             // 同时重置行为阶段:从者可能因网格断连而被释放回野生状态(不会被杀死),
             // 若不重置会永久卡在"扫射中"(既不移动也不开火)。
             resetToWander();
@@ -215,12 +232,20 @@ public class PurpleFireworkOa18Npc extends NpcEntity {
     }
 
     /**
-     * 行为循环:仅负责"按刻节奏推进环形扫射"。
-     * 每 5 游戏刻(随等级缩短)发射一发;从者不发动该攻击。
+     * 行为循环:
+     * <ul>
+     *   <li>无主时按刻节奏推进环形扫射(每 shotTickInterval() 刻一发);</li>
+     *   <li>从者(被玩家吸附)每 n 秒(5 - Level,最小 3 秒)发动一轮同样的逐发扫射。</li>
+     * </ul>
      */
     @Override
     public void actionLoop(ActionContext context) {
-        if (isDead || ownerId != null) {
+        if (isDead) {
+            return;
+        }
+        // 从者:不再自行游走,改为按固定时间间隔发动环射
+        if (ownerId != null) {
+            servantActionLoop(context);
             return;
         }
         if (phase != Phase.SHOOTING) {
@@ -244,14 +269,70 @@ public class PurpleFireworkOa18Npc extends NpcEntity {
     }
 
     /**
+     * 从者环射:每隔 n 秒(5 - Level,最小 3 秒)发动一轮逐发扫射。
+     *
+     * <p>攻击计时在扫射过程中持续递减,因此两轮扫射的"开始时刻"严格相隔 n 秒
+     * (而不是"扫射结束后再等 n 秒");扫射节奏与无主时一致(每 shotTickInterval() 刻一发),
+     * 并按主人的射速倍率缩放(getActionDelta)。</p>
+     */
+    private void servantActionLoop(ActionContext context) {
+        if (context == null || context.spawnBullet == null) {
+            return;
+        }
+
+        servantAttackCooldown -= getActionDelta(context.deltaTime);
+        if (!servantSweeping && servantAttackCooldown <= 0) {
+            // 计时到点:开始新一轮环射(首次吸附后立即开始)
+            servantSweeping = true;
+            servantShotsFired = 0;
+            servantShotTickCounter = 0;
+            servantAngleDeg = START_ANGLE_DEG;
+            servantAttackCooldown = servantAttackIntervalSeconds();
+        }
+
+        if (!servantSweeping) {
+            return;
+        }
+
+        servantShotTickCounter++;
+        if (servantShotTickCounter < shotTickInterval()) {
+            return;
+        }
+
+        servantShotTickCounter = 0;
+        spawnSweepBullet(context, servantAngleDeg);
+        servantAngleDeg -= ANGLE_STEP_DEG;
+        servantShotsFired++;
+        if (servantShotsFired >= SHOT_COUNT) {
+            servantSweeping = false;
+            servantShotsFired = 0;
+            servantShotTickCounter = 0;
+            servantAngleDeg = START_ANGLE_DEG;
+        }
+    }
+
+    /** 从者攻击间隔(秒):n = 5 - Level,且不小于 3 秒 */
+    private double servantAttackIntervalSeconds() {
+        return Math.max(SERVANT_ATTACK_INTERVAL_MIN, SERVANT_ATTACK_INTERVAL_BASE - level);
+    }
+
+    /**
      * 发射一发普通子弹,并把瞄准角度顺时针旋转 20°。
      * 初始角度为正西(180°),18 发后恰好回到起点。
      */
     private void action(ActionContext context) {
+        spawnSweepBullet(context, currentAngleDeg);
+
+        // 顺时针旋转(世界坐标 y 轴向上,角度递减即顺时针)
+        currentAngleDeg -= ANGLE_STEP_DEG;
+    }
+
+    /** 按指定角度发射一发普通子弹(无主扫射与从者扫射共用) */
+    private void spawnSweepBullet(ActionContext context, double angleDeg) {
         if (isDead || context.spawnBullet == null) {
             return;
         }
-        double angleRad = Math.toRadians(currentAngleDeg);
+        double angleRad = Math.toRadians(angleDeg);
         double dirX = Math.cos(angleRad);
         double dirY = Math.sin(angleRad);
         double spawnDistance = width * 0.6;
@@ -265,8 +346,5 @@ public class PurpleFireworkOa18Npc extends NpcEntity {
                 "",
                 BULLET_COLOR,
                 getBulletMoveSpeed()));
-
-        // 顺时针旋转(世界坐标 y 轴向上,角度递减即顺时针)
-        currentAngleDeg -= ANGLE_STEP_DEG;
     }
 }

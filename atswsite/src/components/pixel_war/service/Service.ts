@@ -20,6 +20,7 @@ import {
   DynamicEntity,
   NpcDynamicEntity,
   OrdinaryBulletDynamicEntity,
+  LaserBulletDynamicEntity,
   PlayerDynamicEntity,
   WhitePixelEntity,
   WhitePixelVa2Entity,
@@ -28,6 +29,7 @@ import {
   PurpleShieldEntity,
   GoldenDodgeXa4Entity,
   PurpleFireworkOa18Entity,
+  OnahauLoneLs1Entity,
   DodgeSkill,
   HealingGemItemEntity,
   GrenadeDynamicEntity,
@@ -78,7 +80,8 @@ const SPAWNABLE_NPC_CLASSES = [
   SkyBluePixelEntity,
   PurpleShieldEntity,
   GoldenDodgeXa4Entity,
-  PurpleFireworkOa18Entity
+  PurpleFireworkOa18Entity,
+  OnahauLoneLs1Entity
   // more
 ] as const;
 
@@ -481,12 +484,21 @@ const spawnPlayerBullet = (target: Point, playerId: number) => {
         MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(
           new OrdinaryBulletDynamicEntity(position, dir, ownerId, teamId, '', color)
         );
+      },
+      // 激光生成回调:供「激光束」等线段型技能使用
+      spawnLaserBullet: (position: Point, dir: Point, color: string, options) => {
+        const laser = new LaserBulletDynamicEntity(position, dir, ownerId, teamId, '', color, options);
+        // 记录发射位置:与 NPC 激光同规则——玩家一旦移动,该光束立刻失去源头并被移除
+        laser.laserAnchor = { x: playerEntity.position.x, y: playerEntity.position.y };
+        MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(laser);
       }
     });
-    // 技能冷却不低于施法者的基础开火冷却(受专研"冷却"降低)
+    // 开火冷却取「基础开火冷却 / 技能冷却(受专研降低) / 技能持续施法时长」的最大值,
+    // 保证持续型技能(如环射烟花的逐发扫射)在扫射结束前不会被下一次开火打断
     playerEntity.playerRule.fireCooldownNow = Math.max(
       playerEntity.playerRule.fireCooldownMax,
-      activeSkill.cooldown * playerEntity.getCooldownMultiplier()
+      activeSkill.cooldown * playerEntity.getCooldownMultiplier(),
+      activeSkill.getCastDuration()
     );
     return;
   }
@@ -554,6 +566,161 @@ const spawnBulletDynamicEntity = (bullet: BulletDynamicEntity) => {
   MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(bullet);
 };
 
+/**
+ * 激光弹的持续接触计时:子弹 id -> (目标实体 id -> 已累计接触 tick 数)。
+ *
+ * 仅在权威端(单人的 Worker / 多人的 Java 服务端)使用,不参与渲染与协议。
+ * 目标离开线段后对应条目会被清除,从而"再次接触时重新触发首次接触伤害"。
+ */
+const laserContactTicks = new Map<number, Map<number, number>>();
+
+/** 点到线段的最短距离(线段退化为点时即点到点距离) */
+const H_pointToSegmentDistance = (px: number, py: number, start: Point, end: Point): number => {
+  const segX = end.x - start.x;
+  const segY = end.y - start.y;
+  const segLengthSq = segX * segX + segY * segY;
+  if (segLengthSq < 1e-6) return Math.hypot(px - start.x, py - start.y);
+  let t = ((px - start.x) * segX + (py - start.y) * segY) / segLengthSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (start.x + segX * t), py - (start.y + segY * t));
+};
+
+/**
+ * 对目标施加一次子弹伤害,并结算击杀归属(玩家积分 / 幸运之星的击杀者记录)。
+ * 普通子弹与激光弹共用,避免两处重复。
+ */
+const H_applyBulletDamage = (
+  attackerOwnerId: number | null,
+  attackerTeamId: number | null,
+  entity: PlayerDynamicEntity | NpcDynamicEntity,
+  damage: number
+): void => {
+  const wasAlive = !entity.isDead;
+  // 记录伤害来源(用于死亡界面「你被 xxx 击倒了」)
+  if (entity instanceof PlayerDynamicEntity) {
+    const damagerName = H_resolveDamagerName(MAP_DATA.dynamicEntitie, attackerOwnerId);
+    if (damagerName) entity.lastDamagerName = damagerName;
+  }
+  entity.applyDamage(damage);
+  if (wasAlive && entity.isDead && entity instanceof NpcDynamicEntity && attackerOwnerId !== null) {
+    const owner = getPlayerDynamicEntityById(attackerOwnerId);
+    if (owner) {
+      owner.player_score += entity.kill_score;
+      entity.lastKillerPlayerId = owner.id;
+    }
+    if (attackerTeamId !== null) {
+      // 玩家的从者 NPC 击杀的其他 NPC 也计入玩家的击杀分数中
+      const npc = getNpcDynamicEntityById(attackerOwnerId);
+      if (npc && npc.ownerId !== null) {
+        const player = getPlayerDynamicEntityById(npc.ownerId);
+        if (player) {
+          player.player_score += entity.kill_score;
+          entity.lastKillerPlayerId = player.id;
+        }
+      }
+    }
+  }
+};
+
+/** 激光"失去源头"的判定容差(px):发射者离开锚点超过该距离即视为已经移动 */
+const LASER_ANCHOR_TOLERANCE = 0.5;
+
+/**
+ * 判断一束激光是否已"失去源头"而应立刻移除。
+ *
+ * 激光的设定是"从固定炮位射出的静止光束":无论发射者是玩家还是 NPC,
+ * 在光束存活期间都必须原地不动。因此只要发射者离开发射点——被其它实体推动、
+ * 玩家移动/闪现、NPC 被吸附为从者后瞬移回网格、被释放后重新开始游走等——
+ * 这束激光就失去了源头,必须立刻移除,否则会留下一道与发射者脱节的无源光束
+ * (表现为"镭射弹留在原地")。
+ *
+ * @param laser 待判断的激光弹
+ * @returns 是否需要立刻移除该激光
+ */
+const H_isLaserDetachedFromShooter = (laser: LaserBulletDynamicEntity): boolean => {
+  const anchor = laser.laserAnchor;
+  if (anchor === null || laser.ownerId === null) return false; // 未写锚点的激光不处理
+  // 发射者既可能是玩家(技能「激光束」),也可能是 NPC(幽蓝孤光)
+  const owner = getNpcDynamicEntityById(laser.ownerId) ?? getPlayerDynamicEntityById(laser.ownerId);
+  if (owner === null) return true; // 发射者已不存在(被击杀/清理/断线)
+  // 发射者一旦移动(含被推动、玩家移动/闪现、从者瞬移回网格)即视为失去源头
+  return Math.hypot(owner.position.x - anchor.x, owner.position.y - anchor.y) > LASER_ANCHOR_TOLERANCE;
+};
+
+/**
+ * 激光弹命中结算(线段型子弹)。
+ *
+ * <ul>
+ *   <li>目标碰到线段即视为受伤(线段本身可同时命中多个目标,激光不会因命中消失);</li>
+ *   <li>首次接触立即造成 1 次基础伤害;</li>
+ *   <li>持续接触每累计 CONTACT_TICK_INTERVAL(20) 刻,再造成 基础伤害 × 2;</li>
+ *   <li>目标离开线段后计时重置,再次接触时重新触发首次接触伤害。</li>
+ * </ul>
+ *
+ * @returns 本帧是否发生过命中(供上层判断需要重绘/广播)
+ */
+const updateLaserBulletHits = (bullet: LaserBulletDynamicEntity): boolean => {
+  const segment = bullet.getLaserSegment();
+  const halfWidth = LaserBulletDynamicEntity.HIT_HALF_WIDTH;
+  let perTarget = laserContactTicks.get(bullet.id);
+  const touched = new Set<number>();
+  let hitAny = false;
+
+  for (const entity of getNpcPlayerDynamicEntityList()) {
+    if (entity.isDead) continue;
+    if (bullet.ownerId === entity.id) continue; // 避免自残
+    if (bullet.teamId !== null && bullet.teamId === entity.teamId) continue; // 避免误伤队友
+    // 敌对 NPC 发射的激光(teamId === null)不与其他敌对 NPC(teamId === null)碰撞
+    if (bullet.teamId === null && entity instanceof NpcDynamicEntity && entity.teamId === null) continue;
+
+    const distance = H_pointToSegmentDistance(
+      entity.position.x,
+      entity.position.y,
+      segment.start,
+      segment.end
+    );
+    const hitRadius = entity.width * 0.45 + halfWidth;
+    if (distance > hitRadius) continue;
+
+    touched.add(entity.id);
+    if (perTarget === undefined) {
+      perTarget = new Map<number, number>();
+      laserContactTicks.set(bullet.id, perTarget);
+    }
+
+    const ticks = perTarget.get(entity.id);
+    if (ticks === undefined) {
+      // 首次接触:立即造成 1 次基础伤害
+      perTarget.set(entity.id, 0);
+      H_applyBulletDamage(bullet.ownerId, bullet.teamId, entity, bullet.damage);
+      hitAny = true;
+      continue;
+    }
+
+    const next = ticks + 1;
+    if (next >= LaserBulletDynamicEntity.CONTACT_TICK_INTERVAL) {
+      perTarget.set(entity.id, 0);
+      H_applyBulletDamage(
+        bullet.ownerId,
+        bullet.teamId,
+        entity,
+        bullet.damage * LaserBulletDynamicEntity.CONTACT_DAMAGE_MULTIPLIER
+      );
+      hitAny = true;
+    } else {
+      perTarget.set(entity.id, next);
+    }
+  }
+
+  // 离开线段的目标重置计时
+  if (perTarget !== undefined) {
+    for (const id of Array.from(perTarget.keys())) {
+      if (!touched.has(id)) perTarget.delete(id);
+    }
+  }
+  return hitAny;
+};
+
 const spawnGrenadeDynamicEntity = (grenade: GrenadeDynamicEntity) => {
   MAP_DATA.dynamicEntitie.grenadeDynamicEntitys.push(grenade);
 };
@@ -592,6 +759,18 @@ const updateBulletEntities = (deltaTime: number): boolean => {
       continue;
     }
 
+    // 激光弹为线段型子弹:命中/持续伤害走独立分支,且不会因命中而消失
+    if (bullet instanceof LaserBulletDynamicEntity) {
+      // 发射者一旦移动(玩家移动/被推动/从者瞬移回网格)先前的激光即失去源头,必须立刻移除
+      if (H_isLaserDetachedFromShooter(bullet)) {
+        bullet.shouldRemove = true;
+        changed = true;
+        continue;
+      }
+      if (updateLaserBulletHits(bullet)) changed = true;
+      continue;
+    }
+
     const bx = Math.floor(bullet.position.x / CELL_SIZE);
     const by = Math.floor(bullet.position.y / CELL_SIZE);
     const candidates: (PlayerDynamicEntity | NpcDynamicEntity)[] = [];
@@ -616,32 +795,7 @@ const updateBulletEntities = (deltaTime: number): boolean => {
       const hitRadius = entity.width * 0.45 + bullet.width * 0.5;
 
       if (hitDistance <= hitRadius) {// 受击
-        const wasAlive = !entity.isDead;
-        // 记录伤害来源(用于死亡界面「你被 xxx 击倒了」)
-        if (entity instanceof PlayerDynamicEntity) {
-          const damagerName = H_resolveDamagerName(MAP_DATA.dynamicEntitie, bullet.ownerId);
-          if (damagerName) entity.lastDamagerName = damagerName;
-        }
-        entity.applyDamage(bullet.damage);
-        if (wasAlive && entity.isDead && entity instanceof NpcDynamicEntity && bullet.ownerId !== null) {
-          const owner = getPlayerDynamicEntityById(bullet.ownerId);
-          
-          if (owner) {
-            owner.player_score += entity.kill_score;
-            entity.lastKillerPlayerId = owner.id;
-          }
-
-          if(bullet.teamId!==null){// 玩家的从者NPC击杀的其他NPC也计入玩家的击杀分数中
-            const npc = getNpcDynamicEntityById(bullet.ownerId);
-            if(npc && npc.ownerId !== null){
-              const player = getPlayerDynamicEntityById(npc.ownerId);
-              if(player){
-                player.player_score += entity.kill_score;
-                entity.lastKillerPlayerId = player.id;
-              }
-            }
-          }
-        }
+        H_applyBulletDamage(bullet.ownerId, bullet.teamId, entity, bullet.damage);
         bullet.shouldRemove = true;
         changed = true;
         break;
@@ -651,6 +805,14 @@ const updateBulletEntities = (deltaTime: number): boolean => {
 
   const oldLength = MAP_DATA.dynamicEntitie.bulletDynamicEntitys.length;
   MAP_DATA.dynamicEntitie.bulletDynamicEntitys = MAP_DATA.dynamicEntitie.bulletDynamicEntitys.filter(bullet => !bullet.shouldRemove);
+
+  // 清理已消失激光弹的持续接触计时,避免长期运行下残留无用条目
+  if (laserContactTicks.size > 0) {
+    const aliveIds = new Set(MAP_DATA.dynamicEntitie.bulletDynamicEntitys.map((b) => b.id));
+    for (const id of Array.from(laserContactTicks.keys())) {
+      if (!aliveIds.has(id)) laserContactTicks.delete(id);
+    }
+  }
   return changed || oldLength !== MAP_DATA.dynamicEntitie.bulletDynamicEntitys.length;
 };
 

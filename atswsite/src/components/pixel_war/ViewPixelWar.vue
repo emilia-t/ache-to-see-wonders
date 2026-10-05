@@ -63,7 +63,8 @@ import {
   H_getResearchLevel,
   RESEARCH_NORMAL_COLOR,
   RESEARCH_LEGENDARY_COLOR,
-  RESEARCH_FORTRESS_ABSORB_PER_LEVEL
+  RESEARCH_FORTRESS_ABSORB_PER_LEVEL,
+  H_setLaserClockPaused
 } from '@/components/pixel_war/class';
 // 注册表层(技能表 / 物品表 / 实体工厂)统一从 registry/ 导入
 import { H_getSkillByTag, H_getAllSkills } from '@/components/pixel_war/registry/SkillRegistry';
@@ -181,6 +182,11 @@ const handleWorkerMessage = (event: MessageEvent) => {
           break;
         }
         applyDynamicMapDataSnapshot(instruct.data as MapData);
+        break;
+      }
+      case 'tick_pause': {
+        // 多人模式下服务端会在暂停/恢复时广播该事件(单人模式下由客户端的 /tick_pause 自行同步)
+        H_applyGamePausedFlag(!!(instruct.data as { paused?: boolean })?.paused);
         break;
       }
       default:{
@@ -565,6 +571,19 @@ let cdtLastMouseY = 0;
 let isPageVisible = true;
 let mouseInsideCanvas = true; // 鼠标是否位于画布内
 
+/**
+ * 客户端镜像是游戏是否处于暂停状态(`/tick_pause`)。
+ * 权威端暂停后不再推进游戏刻,但客户端自己的渲染时钟仍在走(如激光的本地推进时长),
+ * 因此必须本地镜像这个状态,交给需要"跟随游戏时钟"的渲染逻辑使用。
+ */
+let clientGamePaused = false;
+
+/** 同步本地暂停状态并通知依赖游戏时钟的渲染逻辑(激光光束) */
+const H_applyGamePausedFlag = (paused: boolean) => {
+  clientGamePaused = paused;
+  H_setLaserClockPaused(paused);
+};
+
 let animationFrameId: number | null = null;                 // 动画帧ID
 let lastTimestamp: number = 0;                              // 上一帧时间戳
 let renderEntityList: Array<Entity> = [];                   // 要渲染的实体列表
@@ -613,7 +632,8 @@ let entityDebugFlags: EntityDebugFlags = {
   showCollisionBoxes: false,
   showFacingDirection: false,
   showMovementRange: false,
-  showInterestRange: false
+  showInterestRange: false,
+  showLaserLine: false
 };
 
 let debugTerminalVisible = false;
@@ -632,6 +652,12 @@ let firstPersonMoveA = false;
 let firstPersonMoveS = false;
 let firstPersonMoveD = false;
 let playerFireMode = false;
+/** 鼠标左键是否按住(开火模式下用于"长按持续攻击") */
+let fireHeld = false;
+/** 长按连发上一次发送开火指令的时间戳(performance.now()),用于抑制同一冷却周期内的重复指令 */
+let fireHeldLastSentAt = 0;
+/** 长按连发两次发送指令的最小间隔(毫秒):兜住权威端冷却回传的快照延迟(约 2 帧) */
+const FIRE_HOLD_RESEND_GUARD_MS = 120;
 let showPlayerServantHealth = false;
 let showPlayerServantFacingDirection = false;
 let minimapZoomLevel = 1; // 小地图缩放档位(1..5):1=整张地图,5=500×500px
@@ -1226,7 +1252,7 @@ const startSetting = () => {
     UI_CANVAS.value.addEventListener('mouseleave', onMouseUp); // 鼠标离开画布时取消拖动
     UI_CANVAS.value.addEventListener('click', onCanvasClick);
     UI_CANVAS.value.addEventListener('dblclick', onCanvasDoubleClick);
-    // 右键用于背包快捷操作,屏蔽画布默认右键菜单
+    // 右键用于背包快捷操作与拖动视角,屏蔽画布默认右键菜单
     UI_CANVAS.value.addEventListener('contextmenu', onCanvasContextMenu);
     UI_CANVAS.value.addEventListener('wheel', onCanvasWheel, { passive: false });
     UI_CANVAS.value.addEventListener('mouseleave', onWindowMouseLeave);
@@ -1282,6 +1308,8 @@ const startSetting = () => {
   otherPlayerEntityList = [];
   renderEntityList = [];
   playerFireMode = false;
+  fireHeld = false;
+  fireHeldLastSentAt = 0;
   effectManager?.reset();
   numericalManager.reset();
 
@@ -1301,6 +1329,7 @@ const startSetting = () => {
   window.visualViewport?.addEventListener('resize', onResizeCanvas);
   window.addEventListener('keydown', onGlobalKeyDown); // 添加快捷键监听
   window.addEventListener('keyup', onGlobalKeyUp);
+  window.addEventListener('blur', onWindowBlur); // 窗口失焦时结束长按(`Alt+Tab` 等丢鼠标抬起事件的场景)
   drawGraphics();
   drawUI();
 
@@ -5705,6 +5734,30 @@ const applyFireModeEdgeScroll = (deltaTime: number) => {
 };
 
 /**
+ * 长按鼠标左键持续攻击。
+ *
+ * 开火模式下按住左键时,只要攻击冷却结束就自动再次朝当前鼠标位置开火,
+ * 直到松开左键(或退出开火模式/死亡/打开背包)为止。
+ *
+ * 开火是否生效由权威端(单人 Worker / 多人 Java 服务端)裁决:只有冷却归零时才会真正生成子弹,
+ * 因此这里只在本地冷却读数为 0 时补发指令;发送后用 FIRE_HOLD_RESEND_GUARD_MS 兜住
+ * 冷却回传的快照延迟,避免同一冷却周期内重复发送指令。
+ *
+ * @param now 当前帧时间戳(与 performance.now() 同源)
+ */
+const updateFireHeldAttack = (now: number) => {
+  if (!fireHeld) return;                    // 未按住左键
+  if (!playerFireMode) return;              // 未开启开火模式
+  if (inventoryVisible) return;             // 背包界面打开时不攻击
+  if (!playerEntity || H_isPlayerDead()) return; // 玩家不存在或已死亡
+  if (playerEntity.playerRule.fireCooldownNow > 0) return; // 攻击冷却尚未结束
+  if (now - fireHeldLastSentAt < FIRE_HOLD_RESEND_GUARD_MS) return; // 抑制重复指令
+
+  fireHeldLastSentAt = now;
+  sendPlayerFireInput(TOscreen2Canvas(mouseX, mouseY));
+};
+
+/**
  * 动画循环
  * 更新动态实体位置并重绘实体层
  * @param timestamp 当前时间戳
@@ -5731,6 +5784,7 @@ const animateEntities = (timestamp: number) => {
   if (deltaTime > 0) {
     applyFirstPersonCameraMovement(deltaTime);  // 移动第一人称视角(背景)
     applyFireModeEdgeScroll(deltaTime);         // 开火模式下鼠标边界滚动相机
+    updateFireHeldAttack(timestamp);            // 长按左键持续攻击(冷却结束自动开火)
     drawGraphics();                             // 重绘星空和网格层
     drawEntities();                             // 重绘实体层
     effectManager?.updateAndDraw(deltaTime);    // 渲染特效层
@@ -5833,6 +5887,7 @@ const DEBUG_COMMAND_SPECS = [
   { name: '/facing', args: ['on', 'off', 'toggle'] },
   { name: '/show_tag', args: ['on', 'off', 'toggle'] },
   { name: '/show_level', args: ['on', 'off', 'toggle'] },
+  { name: '/show_laser_line', args: ['on', 'off', 'toggle'] },
   { name: '/show_hunger', args: ['on', 'off', 'toggle'] },
   { name: '/show_health', args: ['on', 'off', 'toggle'] },
   { name: '/show_debug_board', args: ['on', 'off', 'toggle'] },
@@ -5911,6 +5966,7 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       pushDebugTerminalLog('/facing [on|off|toggle]');
       pushDebugTerminalLog('/show_tag [on|off|toggle]');
       pushDebugTerminalLog('/show_level [on|off|toggle]');
+      pushDebugTerminalLog('/show_laser_line [on|off|toggle]');
       pushDebugTerminalLog('/show_hunger [on|off|toggle]');
       pushDebugTerminalLog('/show_health [on|off|toggle]');
       pushDebugTerminalLog('/perception_range [on|off|toggle]');
@@ -5931,6 +5987,7 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       pushDebugTerminalLog(`FacingArrow: ${entityDebugFlags.showFacingDirection ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`TagText: ${entityDebugFlags.showTag ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`LevelText: ${entityDebugFlags.showLevel ? 'ON' : 'OFF'}`);
+      pushDebugTerminalLog(`LaserLine: ${entityDebugFlags.showLaserLine ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`HungerText: ${entityDebugFlags.showHunger ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`HealthText: ${entityDebugFlags.showHealth ? 'ON' : 'OFF'}`);
       pushDebugTerminalLog(`InterestRange: ${entityDebugFlags.showInterestRange ? 'ON' : 'OFF'}`);
@@ -5967,6 +6024,10 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
     }
     case 'show_level':{
       applyDebugFlagCommand('LevelText', entityDebugFlags.showLevel, args, (v) => { entityDebugFlags.showLevel = v; });
+      break;
+    }
+    case 'show_laser_line':{
+      applyDebugFlagCommand('LaserLine', entityDebugFlags.showLaserLine, args, (v) => { entityDebugFlags.showLaserLine = v; });
       break;
     }
     case 'show_hunger':{
@@ -6017,6 +6078,7 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       entityDebugFlags.showMovementRange = nextValue;
       entityDebugFlags.showMovementSpeed = nextValue;
       entityDebugFlags.showMovementPassion = nextValue;
+      entityDebugFlags.showLaserLine = nextValue;
       pushDebugTerminalLog(`[OK] All debug features: ${nextValue ? 'ON' : 'OFF'}`);
       drawEntities();
       break;
@@ -6038,8 +6100,11 @@ const executeDebugTerminalCommand = (rawCommand: string) => {
       break;
     }
     case 'tick_pause': {
-      sendClientInstruct(Instruct.I_TickPause());
-      pushDebugTerminalLog(`[SYS] Toggle game pause`);
+      // 明确下发目标状态(而不是让服务端自行取反),保证本地镜像与权威端一致
+      const nextPaused = !clientGamePaused;
+      H_applyGamePausedFlag(nextPaused);
+      sendClientInstruct(Instruct.I_TickPause(nextPaused));
+      pushDebugTerminalLog(`[OK] Game: ${nextPaused ? 'PAUSED' : 'RUNNING'}`);
       break;
     }
     default:{
@@ -6324,10 +6389,12 @@ const onCanvasDoubleClick = (e: MouseEvent) => {
 };
 
 /**
- * 画布右键菜单处理:背包界面打开时屏蔽浏览器默认右键菜单(右键用于快捷操作)
+ * 画布右键菜单处理:始终屏蔽浏览器默认右键菜单。
+ *
+ * 右键在游戏内用于背包快捷操作(使用/装配/卸下技能)与拖动视角,
+ * 若只在背包打开时才 preventDefault,正常游戏时右键会弹出浏览器菜单,故此处无条件屏蔽。
  */
 const onCanvasContextMenu = (e: MouseEvent) => {
-  if (!inventoryVisible) return;
   e.preventDefault();
 };
 
@@ -6441,6 +6508,11 @@ const onMousedown = (e: MouseEvent) => {
   // 死亡期间禁止开火(仅允许拖动视角观察世界)
   if (e.button === 0 && playerFireMode && !H_isPlayerDead()) {
     e.preventDefault();
+    // 记录按住状态与当前鼠标位置:松开前只要冷却结束就会自动继续开火
+    fireHeld = true;
+    fireHeldLastSentAt = performance.now();
+    mouseX = screenX;
+    mouseY = screenY;
     sendPlayerFireInput(TOscreen2Canvas(screenX, screenY));
     drawUI();
     return;
@@ -6509,6 +6581,8 @@ const onMouseMove = (e: MouseEvent) => {
  * 鼠标释放事件(绑定到UI Canvas)
  */
 const onMouseUp = () => {
+  // 松开鼠标即结束"长按持续攻击"
+  fireHeld = false;
   // 背包界面打开时,抬起鼠标即结算背包拖拽/点击
   if (inventoryVisible) {
     if (UI_CANVAS.value) {
@@ -6553,6 +6627,15 @@ const onWindowMouseEnter = () => {
   cursorManager?.setFocused(true);
 };
 
+/**
+ * 窗口失去焦点(如 Alt+Tab 切走)
+ *
+ * 此时浏览器可能不再派发 mouseup,若不复位会残留"按住"状态造成幽灵连发。
+ */
+const onWindowBlur = () => {
+  fireHeld = false;
+};
+
 ////////////////////
 //<--事件处理函数区
 ////////////////////
@@ -6592,6 +6675,7 @@ onUnmounted(() => {
   window.removeEventListener('mouseenter', onWindowMouseEnter);
   window.removeEventListener('keydown', onGlobalKeyDown);
   window.removeEventListener('keyup', onGlobalKeyUp);
+  window.removeEventListener('blur', onWindowBlur);
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   effectManager = null;
 });
@@ -6600,7 +6684,8 @@ onUnmounted(() => {
 ////////////////////
 </script>
 <template>
-  <div class="view-pixel-war-container">
+  <!-- 整个游戏区域都屏蔽浏览器默认右键菜单(容器铺满视口,右键全部交给游戏内逻辑处理) -->
+  <div class="view-pixel-war-container" @contextmenu.prevent>
     <!-- 图形层可以渲染背景 -->
     <canvas id="canvas-graphics" ref="GRAPHICS_CANVAS"></canvas>
     <!-- 实体渲染 -->

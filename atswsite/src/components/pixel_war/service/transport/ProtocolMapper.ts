@@ -46,7 +46,7 @@ const H_FIXED_SIZE = {
   item: 25
 } as const;
 
-/** 服务端只有一种子弹(BulletEntity 为 final、tag 恒为 ordinary_bullet、伤害恒为 1),不再随快照下发 */
+/** 服务端普通子弹:tag 恒为 ordinary_bullet、伤害恒为 1,缺省在当前层补齐 */
 const H_BULLET_TAG = 'ordinary_bullet';
 const H_BULLET_DAMAGE = 1;
 
@@ -186,12 +186,12 @@ export const H_toNpcEntity = (npc: JavaNpc): Record<string, unknown> => ({
   level: npc.level ?? 0
 });
 
-/** Java 子弹 -> 前端子弹快照 */
+/** Java 子弹 -> 前端子弹快照(普通子弹的激光字段为 undefined,水合时会被跳过) */
 export const H_toBulletEntity = (bullet: JavaBullet): Record<string, unknown> => ({
   id: bullet.id,
   type: 'dynamic',
   kind: 'bullet',
-  tag: H_BULLET_TAG,
+  tag: bullet.tag ?? H_BULLET_TAG,
   name: '',
   position: H_toPosition(bullet.position),
   velocity: H_toPosition(bullet.velocity),
@@ -203,6 +203,11 @@ export const H_toBulletEntity = (bullet: JavaBullet): Record<string, unknown> =>
   height: H_FIXED_SIZE.bullet,
   damage: H_BULLET_DAMAGE,
   bulletColor: bullet.bulletColor ?? '',
+  laserMaxLength: bullet.laserMaxLength ?? undefined,
+  laserExpandSpeed: bullet.laserExpandSpeed ?? undefined,
+  laserHoldSeconds: bullet.laserHoldSeconds ?? undefined,
+  laserElapsed: bullet.laserElapsed ?? undefined,
+  laserGlowColor: bullet.laserGlowColor ?? undefined,
   shouldRemove: false
 });
 

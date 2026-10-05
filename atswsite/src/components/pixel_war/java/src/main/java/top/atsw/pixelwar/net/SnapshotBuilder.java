@@ -4,6 +4,7 @@ import top.atsw.pixelwar.core.Geometry;
 import top.atsw.pixelwar.entity.dynamicEntity.BombEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.BulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.ExpOrbEntity;
+import top.atsw.pixelwar.entity.dynamicEntity.LaserBulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.SkillOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
@@ -102,7 +103,18 @@ public final class SnapshotBuilder {
 
         List<Protocol.BulletSnapshot> bullets = new ArrayList<>();
         for (BulletEntity bullet : world.bullets()) {
-            if (!inView(center, bullet.position, viewRadius)) {
+            LaserBulletEntity laser = bullet instanceof LaserBulletEntity laserBullet ? laserBullet : null;
+            // 视野裁剪:激光的线段可能远长于起点,改用线段中点参与裁剪,
+            // 避免"从视野外射入"的长激光整段不显示
+            double cullX = bullet.position.x;
+            double cullY = bullet.position.y;
+            if (laser != null) {
+                Geometry.Vec2 dir = laser.unitDirection();
+                double length = laser.lengthAt(laser.laserElapsed);
+                cullX += dir.x * length * 0.5;
+                cullY += dir.y * length * 0.5;
+            }
+            if (!inView(center, new Geometry.Vec2(cullX, cullY), viewRadius)) {
                 continue;
             }
             bullets.add(new Protocol.BulletSnapshot(
@@ -110,7 +122,13 @@ public final class SnapshotBuilder {
                     new Protocol.Vec(bullet.position.x, bullet.position.y),
                     new Protocol.Vec(bullet.velocity.x, bullet.velocity.y),
                     bullet.ownerId,
-                    bullet.bulletColor));
+                    bullet.bulletColor,
+                    laser != null ? laser.tag : null,
+                    laser != null ? laser.laserMaxLength : null,
+                    laser != null ? laser.laserExpandSpeed : null,
+                    laser != null ? laser.laserHoldSeconds : null,
+                    laser != null ? laser.laserElapsed : null,
+                    laser != null ? laser.laserGlowColor : null));
         }
 
         List<Protocol.GrenadeSnapshot> grenades = new ArrayList<>();

@@ -52,7 +52,8 @@
   "players": [ /* PlayerPublic[]:视野内的玩家(含自己,自己的实体固定排在首位的是 self) */ ],
   "npcs":      [ { "id", "tag", "name", "ownerId", "teamId", "attitude", "position", "facingDirection",
                    "width", "height", "health", "healthMax", "dead", "moving", "mapColor", "killScore", "level" } ],
-  "bullets":   [ { "id", "tag", "position", "velocity", "ownerId", "teamId", "width", "height", "damage", "bulletColor" } ],
+  "bullets":   [ { "id", "position", "velocity", "ownerId", "bulletColor",
+                   /* 仅激光弹额外携带 */ "tag", "laserMaxLength", "laserExpandSpeed", "laserHoldSeconds", "laserElapsed", "laserGlowColor" } ],
   "grenades":  [ { "id", "tag", "position", "ownerId", "teamId", "width", "height", "fuseRatio" } ],
   "expOrbs":   [ { "id", "position", "value", "width", "height" } ],
   "skillOrbs": [ { "id", "position", "skillTag", "width", "height" } ],
@@ -66,6 +67,14 @@
 > 紫盾生命值/防护方块数、经验值均随等级变化，见 `game/NpcLevelTable` 与 `NpcEntity.applyNpcLevel`）。
 > 为节省带宽，**等级 0 时该字段不下发**，客户端缺省视为 0。刷怪时按等级概率表随机等级
 > （上限 5 用 45/25/15/8/5/2%，上限 2 用 65/25/10%）。
+
+> `BulletSnapshot`：普通子弹只下发 `id / position / velocity / ownerId / bulletColor`
+> （尺寸恒为 8×8、伤害恒为 1 且命中由服务端裁决，不再下发）。
+> **激光弹（`entity/dynamicEntity/LaserBulletEntity`）**额外下发 6 个字段——`tag`（`laser_bullet`），
+> `laserMaxLength`（最大长度 px，已按围墙截断）、`laserExpandSpeed`（前端展开速度 px/s）、
+> `laserHoldSeconds`（阶段 3 持续发光秒数）、`laserElapsed`（已存在秒数）、`laserGlowColor`（辉光色）。
+> 客户端据此在本地按时间轴还原「展开 → 渐亮 0.1s → 持续发光 → 渐暗 0.1s」动画
+> （普通子弹这些字段缺省，水合时会被跳过）。激光的持续接触伤害完全由服务端结算，不占用协议。
 
 `PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / fireCooldownNow / fireCooldownMax / equippedSkillCooldowns / inventory / servantIds / research / researchPendingOptions / deathRespawnDelay / deathRespawnRemaining / lastDamagerName / lastDeathReport`
 

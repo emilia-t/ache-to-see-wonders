@@ -948,6 +948,7 @@ class PlayerDynamicEntity extends DynamicEntity {
   /**
    * 推进技能装配区中所有技能的内置CD计时器(每帧调用),并把剩余CD写入快照字段。
    * 技能冷却按玩家实体 id 分别记录,因此多个玩家装配同一技能时互不影响。
+   * 同时在此推进持续型技能(如「环射烟花」的逐发扫射)。
    */
   private updateEquippedSkillCooldowns(dt: number): void {
     const inventory = this.getInventory();
@@ -958,7 +959,13 @@ class PlayerDynamicEntity extends DynamicEntity {
     for (let slot = 0; slot < inventory.equippedSkills.length; slot++) {
       const tag = inventory.equippedSkills[slot];
       const skill = tag === null ? null : H_getSkillByTag(tag);
-      if (skill === null || !skill.hasCooldown) {
+      if (skill === null) {
+        this.equippedSkillCooldowns[slot] = 0;
+        continue;
+      }
+      // 推进持续型技能(如「环射烟花」的逐发扫射)
+      skill.tickCast(this.id, dt);
+      if (!skill.hasCooldown) {
         this.equippedSkillCooldowns[slot] = 0;
         continue;
       }
@@ -966,7 +973,7 @@ class PlayerDynamicEntity extends DynamicEntity {
     }
   }
 
-  /** 清空技能装配区中所有技能的内置CD(重生时调用) */
+  /** 清空技能装配区中所有技能的内置CD与持续施法状态(重生时调用) */
   private resetEquippedSkillCooldowns(): void {
     const inventory = this.getInventory();
     if (Array.isArray(this.equippedSkillCooldowns)) {
@@ -974,7 +981,9 @@ class PlayerDynamicEntity extends DynamicEntity {
     }
     for (const tag of inventory.equippedSkills) {
       if (tag === null) continue;
-      H_getSkillByTag(tag)?.clearCooldown(this.id);
+      const skill = H_getSkillByTag(tag);
+      skill?.clearCooldown(this.id);
+      skill?.clearCast(this.id);
     }
   }
 

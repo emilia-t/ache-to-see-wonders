@@ -38,6 +38,8 @@ const H_parseCssColor = (color: string): { r: number; g: number; b: number } | n
 /**
  * 将任意 CSS 颜色转换为带指定透明度的 rgba 字符串
  * 用于发光与拖尾的径向/线性渐变(颜色与子弹基色一致,仅改变透明度)。
+ *
+ * 同时导出给激光弹使用(激光的渐变同样需要按颜色+透明度构造)。
  */
 const H_colorWithAlpha = (color: string, alpha: number): string => {
   const a = Math.max(0, Math.min(1, alpha));
@@ -293,4 +295,4 @@ abstract class BulletDynamicEntity extends DynamicEntity {
   }
 }
 
-export { BulletDynamicEntity };
+export { BulletDynamicEntity, H_colorWithAlpha };

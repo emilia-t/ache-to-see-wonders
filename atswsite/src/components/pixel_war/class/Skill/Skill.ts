@@ -1,10 +1,11 @@
 import type { Point } from '@/components/pixel_war/interface/Interface';
+import type { LaserBulletOptions } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/LaserBulletDynamicEntity/LaserBulletDynamicEntity';
 
 /**
  * 技能标签
  * 新增技能时需在此登记,并在 class/Skill/index.ts 的技能注册表中实例化
  */
-export type SkillTagType = 'va2_shoot_skill' | 'xa4_shoot_skill' | 'oa18_shoot_skill' | 'dodge_skill';
+export type SkillTagType = 'va2_shoot_skill' | 'xa4_shoot_skill' | 'oa18_shoot_skill' | 'ls1_shoot_skill' | 'dodge_skill';
 
 /**
  * 技能触发方式
@@ -33,6 +34,21 @@ export interface SkillCastContext {
   spawnDistance: number;
   /** 生成一颗子弹的回调 */
   spawnBullet: (position: Point, direction: Point, bulletColor: string) => void;
+  /**
+   * 生成一束激光弹的回调(可选,由权威端注入注入)。
+   *
+   * 未注入时技能应退化为发射普通子弹,保证单机/多人两种路径都能释放技能。
+   * @param position 激光起点(世界坐标)
+   * @param direction 射击方向(单位向量)
+   * @param bulletColor 激光主色
+   * @param options 激光参数(长度/展开速度/持续刻数/辉光色/基础伤害)
+   */
+  spawnLaserBullet?: (
+    position: Point,
+    direction: Point,
+    bulletColor: string,
+    options?: LaserBulletOptions
+  ) => void;
 }
 
 /**
@@ -109,6 +125,31 @@ abstract class Skill {
    * @param context 技能释放上下文
    */
   public abstract cast(context: SkillCastContext): void;
+
+  /**
+   * 持续施法总时长(秒),0 表示瞬时释放(默认)。
+   *
+   * 权威端在释放技能后会把施法者的开火冷却至少延长到该时长,
+   * 避免一次持续施法尚未结束就被下一次开火打断(如「环射烟花」的逐发扫射)。
+   */
+  public getCastDuration(): number {
+    return 0;
+  }
+
+  /**
+   * 推进持续施法(默认无实现)。
+   *
+   * 由权威端每帧对玩家装配区中的技能调用;持续型技能(如「环射烟花」的逐发扫射)
+   * 在此按 dt 生成子弹。技能实例在注册表中共享,因此实现方必须按 ownerId 分别记录状态。
+   */
+  public tickCast(_ownerId: number, _dt: number): void {
+    // 默认无持续施法
+  }
+
+  /** 清除某个持有者的持续施法状态(重生等场合调用,默认无实现) */
+  public clearCast(_ownerId: number): void {
+    // 默认无持续施法
+  }
 
   /**
    * 当前冷却剩余(秒)

@@ -62,7 +62,7 @@ export const RESEARCH_STAMINA_DRAIN_REDUCTION_PER_LEVEL = 2;
 /** 体力:疾跑体力消耗的下限(点/秒,避免归零) */
 export const RESEARCH_STAMINA_DRAIN_MIN = 6;
 /** 生命:每级提升的生命上限(具体数值) */
-export const RESEARCH_HEALTH_MAX_BONUS_PER_LEVEL = 20;
+export const RESEARCH_HEALTH_MAX_BONUS_PER_LEVEL = 2;
 /** 死亡不掉落:每级增加的保护概率 */
 export const RESEARCH_DEATH_KEEP_CHANCE_PER_LEVEL = 0.2;
 /** 不动堡垒:每级增加的最大吸收值 */

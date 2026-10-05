@@ -13,6 +13,7 @@ import { WhitePixelVa2Entity } from '@/components/pixel_war/class/Entity/Dynamic
 import { RedPixelEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/RedPixelEntity/RedPixelEntity';
 import { GoldenDodgeXa4Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/GoldenDodgeXa4Entity/GoldenDodgeXa4Entity';
 import { PurpleFireworkOa18Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/PurpleFireworkOa18Entity/PurpleFireworkOa18Entity';
+import { OnahauLoneLs1Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/OnahauLoneLs1Entity/OnahauLoneLs1Entity';
 import { SkyBluePixelEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/SkyBluePixelEntity/SkyBluePixelEntity';
 import { PurpleShieldEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/PurpleShieldEntity/PurpleShieldEntity';
 // 玩家与弹体
@@ -125,6 +126,12 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.ownerId,
           snapshot.teamId
         );
+      case 'onahau_lone_ls1':
+        return new OnahauLoneLs1Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
     }
   }
   else if(kind === 'player'){
@@ -148,7 +155,17 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           H_getBulletDirectionFromSnapshot(snapshot),
           snapshot.ownerId,
           snapshot.teamId,
-          snapshot.name
+          snapshot.name,
+          snapshot.bulletColor ?? '',
+          {
+            // 激光的配置随时间不变,快照会随每次下发携带,水合时会覆盖这些字段
+            length: snapshot.laserMaxLength,
+            expandSpeed: snapshot.laserExpandSpeed,
+            durationTicks: snapshot.laserHoldSeconds !== undefined
+              ? snapshot.laserHoldSeconds / LaserBulletDynamicEntity.TICK_SECONDS
+              : undefined,
+            glowColor: snapshot.laserGlowColor
+          }
         );
       case 'sniper_bullet':
         return new SniperBulletDynamicEntity(
