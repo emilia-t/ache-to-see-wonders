@@ -14,7 +14,7 @@ import top.atsw.pixelwar.game.Ls1ShootSkill;
  *   <li>攻击方向在出生时从八方向中随机选定一次,此后固定不变,不随移动方向改变;</li>
  *   <li>激光长度随等级成长:length = 1200 + Level × 200(px);</li>
  *   <li>激光持续发光时长随等级成长:duration_tick = 75 + Level × 20(tick);</li>
- *   <li>激光展开速度固定 6000px/s,不随等级变化;</li>
+ *   <li>激光展开速度固定 LASER_EXPAND_SPEED px/s,不随等级变化;</li>
  *   <li>掉落经验值 exp = 3 + Level;移动速度增益与其他敌对 NPC 相同(每级 +20);</li>
  *   <li>被击杀后概率掉落「激光束」技能球。</li>
  * </ul>
@@ -36,7 +36,7 @@ public class OnahauLoneLs1Npc extends NpcEntity {
     public static final String LASER_GLOW_COLOR = "#E6F6FA";
 
     /** 激光展开速度(px/s):不随等级变化 */
-    public static final double LASER_EXPAND_SPEED = 6000;
+    public static final double LASER_EXPAND_SPEED = 20000;
     /** 激光基础伤害(固定 1 点) */
     private static final double LASER_DAMAGE = 1;
     /** 激光长度基准(px,等级 0) */
@@ -55,7 +55,7 @@ public class OnahauLoneLs1Npc extends NpcEntity {
     private static final double LOOT_ODDS = 0.2;
     /** idle 阶段的安全超时(游戏刻) */
     private static final int IDLE_TIMEOUT_TICKS = 100;
-    /** 从者攻击间隔基准(秒):n = 6 - Level × 0.4 */
+    /** 从者攻击间隔基准(秒)*/
     private static final double SERVANT_ATTACK_INTERVAL_BASE = 6;
     /** 每提高 1 级缩短的从者攻击间隔(秒) */
     private static final double SERVANT_ATTACK_INTERVAL_PER_LEVEL = 0.4;
@@ -265,7 +265,6 @@ public class OnahauLoneLs1Npc extends NpcEntity {
      * 行为循环:
      * <ul>
      *   <li>无主时进入攻击阶段后朝固定攻击方向发射一束激光(一次攻击只发射一束);</li>
-     *   <li>从者(被玩家吸附)每隔 n 秒(6 - Level × 0.4,最小 4 秒)发射一束同样的激光。</li>
      * </ul>
      */
     @Override
@@ -286,7 +285,7 @@ public class OnahauLoneLs1Npc extends NpcEntity {
     }
 
     /**
-     * 从者攻击:每隔 n 秒(6 - Level × 0.4,最小 4 秒)朝固定攻击方向发射一束激光。
+     * 从者攻击:朝固定攻击方向发射一束激光。
      *
      * <p>从者被锁定在主人的从者网格上,因此其激光总是从当前格子中心射出;
      * 一旦从者随玩家移动而瞬移,先前发射的激光会因"失去源头"被世界移除
@@ -306,7 +305,7 @@ public class OnahauLoneLs1Npc extends NpcEntity {
         spawnLaser(context);
     }
 
-    /** 从者攻击间隔(秒):n = 6 - Level × 0.4,且不小于 4 秒 */
+    /** 从者攻击间隔(秒)*/
     private double servantAttackIntervalSeconds() {
         return Math.max(SERVANT_ATTACK_INTERVAL_MIN,
                 SERVANT_ATTACK_INTERVAL_BASE - SERVANT_ATTACK_INTERVAL_PER_LEVEL * level);

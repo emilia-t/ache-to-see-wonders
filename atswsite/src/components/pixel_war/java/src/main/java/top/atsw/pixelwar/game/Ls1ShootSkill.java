@@ -7,7 +7,7 @@ import top.atsw.pixelwar.core.Geometry;
  *
  * <p>由击杀 OnahauLoneLs1Npc(幽蓝孤光 ls1)掉落。
  * 释放效果参考该 NPC 的攻击方式:沿瞄准方向发射一束激光弹——
- * 激光前端以 6000px/s 展开,命中目标立即造成伤害,持续接触每 20 刻再造成 2 点伤害。</p>
+ * 激光前端以 LASER_EXPAND_SPEED px/s 展开,命中目标立即造成伤害,持续接触每 20 刻再造成 2 点伤害。</p>
  */
 public final class Ls1ShootSkill extends Skill {
 
@@ -23,7 +23,7 @@ public final class Ls1ShootSkill extends Skill {
     /** 激光长度(px) */
     public static final double LASER_LENGTH = 1600;
     /** 激光展开速度(px/s) */
-    public static final double LASER_EXPAND_SPEED = 6000;
+    public static final double LASER_EXPAND_SPEED = 20000;
     /** 激光持续发光时长(tick) */
     public static final int LASER_DURATION_TICKS = 50;
     /** 激光基础伤害 */
@@ -32,7 +32,7 @@ public final class Ls1ShootSkill extends Skill {
     public Ls1ShootSkill() {
         super(TAG, "激光束", "激光",
                 "沿瞄准方向发射一束激光，命中立即造成伤害，持续接触每 20 刻再造成 2 点伤害",
-                LASER_COLOR, 3, ICON);
+                LASER_COLOR, 4, ICON);
     }
 
     @Override

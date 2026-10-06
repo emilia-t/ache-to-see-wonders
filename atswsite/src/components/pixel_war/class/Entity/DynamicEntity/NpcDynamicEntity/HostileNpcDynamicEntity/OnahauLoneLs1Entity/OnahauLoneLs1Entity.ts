@@ -42,7 +42,7 @@ const H_EIGHT_DIRECTIONS: readonly Point[] = [
  *   <li>攻击方向在出生时从八方向中随机选定一次,此后固定不变,不随移动方向改变;</li>
  *   <li>激光长度随等级成长:length = 1200 + Level × 200(px);</li>
  *   <li>激光持续发光时长随等级成长:duration_tick = 75 + Level × 20(tick);</li>
- *   <li>激光子弹速度固定 6000px/s,不随等级变化;</li>
+ *   <li>激光子弹速度固定 LASER_EXPAND_SPEED px/s,不随等级变化;</li>
  *   <li>掉落经验值 exp = 3 + Level;移动速度增益与其他敌对 NPC 相同(每级 +20);</li>
  *   <li>被击杀后概率掉落「激光束」技能球。</li>
  * </ul>
@@ -62,7 +62,7 @@ class OnahauLoneLs1Entity extends HostileNpcDynamicEntity {
   /** 激光辉光色 */
   public static readonly LASER_GLOW_COLOR = '#E6F6FA';
   /** 激光展开速度(px/s):不随等级变化 */
-  public static readonly LASER_EXPAND_SPEED = 6000;
+  public static readonly LASER_EXPAND_SPEED = 20000;
   /** 激光长度基准(px,等级 0) */
   private static readonly LASER_LENGTH_BASE = 1200;
   /** 每级增加的激光长度(px) */
@@ -79,7 +79,7 @@ class OnahauLoneLs1Entity extends HostileNpcDynamicEntity {
   private static readonly LOOT_ODDS = 0.2;
   /** idle 阶段的安全超时(游戏刻):长时间未获得新目标时允许再次攻击,避免永久停摆 */
   private static readonly IDLE_TIMEOUT_TICKS = 100;
-  /** 从者攻击间隔基准(秒):n = 6 - Level × 0.4 */
+  /** 从者攻击间隔基准(秒) */
   private static readonly SERVANT_ATTACK_INTERVAL_BASE = 6;
   /** 每提高 1 级缩短的从者攻击间隔(秒) */
   private static readonly SERVANT_ATTACK_INTERVAL_PER_LEVEL = 0.4;
@@ -285,7 +285,7 @@ class OnahauLoneLs1Entity extends HostileNpcDynamicEntity {
   }
 
   /**
-   * 从者攻击:每隔 n 秒(6 - Level × 0.4,最小 4 秒)朝固定攻击方向发射一束激光。
+   * 从者攻击朝固定攻击方向发射一束激光。
    *
    * <p>从者被锁定在主人的从者网格上,因此其激光总是从当前格子中心射出;
    * 一旦从者随玩家移动而瞬移,先前发射的激光会因"失去源头"被权威端移除
@@ -303,7 +303,7 @@ class OnahauLoneLs1Entity extends HostileNpcDynamicEntity {
     this.spawnLaser(context);
   }
 
-  /** 从者攻击间隔(秒):n = 6 - Level × 0.4,且不小于 4 秒 */
+  /** 从者攻击间隔(秒)*/
   private getServantAttackIntervalSeconds(): number {
     return Math.max(
       OnahauLoneLs1Entity.SERVANT_ATTACK_INTERVAL_MIN,
