@@ -5,6 +5,7 @@ import top.atsw.pixelwar.core.Geometry;
 import top.atsw.pixelwar.entity.WorldView;
 import top.atsw.pixelwar.entity.dynamicEntity.BombEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.BulletEntity;
+import top.atsw.pixelwar.entity.dynamicEntity.BulletOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.DynamicEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.ExpOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.LaserBulletEntity;
@@ -67,6 +68,7 @@ public final class World implements WorldView {
     private final Map<Long, Map<Long, Integer>> laserContactTicks = new HashMap<>();
     private final List<ExpOrbEntity> expOrbs = new ArrayList<>();
     private final List<SkillOrbEntity> skillOrbs = new ArrayList<>();
+    private final List<BulletOrbEntity> bulletOrbs = new ArrayList<>();
     private final List<ItemEntity> items = new ArrayList<>();
 
     /** 每个玩家的刷怪计时器 */
@@ -168,6 +170,10 @@ public final class World implements WorldView {
 
     public List<SkillOrbEntity> skillOrbs() {
         return skillOrbs;
+    }
+
+    public List<BulletOrbEntity> bulletOrbs() {
+        return bulletOrbs;
     }
 
     public List<ItemEntity> items() {
@@ -525,10 +531,11 @@ public final class World implements WorldView {
             }
             // 激光弹为线段型子弹:命中/持续伤害走独立分支,且不会因命中而消失
             if (bullet instanceof LaserBulletEntity laserBullet) {
-                // 发射者一旦移动(被推动/瞬移/重新游走)先前的激光即失去源头,必须立刻移除
-                if (isLaserDetachedFromShooter(laserBullet)) {
-                    laserBullet.shouldRemove = true;
-                    continue;
+                // 激光跟随发射者同步移动:按发射者的位移增量平移整条线段(方向与长度不变);
+                // 发射者不存在时保持最后位置,直到激光自然寿命结束
+                DynamicEntity shooter = findLaserShooter(laserBullet);
+                if (shooter != null) {
+                    laserBullet.followShooter(shooter.position);
                 }
                 updateLaserHits(laserBullet, aliveTargets);
                 continue;
@@ -599,36 +606,27 @@ public final class World implements WorldView {
         }
     }
 
-    /** 激光"失去源头"的判定容差(px):发射者离开锚点超过该距离即视为已经移动 */
-    private static final double LASER_ANCHOR_TOLERANCE = 0.5;
-
     /**
-     * 判断一束激光是否已"失去源头"而应立刻移除。
+     * 查找一束激光的发射者(玩家或 NPC,含玩家的从者 NPC)。
      *
-     * <p>激光的设定是"从固定炮位射出的静止光束":无论发射者是玩家还是 NPC,
-     * 在光束存活期间都必须原地不动。因此只要发射者离开发射点——被其它实体推动、
-     * 玩家移动/闪现、NPC 被吸附为从者后瞬移回网格、被释放后重新开始游走等——
-     * 这束激光就失去了源头,必须立刻移除,否则会留下一道与发射者脱节的无源光束
-     * (表现为"镭射弹留在原地")。</p>
+     * <p>激光的 ownerId 在生成时写入:</p>
+     * <ul>
+     *   <li>玩家技能「激光束」→ 玩家 id;</li>
+     *   <li>幽蓝孤光(野生) → 该 NPC id;</li>
+     *   <li>幽蓝孤光(从者) → 该从者 NPC 自己的 id(而非主人 id)。</li>
+     * </ul>
      *
-     * @param laser 待判断的激光弹
-     * @return 是否需要立刻移除该激光
+     * @return 发射者实体;发射者不存在(已被击杀清理/断线)时返回 null
      */
-    private boolean isLaserDetachedFromShooter(LaserBulletEntity laser) {
-        Geometry.Vec2 anchor = laser.laserAnchor;
-        if (anchor == null || laser.ownerId == null) {
-            return false;// 未写锚点的激光不处理
+    private DynamicEntity findLaserShooter(LaserBulletEntity laser) {
+        if (laser.ownerId == null) {
+            return null;
         }
-        // 发射者既可能是玩家(技能「激光束」),也可能是 NPC(幽蓝孤光)
         DynamicEntity owner = getNpcById(laser.ownerId);
         if (owner == null) {
             owner = getPlayerById(laser.ownerId);
         }
-        if (owner == null) {
-            return true;// 发射者已不存在(被击杀/清理/断线)
-        }
-        // 发射者一旦移动(含被推动、玩家移动/闪现、从者瞬移回网格)即视为失去源头
-        return Geometry.distance(owner.position.x, owner.position.y, anchor.x, anchor.y) > LASER_ANCHOR_TOLERANCE;
+        return owner;
     }
 
     /**
@@ -828,12 +826,14 @@ public final class World implements WorldView {
                     ? getPlayerById(npc.lastKillerPlayerId) : null;
             double luckyBonus = killer != null ? killer.getLuckyStarBonus() : 0;
             for (NpcEntity.Loot loot : npc.loot) {
-                if (!"skillOrb".equals(loot.type())) {
+                double odds = Geometry.clamp(loot.odds() + luckyBonus, 0, 1);
+                if (Math.random() >= odds) {
                     continue;
                 }
-                double odds = Geometry.clamp(loot.odds() + luckyBonus, 0, 1);
-                if (Math.random() < odds) {
+                if ("skillOrb".equals(loot.type())) {
                     spawnSkillOrb(npc.position, loot.tag());
+                } else if ("bulletOrb".equals(loot.type())) {
+                    spawnBulletOrb(npc.position);
                 }
             }
         }
@@ -927,6 +927,11 @@ public final class World implements WorldView {
             orb.updateOrb(dt, players, skills);
         }
         skillOrbs.removeIf(orb -> orb.isPickedUp);
+
+        for (BulletOrbEntity orb : bulletOrbs) {
+            orb.updateOrb(dt, players);
+        }
+        bulletOrbs.removeIf(orb -> orb.isPickedUp);
     }
 
     /** 在指定位置随机爆出经验球 */
@@ -949,19 +954,62 @@ public final class World implements WorldView {
         }
     }
 
-    /** 在指定位置爆出一个技能球 */
+    /** 在指定位置爆出一个技能球(NPC 死亡掉落:NPC 有"爆出"手感) */
     public void spawnSkillOrb(Geometry.Vec2 position, String skillTag) {
+        spawnSkillOrb(position, skillTag, true);
+    }
+
+    /**
+     * 在指定位置生成一个技能球。
+     *
+     * @param spread 是否随机散布并给一个爆出冲量。
+     *               NPC 死亡掉落用 true;**背包拖拽丢弃必须用 false** —— 否则随机偏移可能把球扔回
+     *               技能球的吸引范围内,导致"刚丢出去就被立刻吸回来"。
+     */
+    public void spawnSkillOrb(Geometry.Vec2 position, String skillTag, boolean spread) {
+        double spawnX = position.x;
+        double spawnY = position.y;
+        if (spread) {
+            double angle = Math.random() * Math.PI * 2;
+            double dist = 10 + Math.random() * 26;
+            spawnX += Math.cos(angle) * dist;
+            spawnY += Math.sin(angle) * dist;
+        }
+        SkillOrbEntity orb = new SkillOrbEntity(new Geometry.Vec2(spawnX, spawnY), skillTag, skills);
+        if (spread) {
+            // 给一个随机的初始冲量,制造"爆出"的手感
+            double burstAngle = Math.random() * Math.PI * 2;
+            double burstSpeed = 50 + Math.random() * 90;
+            orb.motionVelocity = new Geometry.Vec2(
+                    Math.cos(burstAngle) * burstSpeed,
+                    Math.sin(burstAngle) * burstSpeed);
+        }
+        skillOrbs.add(orb);
+    }
+
+    /**
+     * 在指定位置爆出一颗子弹球。
+     *
+     * @param position 掉落位置(通常为 NPC 死亡位置)
+     * @param value    承载的子弹数(默认 1 发)
+     */
+    public void spawnBulletOrb(Geometry.Vec2 position, int value) {
         double angle = Math.random() * Math.PI * 2;
         double dist = 10 + Math.random() * 26;
-        SkillOrbEntity orb = new SkillOrbEntity(new Geometry.Vec2(
+        BulletOrbEntity orb = new BulletOrbEntity(new Geometry.Vec2(
                 position.x + Math.cos(angle) * dist,
-                position.y + Math.sin(angle) * dist), skillTag, skills);
+                position.y + Math.sin(angle) * dist), value);
         double burstAngle = Math.random() * Math.PI * 2;
         double burstSpeed = 50 + Math.random() * 90;
         orb.motionVelocity = new Geometry.Vec2(
                 Math.cos(burstAngle) * burstSpeed,
                 Math.sin(burstAngle) * burstSpeed);
-        skillOrbs.add(orb);
+        bulletOrbs.add(orb);
+    }
+
+    /** 在指定位置爆出一颗默认承载量的子弹球 */
+    public void spawnBulletOrb(Geometry.Vec2 position) {
+        spawnBulletOrb(position, BulletOrbEntity.DEFAULT_VALUE);
     }
 
     /** 移除已结束死亡特效的 NPC(玩家实体保留快照以便重生) */
@@ -1472,6 +1520,10 @@ public final class World implements WorldView {
         if (len < 0.0001) {
             return;
         }
+        // 开火消耗 1 发子弹:子弹不足时无法开火(子弹由「子弹球」补充)
+        if (!player.consumeBullet(1)) {
+            return;
+        }
         Geometry.Vec2 direction = new Geometry.Vec2(dx / len, dy / len);
         double spawnDistance = player.width * 0.6;
         String bulletColor = player.playerRule.bulletColor;
@@ -1492,8 +1544,8 @@ public final class World implements WorldView {
                 LaserBulletEntity laser = new LaserBulletEntity(
                         position, dir, player.id, player.teamId, "", color,
                         length, expandSpeed, durationTicks, damage, glowColor);
-                // 记录发射位置:与 NPC 激光同规则——玩家一旦移动,该光束立刻失去源头并被移除
-                laser.laserAnchor = new Geometry.Vec2(player.position.x, player.position.y);
+                // 记录发射者当前坐标:供世界每帧计算位移增量,使激光跟随发射者同步移动
+                laser.laserShooterPosition = new Geometry.Vec2(player.position.x, player.position.y);
                 bullets.add(laser);
             };
             activeSkill.cast(context);
@@ -1558,6 +1610,66 @@ public final class World implements WorldView {
         if (player != null && !player.isDead) {
             player.applyInventoryState(entries, equippedSkills);
         }
+    }
+
+    /**
+     * 处理客户端"拖拽丢弃"请求:按给定方向与距离把条目抛到地面。
+     *
+     * <p>客户端已在本地背包中移除该条目并另行提交 {@code inventory_update},
+     * 因此这里只负责生成地面实体(技能 → 技能球,物品 → 地面物品)。</p>
+     */
+    public void dropInventoryEntry(long playerId, top.atsw.pixelwar.protocol.Protocol.InventoryDrop drop) {
+        if (paused || drop == null) {
+            return;
+        }
+        PlayerEntity player = getPlayerById(playerId);
+        if (player == null || player.isDead) {
+            return;
+        }
+        String tag = drop.tag();
+        if (tag == null || tag.isEmpty()) {
+            return;
+        }
+        top.atsw.pixelwar.protocol.Protocol.Vec dir = drop.direction();
+        Geometry.Vec2 direction = dir == null ? null : new Geometry.Vec2(dir.x(), dir.y());
+        Geometry.Vec2 position = resolveDropPosition(player, direction, drop.distance());
+        if ("skill".equals(drop.kind())) {
+            // 丢弃的技能球用精确落点(不随机散布、无爆出冲量),保证不会被立刻吸回
+            spawnSkillOrb(position, tag, false);
+            return;
+        }
+        int count = Math.max(1, drop.count());
+        String name = drop.name() == null ? "" : drop.name();
+        items.add(new ItemEntity(position, tag, name, count));
+    }
+
+    /**
+     * 计算丢弃物的落点:从玩家位置沿 direction 抛出 distance px。
+     * 落点与静态实体(围墙)冲突时沿同一方向逐步收缩;始终找不到可用点时退回玩家位置。
+     */
+    private Geometry.Vec2 resolveDropPosition(PlayerEntity player, Geometry.Vec2 direction, double distance) {
+        double dx = direction == null ? 0 : direction.x;
+        double dy = direction == null ? 0 : direction.y;
+        double len = Math.hypot(dx, dy);
+        if (len < 0.0001) {
+            dx = 1;
+            dy = 0;
+        } else {
+            dx /= len;
+            dy /= len;
+        }
+        double maxDistance = Math.max(0, distance);
+        int steps = 12;
+        for (int i = steps; i >= 0; i--) {
+            double d = maxDistance * ((double) i / steps);
+            Geometry.Vec2 candidate = new Geometry.Vec2(
+                    player.position.x + dx * d,
+                    player.position.y + dy * d);
+            if (!staticGrid.isPointColliding(candidate.x, candidate.y)) {
+                return candidate;
+            }
+        }
+        return player.position.copy();
     }
 
     /** 玩家选择一项专研(由客户端 research_choose 指令触发) */

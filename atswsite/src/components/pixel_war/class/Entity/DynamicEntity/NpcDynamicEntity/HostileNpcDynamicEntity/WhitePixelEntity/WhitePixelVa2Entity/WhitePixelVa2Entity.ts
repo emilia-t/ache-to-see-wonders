@@ -32,7 +32,9 @@ class WhitePixelVa2Entity extends WhitePixelEntity {
     this.mapColor = '#dfdfdf'; // 地图上的颜色表示
     // 战利品:击杀后 40% 概率掉落其持有的"斜向双弹"技能球
     this.loot = [
-      { type: 'skillOrb', tag: Va2ShootSkill.TAG, odds: 0.4 }
+      { type: 'skillOrb', tag: Va2ShootSkill.TAG, odds: 0.4 },
+      // 子弹球:会发射普通子弹的 NPC 均有概率掉落(概率 75%)
+      { type: 'bulletOrb', tag: 'bullet_orb', odds: 0.75 }
     ];
   }
 

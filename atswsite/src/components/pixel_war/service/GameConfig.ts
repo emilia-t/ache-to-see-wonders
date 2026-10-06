@@ -20,7 +20,7 @@ const gameConfig:GameConfig = {
   npcSpawnHighInterval:4,// 高频刷怪区生成间隔,单位秒
   npcSpawnMediumInterval:10,// 中频刷怪区生成间隔,单位秒
   npcSpawnLowInterval:22,// 低频刷怪区生成间隔,单位秒
-  npcSpawnMaxCountSinglePlayer:140,// 地图中同时存在的 NPC 数量上限,单位个
+  npcSpawnMaxCountSinglePlayer:80,// 地图中同时存在的 NPC 数量上限,单位个
   npcSpawnMaxAttempts:1,// 每个游戏刻tick最大尝试生成次数
   npcSpawnPadding:12,// 新 NPC 与已有动态实体之间额外保留的安全距离,单位px
   

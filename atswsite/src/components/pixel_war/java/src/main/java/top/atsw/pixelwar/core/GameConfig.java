@@ -22,7 +22,7 @@ public final class GameConfig {
     public final double npcSpawnHighInterval = 4;
     public final double npcSpawnMediumInterval = 10;
     public final double npcSpawnLowInterval = 22;
-    public final int npcSpawnMaxCount = 140;
+    public final int npcSpawnMaxCount = 80;
     public final int npcSpawnMaxAttempts = 1;
     public final double npcSpawnPadding = 12;
 

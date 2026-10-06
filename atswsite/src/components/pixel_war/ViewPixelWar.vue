@@ -39,6 +39,7 @@ import {
   GrenadeDynamicEntity,
   ExpOrbDynamicEntity,
   SkillOrbDynamicEntity,
+  BulletOrbDynamicEntity,
   INVENTORY_SKILL_SLOT_COUNT,
   INVENTORY_INNATE_SKILL_SLOT_COUNT,
   INVENTORY_EXTENDED_SKILL_SLOT_COUNT,
@@ -310,6 +311,7 @@ const applyMapDataSnapshot = (mapData: MapData) => {
   bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
   expOrbEntityList = hydrateList(mapData.dynamicEntitie.expOrbDynamicEntitys) as ExpOrbDynamicEntity[];
   skillOrbEntityList = hydrateList(mapData.dynamicEntitie.skillOrbDynamicEntitys ?? []) as SkillOrbDynamicEntity[];
+  bulletOrbEntityList = hydrateList(mapData.dynamicEntitie.bulletOrbDynamicEntitys ?? []) as BulletOrbDynamicEntity[];
 
   // 2. 生成数值浮层 (NPC + 玩家)
   generateFloatingNumbersFromHealthChange(npcEntityList, oldHealthMap);
@@ -367,6 +369,7 @@ const applyDynamicMapDataSnapshot = (mapData: MapData) => {
   bulletEntityList = hydrateList(mapData.dynamicEntitie.bulletDynamicEntitys) as BulletDynamicEntity[];
   expOrbEntityList = hydrateList(mapData.dynamicEntitie.expOrbDynamicEntitys) as ExpOrbDynamicEntity[];
   skillOrbEntityList = hydrateList(mapData.dynamicEntitie.skillOrbDynamicEntitys ?? []) as SkillOrbDynamicEntity[];
+  bulletOrbEntityList = hydrateList(mapData.dynamicEntitie.bulletOrbDynamicEntitys ?? []) as BulletOrbDynamicEntity[];
 
   // 2. 生成数值浮层 (NPC + 玩家)
   generateFloatingNumbersFromHealthChange(npcEntityList, oldHealthMap);
@@ -594,6 +597,7 @@ let grenadeEntityList: GrenadeDynamicEntity[] = [];
 let itemEntityList: ItemEntity[] = [];                      // 物品实体列表
 let expOrbEntityList: ExpOrbDynamicEntity[] = [];           // 经验球实体列表
 let skillOrbEntityList: SkillOrbDynamicEntity[] = [];       // 技能球实体列表
+let bulletOrbEntityList: BulletOrbDynamicEntity[] = [];     // 子弹球实体列表
 let playerEntity: PlayerDynamicEntity | null = null;
 // 其他玩家(多人模式):快照中除自己以外的玩家实体,单人模式恒为空
 let otherPlayerEntityList: PlayerDynamicEntity[] = [];
@@ -618,6 +622,20 @@ let bottomStatusLastHealthRatio = 1;
 let bottomStatusDamageFlash = 0;
 let bottomStatusLastFrameTime = 0;
 let bottomStatusHealthColor: RGB = { r: 40, g: 255, b: 143 };
+
+/**
+ * 获得子弹的 "+x" 浮字特效(显示在底部状态栏子弹数量的上方)。
+ * 每项:{ text, age } —— age 从 0 增长到 AMMO_GAIN_EFFECT_LIFE 后移除。
+ */
+let ammoGainEffects: { text: string; age: number }[] = [];
+/** 浮字特效存活时长(秒) */
+const AMMO_GAIN_EFFECT_LIFE = 0.9;
+/** 浮字特效上浮距离(px) */
+const AMMO_GAIN_EFFECT_RISE = 26;
+/** 上一帧的子弹数 / 上限 / 死亡状态(用于检测"获得子弹") */
+let prevAmmoCountForGain: number | null = null;
+let prevAmmoMaxForGain: number | null = null;
+let prevAmmoDeadForGain = false;
 
 let entityDebugFlags: EntityDebugFlags = {
   //属性相关
@@ -2437,6 +2455,12 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   const playerDead = !playerEntity || playerEntity.isDead || playerEntity.health <= 0;
   const healthMax = Math.max(1, playerEntity?.healthMax ?? 100);
   const currentHealth = playerDead ? 0 : Math.max(0, playerEntity?.health ?? 0);
+  // 子弹信息(当前/最大子弹数):0 为红、1~10 为黄、≥11 为绿(配色见 H_getBottomStatusAmmoColor)
+  const ammoCurrent = Math.max(0, Math.floor(playerEntity?.bulletCount ?? PlayerDynamicEntity.BASE_BULLET_COUNT));
+  const ammoMax = Math.max(
+    ammoCurrent,
+    Math.floor(playerEntity?.bulletMaxCount ?? PlayerDynamicEntity.BASE_BULLET_MAX)
+  );
   const targetHealthRatio = playerEntity && !playerDead
     ? H_clamp(playerEntity.health / healthMax, 0, 1)
     : 0;
@@ -2850,8 +2874,11 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
 
   const skillCount = BOTTOM_STATUS_SKILL_SLOT_COUNT;
   const skillGap = Math.max(2, panelWidth * 0.005);
-  const skillAreaX = x + padding;
-  const skillAreaW = panelWidth - padding * 2;
+  // 子弹信息面板:固定在技能行最左侧(开火技能槽的左边),技能槽区域整体右移让位
+  const ammoPanelGap = skillGap * 2;
+  const ammoPanelW = Math.max(72, panelWidth * 0.12);
+  const skillAreaX = x + padding + ammoPanelW + ammoPanelGap;
+  const skillAreaW = panelWidth - padding * 2 - ammoPanelW - ammoPanelGap;
   const footerH = panelHeight * 0.08; // 底部预留:技能副标题空间
   const skillAreaY = y + levelRowH + expRowH + barRowH;
   const skillAreaH = skillRowH - footerH;
@@ -2864,6 +2891,38 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
   // 副标题统一贴齐面板底部内侧一行(空间不足时由绘制函数自动省略)
   const slotSubtitleY = skillAreaY + skillRowH - panelHeight * 0.045;
 
+  // 子弹信息(开火技能槽左侧):图标 + 当前子弹数 + "/" + 最大子弹数
+  const ammoPanelH = Math.max(20, slotSize * 0.66);
+  const ammoPanelX = x + padding;
+  const ammoPanelY = slotY + (slotSize - ammoPanelH) / 2;
+  drawBottomStatusAmmo(
+    CtxUi,
+    ammoPanelX,
+    ammoPanelY,
+    ammoPanelW,
+    ammoPanelH,
+    ammoCurrent,
+    ammoMax
+  );
+
+  // 获得子弹特效:吸收子弹球时在子弹数量上方浮现 "+x"
+  // (重生补满 / 专研提升上限导致的增加不计入,避免出现 "+50" 这类误导提示)
+  const ammoGained = prevAmmoCountForGain === null ? 0 : ammoCurrent - prevAmmoCountForGain;
+  const maxUnchanged = prevAmmoMaxForGain !== null && ammoMax === prevAmmoMaxForGain;
+  if (
+    ammoGained > 0 &&
+    maxUnchanged &&
+    !playerDead &&
+    !prevAmmoDeadForGain &&
+    prevAmmoCountForGain !== null
+  ) {
+    ammoGainEffects.push({ text: `+${ammoGained}`, age: 0 });
+  }
+  prevAmmoCountForGain = ammoCurrent;
+  prevAmmoMaxForGain = ammoMax;
+  prevAmmoDeadForGain = playerDead;
+  drawAmmoGainEffects(CtxUi, ammoPanelX, ammoPanelY, ammoPanelW, dt);
+
   for (let i = 0; i < skillCount; i++) {
     const slotX = slotsStartX + i * (slotSize + skillGap);
     const skill = skills[i];
@@ -2873,6 +2932,142 @@ const drawBottomStatusBar = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
       drawEmptyBottomStatusSkill(CtxUi, slotX, slotY, slotSize, slotCut);
     }
   }
+
+  CtxUi.restore();
+};
+
+/**
+ * 绘制「获得子弹 +x」浮字特效。
+ * 从子弹信息面板顶部向上飘移并逐渐淡出,让玩家一眼看出"刚补了多少发"。
+ *
+ * @param dt 距上一帧的秒数(与底部状态栏共用,用于推进动画)
+ */
+const drawAmmoGainEffects = (
+  CtxUi: CanvasRenderingContext2D,
+  panelX: number,
+  panelY: number,
+  panelWidth: number,
+  dt: number
+) => {
+  if (ammoGainEffects.length === 0) return;
+  // 推进动画并移除已结束的浮字
+  for (const effect of ammoGainEffects) effect.age += dt;
+  ammoGainEffects = ammoGainEffects.filter((effect) => effect.age < AMMO_GAIN_EFFECT_LIFE);
+  if (ammoGainEffects.length === 0) return;
+
+  CtxUi.save();
+  CtxUi.textAlign = 'center';
+  CtxUi.textBaseline = 'middle';
+  for (const effect of ammoGainEffects) {
+    const progress = Math.max(0, Math.min(1, effect.age / AMMO_GAIN_EFFECT_LIFE));
+    const alpha = 1 - progress * progress;
+    const fontSize = Math.max(11, panelWidth * 0.2);
+    CtxUi.font = `bold ${fontSize}px Consolas, "Courier New", monospace`;
+    CtxUi.globalAlpha = alpha;
+    const cx = panelX + panelWidth / 2;
+    const cy = panelY - fontSize * 0.8 - progress * AMMO_GAIN_EFFECT_RISE;
+    // 深色底板:避免浮字与上方血条/体力条叠在一起时看不清
+    const textWidth = CtxUi.measureText(effect.text).width;
+    const boxW = textWidth + fontSize * 0.8;
+    const boxH = fontSize * 1.3;
+    CtxUi.globalAlpha = alpha * 0.72;
+    createChamferRect(CtxUi, cx - boxW / 2, cy - boxH / 2, boxW, boxH, Math.min(boxH * 0.36, 5));
+    CtxUi.fillStyle = 'rgba(6, 16, 26, 1)';
+    CtxUi.fill();
+    // 浮字
+    CtxUi.globalAlpha = alpha;
+    CtxUi.shadowColor = 'rgba(0, 0, 0, 0.7)';
+    CtxUi.shadowBlur = 3;
+    CtxUi.fillStyle = '#ffe27a';
+    CtxUi.fillText(effect.text, cx, cy + 0.5);
+  }
+  CtxUi.restore();
+};
+
+/**
+ * 子弹信息配色:当前子弹数为 0 时红色,1~10 时黄色,≥11 时绿色。
+ */
+const H_getBottomStatusAmmoColor = (count: number): string => {
+  if (count <= 0) return '#ff5a68';
+  if (count <= 10) return '#ffd24d';
+  return '#5ce88a';
+};
+
+/** 绘制子弹矢量图标(尖头在上、平底在下),以 (cx,cy) 为中心、size 为整体高度 */
+const H_drawAmmoIcon = (
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string
+) => {
+  const w = size * 0.46;
+  const top = cy - size / 2;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(cx, top);
+  ctx.lineTo(cx + w / 2, top + size * 0.4);
+  ctx.lineTo(cx + w / 2, top + size);
+  ctx.lineTo(cx - w / 2, top + size);
+  ctx.lineTo(cx - w / 2, top + size * 0.4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+};
+
+/**
+ * 绘制底部状态栏的子弹信息(子弹图标 + 当前子弹数 + "/" + 最大子弹数)。
+ * 当前子弹数按数量变色(0 红 / 1~10 黄 / ≥11 绿),最大子弹数保持灰色。
+ */
+const drawBottomStatusAmmo = (
+  CtxUi: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  current: number,
+  max: number
+) => {
+  if (width <= 8 || height <= 8) return;
+  const cut = Math.max(3, height * 0.28);
+
+  CtxUi.save();
+
+  // 背板
+  createChamferRect(CtxUi, x, y, width, height, cut);
+  const grad = CtxUi.createLinearGradient(x, y, x, y + height);
+  grad.addColorStop(0, 'rgba(12, 32, 48, 0.74)');
+  grad.addColorStop(1, 'rgba(4, 12, 22, 0.58)');
+  CtxUi.fillStyle = grad;
+  CtxUi.fill();
+  CtxUi.strokeStyle = 'rgba(0, 229, 255, 0.5)';
+  CtxUi.lineWidth = 1;
+  createChamferRect(CtxUi, x + 0.5, y + 0.5, width - 1, height - 1, cut);
+  CtxUi.stroke();
+
+  const ammoColor = H_getBottomStatusAmmoColor(current);
+  const iconSize = Math.min(height * 0.66, width * 0.3);
+  const iconCx = x + height * 0.5;
+  H_drawAmmoIcon(CtxUi, iconCx, y + height / 2, iconSize, ammoColor);
+
+  // 文本:当前值(变色,右对齐到面板右内侧) + "/最大值"(灰色)
+  CtxUi.textBaseline = 'middle';
+  CtxUi.textAlign = 'right';
+  CtxUi.font = `bold ${Math.max(10, height * 0.5)}px Consolas, "Courier New", monospace`;
+  const maxText = `/${Math.max(0, Math.round(max))}`;
+  const valueText = `${Math.max(0, Math.round(current))}`;
+  const rightX = x + width - height * 0.3;
+  CtxUi.fillStyle = 'rgba(170, 206, 226, 0.85)';
+  CtxUi.fillText(maxText, rightX, y + height / 2 + 0.5);
+  const maxWidthUsed = CtxUi.measureText(maxText).width;
+  CtxUi.shadowColor = ammoColor;
+  CtxUi.shadowBlur = 8;
+  CtxUi.fillStyle = ammoColor;
+  CtxUi.fillText(valueText, rightX - maxWidthUsed, y + height / 2 + 0.5);
+  CtxUi.shadowBlur = 0;
 
   CtxUi.restore();
 };
@@ -3144,10 +3339,10 @@ const INVENTORY_BAG_SLOT_COUNT = INVENTORY_BAG_COLS * INVENTORY_BAG_ROWS;
 const INVENTORY_EQUIP_COUNT = INVENTORY_SKILL_SLOT_COUNT;
 /** 底部状态栏技能槽数量 */
 const BOTTOM_STATUS_SKILL_SLOT_COUNT = INVENTORY_SKILL_SLOT_COUNT;
-/** 研究项展示区列数(4 列 × 2 行恰好容纳全部 8 个研究项) */
-const INVENTORY_RESEARCH_COLUMNS = 4;
+/** 研究项展示区列数(3 列 × 3 行共 9 格,容纳全部研究项:6 普通 + 3 传说;卡片更宽便于展示效果文本) */
+const INVENTORY_RESEARCH_COLUMNS = 3;
 /** 研究项展示区行数上限 */
-const INVENTORY_RESEARCH_MAX_ROWS = 2;
+const INVENTORY_RESEARCH_MAX_ROWS = 3;
 /**
  * 背包格子整体缩放系数。
  * 缩小背包界面以腾出上部分空间展示研究项(格子变小→背包区变矮)。
@@ -3901,8 +4096,12 @@ const handleInventoryPickUp = (canvas: HTMLCanvasElement, x: number, y: number) 
 
 /**
  * 背包界面下的鼠标左键按下处理
- * - 手上已有条目:点击目标格完成放置(再次点原格=放回)
- * - 手上没有条目:拿起该格的条目
+ * - 手上已有条目:
+ *   1) 点回原格 = 放回原处;
+ *   2) 点在目标格 = 放置/装配;
+ *   3) **点在背包面板之外 = 丢弃**(与拖拽丢弃同一入口,方向 = 屏幕中心→鼠标);
+ *   4) 点在面板内空白处 = 保持拿起状态
+ * - 手上没有条目:拿起该格的条目(单击拿起)
  * @returns 是否已消费该事件
  */
 const handleInventoryLeftDown = (canvas: HTMLCanvasElement, x: number, y: number): boolean => {
@@ -3918,12 +4117,25 @@ const handleInventoryLeftDown = (canvas: HTMLCanvasElement, x: number, y: number
       inventoryDragPayload = null;
       return true;
     }
-    // 点在面板空白处:保持拿起状态
-    if (!target) return true;
-    // 放置到目标格(目标不合法时保持拿起,例如把物品拖到技能槽)
-    if (H_applyInventoryDrop(payload, target)) {
-      inventoryDragPayload = null;
+    // 点在目标格上:放置到该格(目标不合法时保持拿起,例如把物品点到技能槽)
+    if (target) {
+      if (H_applyInventoryDrop(payload, target)) {
+        inventoryDragPayload = null;
+      }
+      return true;
     }
+    // 点在背包面板之外:执行丢弃(点击式丢弃)
+    const outsidePanel = !H_pointInRect(x, y, {
+      x: layout.panelX,
+      y: layout.panelY,
+      width: layout.panelWidth,
+      height: layout.panelHeight
+    });
+    if (outsidePanel) {
+      inventoryDragPayload = null;
+      H_dropInventoryEntry(payload, x, y, width, height);
+    }
+    // 面板内空白处:保持拿起状态,等待下一次点击
     return true;
   }
 
@@ -3979,8 +4191,77 @@ const handleInventoryRightDown = (canvas: HTMLCanvasElement, x: number, y: numbe
   }
 };
 
+/** 拖拽丢弃:抛出距离的基准值(px,对应鼠标距屏幕中心等于"画面长边"时) */
+const INVENTORY_DROP_DISTANCE_SCALE = 400;
+/** 拖拽丢弃:抛出距离下限(px) */
+const INVENTORY_DROP_MIN_DISTANCE = 80;
+
+/**
+ * 计算拖拽丢弃的抛出参数。
+ *
+ * - 方向 = 屏幕中心点 A → 鼠标位置 B 的单位向量(换算到世界坐标:屏幕 Y 轴向下,需取反);
+ * - 距离 L = (|AB| / 游戏画面长边) × 200,且不小于 80px。
+ */
+const H_resolveInventoryDropParams = (
+  screenX: number,
+  screenY: number,
+  canvasWidth: number,
+  canvasHeight: number
+): { direction: Point; distance: number } => {
+  const dx = screenX - canvasWidth / 2;
+  const dy = -(screenY - canvasHeight / 2); // 屏幕 Y 向下 → 世界 Y 向上
+  const len = Math.hypot(dx, dy);
+  const longSide = Math.max(1, Math.max(canvasWidth, canvasHeight));
+  const distance = Math.max(
+    INVENTORY_DROP_MIN_DISTANCE,
+    (len / longSide) * INVENTORY_DROP_DISTANCE_SCALE
+  );
+  if (len < 0.0001) return { direction: { x: 1, y: 0 }, distance };
+  return { direction: { x: dx / len, y: dy / len }, distance };
+};
+
+/**
+ * 执行"拖拽丢弃":从背包中移除条目并通知权威端在地面生成掉落物。
+ *
+ * 背包的移除在客户端本地完成并随 inventory_update 提交(与垃圾桶销毁同一机制),
+ * inventory_drop 指令只负责让权威端按方向/距离抛出地面实体。
+ * @returns 是否真正丢弃了条目
+ */
+const H_dropInventoryEntry = (
+  payload: InventoryDragPayload,
+  screenX: number,
+  screenY: number,
+  canvasWidth: number,
+  canvasHeight: number
+): boolean => {
+  const player = playerEntity;
+  if (!player) return false;
+  // 固有技能槽不可丢弃(不可拿起,此处再兜底一次)
+  if (payload.fromZone === 'equip' && H_inventoryIsInnateSkillSlot(payload.fromIndex)) return false;
+
+  const inventory = H_ensurePlayerInventory(player.inventory);
+  const removed = payload.fromZone === 'bag'
+    ? H_inventoryDestroyEntry(inventory, payload.uid)
+    : H_inventoryDestroyEquipped(inventory, payload.fromIndex);
+  if (!removed) return false;
+
+  sendInventoryUpdate(inventory);
+  const params = H_resolveInventoryDropParams(screenX, screenY, canvasWidth, canvasHeight);
+  sendClientInstruct(Instruct.I_InventoryDrop(player.id, {
+    kind: payload.kind,
+    tag: payload.tag,
+    name: payload.name,
+    color: payload.color,
+    count: payload.count,
+    direction: params.direction,
+    distance: params.distance
+  }));
+  return true;
+};
+
 /**
  * 背包界面下的鼠标抬起处理
+ * - 拖拽至面板外:执行丢弃(按屏幕中心 → 鼠标的方向抛出)
  * - 拖动过(位移超过阈值):按落点结算移动/装配/销毁
  * - 未拖动(单击):保留"拿起"状态,等待点击目标格放置
  */
@@ -4008,6 +4289,19 @@ const handleInventoryMouseUp = (canvas: HTMLCanvasElement, x: number, y: number,
   }
   if (target) {
     H_applyInventoryDrop(payload, target);
+    drawUI();
+    return;
+  }
+
+  // 落点在背包面板之外 = 拖拽丢弃
+  const outsidePanel = !H_pointInRect(x, y, {
+    x: layout.panelX,
+    y: layout.panelY,
+    width: layout.panelWidth,
+    height: layout.panelHeight
+  });
+  if (outsidePanel) {
+    H_dropInventoryEntry(payload, x, y, width, height);
   }
   drawUI();
 };
@@ -4026,6 +4320,29 @@ const H_fitText = (CtxUi: CanvasRenderingContext2D, text: string, maxWidth: numb
     if (CtxUi.measureText(candidate).width <= maxWidth) return candidate;
   }
   return '…';
+};
+
+/**
+ * 研究项卡片效果文本的字号自适应。
+ *
+ * 从 basePx 开始逐级缩小,直到文本能在 maxWidth 内完整画下;缩到 minPx 仍放不下时返回 minPx
+ * (此时才由调用方用省略号截断),避免"获取全部专研后部分效果文本显示不全"。
+ */
+const H_fitInventoryFontSize = (
+  CtxUi: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  basePx: number,
+  minPx: number,
+  fontOf: (size: number) => string
+): number => {
+  let size = Math.max(minPx, basePx);
+  while (size > minPx) {
+    CtxUi.font = fontOf(size);
+    if (CtxUi.measureText(text).width <= maxWidth) return size;
+    size -= 1;
+  }
+  return minPx;
 };
 
 /**
@@ -4101,6 +4418,17 @@ const H_drawInventoryResearchCard = (
   const effectText = entry.tag === 'immovable_fortress'
     ? `剩余 ${Math.round(Math.max(0, entry.value))} / ${Math.round(RESEARCH_FORTRESS_ABSORB_PER_LEVEL * entry.level)}`
     : H_getResearchEffectText(entry.tag, entry.level);
+  // 文本过长时先自动缩小字号,尽量完整展示;缩到下限仍放不下才省略
+  const effectFontOf = (size: number) => `${size}px "Microsoft YaHei", Arial, sans-serif`;
+  const effectFontSize = H_fitInventoryFontSize(
+    CtxUi,
+    effectText,
+    textWidth,
+    Math.max(9, rect.height * 0.19),
+    8,
+    effectFontOf
+  );
+  CtxUi.font = effectFontOf(effectFontSize);
   CtxUi.fillText(H_fitText(CtxUi, effectText, textWidth), textX, rect.y + rect.height * 0.7);
 
   CtxUi.restore();
@@ -4474,15 +4802,18 @@ const drawInventoryPanel = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvasE
   H_drawInventoryTrashIcon(CtxUi, trashRect, trashTarget);
 
   // ---- 底部操作提示 ----
-  // CtxUi.font = `${Math.max(10, layout.slotSize * 0.2)}px "Microsoft YaHei", Arial, sans-serif`;
-  // CtxUi.fillStyle = 'rgba(150, 214, 235, 0.85)';
-  // CtxUi.textAlign = 'center';
-  // CtxUi.fillText(
-  //   '左键点击/拖拽:拿起并放置　·　右键:使用物品 / 装配·卸下技能　·　拖入垃圾桶:销毁',
-  //   width / 2,
-  //   layout.hintY
-  // );
-  // CtxUi.textAlign = 'left';
+  // 专研界面此时被背包挡住(背包渲染在专研之上),给出提示避免玩家找不到待选择的专研
+  if (H_isResearchOverlayActive()) {
+    CtxUi.font = `bold ${Math.max(10, layout.slotSize * 0.2)}px "Microsoft YaHei", Arial, sans-serif`;
+    CtxUi.fillStyle = 'rgba(255, 207, 77, 0.92)';
+    CtxUi.textAlign = 'center';
+    CtxUi.fillText(
+      H_fitText(CtxUi, '专研待选择 · 关闭背包(E)后可选', layout.panelWidth - layout.padding * 2),
+      layout.panelX + layout.panelWidth / 2,
+      layout.hintY
+    );
+    CtxUi.textAlign = 'left';
+  }
 
   // ---- 悬停浮窗 ----
   inventoryTooltipEntry = null;
@@ -4684,13 +5015,19 @@ const drawEntities = () => {
   }
   // 绘制经验球
   for (const entity of expOrbEntityList) {
-   
+    if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
+      entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
+    }
+  }
   // 绘制技能球
   for (const entity of skillOrbEntityList) {
     if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
       entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
     }
-  } if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
+  }
+  // 绘制子弹球
+  for (const entity of bulletOrbEntityList) {
+    if (entity.isInViewport(worldToScreen, canvasSize, margin)) {
       entity.draw(ctxEntity, worldToScreen, canvasSize, entityDebugFlags);
     }
   }
@@ -4811,6 +5148,26 @@ const H_drawResearchGlyph = (
       const len = s * 0.42;
       ctx.fillRect(cx - arm, cy - len, arm * 2, len * 2);
       ctx.fillRect(cx - len, cy - arm, len * 2, arm * 2);
+      break;
+    }
+    case 'ammo': {
+      // 弹量:子弹轮廓(尖头在上、平底在下) + 下方弹壳底线
+      const w = s * 0.42;
+      const top = cy - s * 0.44;
+      const h = s * 0.74;
+      ctx.beginPath();
+      ctx.moveTo(cx, top);
+      ctx.lineTo(cx + w / 2, top + h * 0.38);
+      ctx.lineTo(cx + w / 2, top + h);
+      ctx.lineTo(cx - w / 2, top + h);
+      ctx.lineTo(cx - w / 2, top + h * 0.38);
+      ctx.closePath();
+      ctx.fill();
+      ctx.lineWidth = Math.max(1.5, s * 0.1);
+      ctx.beginPath();
+      ctx.moveTo(cx - w * 0.75, cy + s * 0.44);
+      ctx.lineTo(cx + w * 0.75, cy + s * 0.44);
+      ctx.stroke();
       break;
     }
     case 'death_keep': {
@@ -5162,8 +5519,9 @@ const drawResearchOverlay = (CtxUi: CanvasRenderingContext2D, CANVAS: HTMLCanvas
       CtxUi.restore();
     }
 
-    // 事件区域(idle 阶段才注册,避免动画期间误点)
-    if (researchUiPhase === 'idle') {
+    // 事件区域(idle 阶段才注册,避免动画期间误点);
+    // 背包打开时专研被背包挡住,不注册任何卡片区域 → 专研无法被选择
+    if (researchUiPhase === 'idle' && !inventoryVisible) {
       eventArea.push({
         id: `${RESEARCH_OVERLAY_EVENT_PREFIX}${i}`,
         rect: baseRect,
@@ -5676,10 +6034,11 @@ const drawUI = () => {
   drawMiniMap(ctxUi, UI_CANVAS.value);
   drawBottomStatusBar(ctxUi, UI_CANVAS.value);
   drawDebugBoard(ctxUi, UI_CANVAS.value);
+  // 专研界面画在背包之前:背包打开时位于专研之上(优先显示背包,专研被挡住且不可选择)
+  drawResearchOverlay(ctxUi, UI_CANVAS.value);
   drawInventoryPanel(ctxUi, UI_CANVAS.value);
   drawDebugTerminal(ctxUi, UI_CANVAS.value);
   drawKeyboardSettingsPanel(ctxUi, UI_CANVAS.value);
-  drawResearchOverlay(ctxUi, UI_CANVAS.value);
   drawDeathOverlay(ctxUi, UI_CANVAS.value);
 };
 
@@ -5687,13 +6046,13 @@ const drawUI = () => {
  * 加载所有实体的纹理
  */
 const loadEntityTextures = async () => {
-  const allEntities = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList, ...expOrbEntityList, ...skillOrbEntityList];
+  const allEntities = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList, ...expOrbEntityList, ...skillOrbEntityList, ...bulletOrbEntityList];
   await Promise.all(allEntities.map(e => e.loadTexture()));
   drawEntities(); // 加载完成后重绘
 };
 
 const refreshRenderEntityList = () => {
-  renderEntityList = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList, ...expOrbEntityList, ...skillOrbEntityList];
+  renderEntityList = [...staticEntityList, ...itemEntityList, ...npcEntityList, ...bulletEntityList, ...grenadeEntityList, ...expOrbEntityList, ...skillOrbEntityList, ...bulletOrbEntityList];
 };
 
 
@@ -5750,6 +6109,7 @@ const updateFireHeldAttack = (now: number) => {
   if (!playerFireMode) return;              // 未开启开火模式
   if (inventoryVisible) return;             // 背包界面打开时不攻击
   if (!playerEntity || H_isPlayerDead()) return; // 玩家不存在或已死亡
+  if (!playerEntity.hasBullet()) return;    // 子弹已耗尽,无法开火(需拾取子弹球补充)
   if (playerEntity.playerRule.fireCooldownNow > 0) return; // 攻击冷却尚未结束
   if (now - fireHeldLastSentAt < FIRE_HOLD_RESEND_GUARD_MS) return; // 抑制重复指令
 
@@ -6145,8 +6505,7 @@ const onGlobalKeyDown = (e: KeyboardEvent) => {
   // 背包(调试终端未打开时生效)
   if (!debugTerminalVisible && noModifier && bindingId === 'toggleInventory' && !e.repeat) {
     e.preventDefault();
-    // 专研界面打开时不允许切换到背包
-    if (H_isResearchOverlayActive()) return;
+    // 专研弹出时同样允许打开背包:背包会渲染在专研之上(优先显示背包),关闭背包后可继续选择专研
     // 死亡期间禁止打开背包(需与死亡界面交互)
     if (H_isPlayerDead()) return;
     if (!playerEntity) {
@@ -6505,8 +6864,8 @@ const onMousedown = (e: MouseEvent) => {
 
   if (H_getHitEventArea(screenX, screenY)) return;
 
-  // 死亡期间禁止开火(仅允许拖动视角观察世界)
-  if (e.button === 0 && playerFireMode && !H_isPlayerDead()) {
+  // 死亡期间禁止开火(仅允许拖动视角观察世界);子弹耗尽时同样无法开火
+  if (e.button === 0 && playerFireMode && !H_isPlayerDead() && (playerEntity?.hasBullet() ?? false)) {
     e.preventDefault();
     // 记录按住状态与当前鼠标位置:松开前只要冷却结束就会自动继续开火
     fireHeld = true;
@@ -6545,6 +6904,8 @@ const onMouseMove = (e: MouseEvent) => {
   if (inventoryVisible) {
     inventoryPointerX = mouseX;
     inventoryPointerY = mouseY;
+    // 背包打开时清空悬停区域:避免专研卡片/其它区域的悬停高亮残留(专研此时被背包挡住)
+    hoveredArea = null;
     cursorManager?.setNowCursorType(inventoryDragPayload ? 'move' : 'pointer');
     return;
   }

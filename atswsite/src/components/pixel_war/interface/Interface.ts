@@ -8,6 +8,7 @@ import type { NpcDynamicEntity } from '@/components/pixel_war/class/Entity/Dynam
 import type { PlayerDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 import type { ExpOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/ExpOrbDynamicEntity/ExpOrbDynamicEntity';
 import type { SkillOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/SkillOrbDynamicEntity/SkillOrbDynamicEntity';
+import type { BulletOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletOrbDynamicEntity/BulletOrbDynamicEntity';
 import type { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 
 export interface Resolution { width: number; height: number }
@@ -223,6 +224,7 @@ export interface DynamicEntitieList {
   playerDynamicEntitys: Array<PlayerDynamicEntity>;
   expOrbDynamicEntitys: Array<ExpOrbDynamicEntity>;
   skillOrbDynamicEntitys: Array<SkillOrbDynamicEntity>;
+  bulletOrbDynamicEntitys: Array<BulletOrbDynamicEntity>;
 }
 
 export interface MapData {
@@ -351,14 +353,14 @@ export interface PlayerRule {
 // 战利品与背包相关类型(背包 / 技能球 / 物品) -->
 //////////////////////////////////////////////////
 
-/** 战利品类型:目前仅支持技能球,预留后续扩展(如物品球、金币等) */
-export type LootType = 'skillOrb';
+/** 战利品类型:技能球 / 子弹球(后续可继续扩展) */
+export type LootType = 'skillOrb' | 'bulletOrb';
 
 /** NPC 战利品配置 */
 export interface NpcLoot {
   /** 战利品类型 */
   type: LootType;
-  /** 战利品标签(技能球对应技能 tag,如 va2_shoot_skill) */
+  /** 战利品标签(技能球对应技能 tag;子弹球固定为 'bullet_orb') */
   tag: string;
   /** 掉落概率,取值范围 (0, 1] */
   odds: number;

@@ -31,6 +31,8 @@ public class WhitePixelNpc extends NpcEntity {
         this.killScore = 1;
         this.mapColor = "#ffffff";
         this.gameExp = 2;
+        // 子弹球:会发射普通子弹的 NPC 均有概率掉落(概率 75%)
+        this.loot.add(new Loot("bulletOrb", "bullet_orb", 0.75));
     }
 
     @Override

@@ -33,6 +33,10 @@ public final class PlayerEntity extends DynamicEntity {
     public static final double MIN_MOVE_SPEED = 50;
     /** 玩家生命值上限 */
     public static final double HEALTH_MAX = 10;
+    /** 出生时的默认当前子弹数 */
+    public static final int BASE_BULLET_COUNT = 50;
+    /** 出生时的默认最大子弹数 */
+    public static final int BASE_BULLET_MAX = 50;
     /** 玩家移动阻尼,值越大松手后减速越快 */
     public static final double MOTION_DAMPING = 8.5;
     /** 玩家转向响应,值越大移动转向越跟手 */
@@ -152,6 +156,10 @@ public final class PlayerEntity extends DynamicEntity {
     public double stamina;
     /** 体力值上限 */
     public double staminaMax = 100;
+    /** 当前子弹数(开火每次消耗 1 发;为 0 时无法开火,由子弹球补充) */
+    public int bulletCount = BASE_BULLET_COUNT;
+    /** 最大子弹数(基础 50 + 专研「弹量」加成) */
+    public int bulletMaxCount = BASE_BULLET_MAX;
     public boolean isSprinting;
     public DodgeState dodgeState;
 
@@ -579,11 +587,13 @@ public final class PlayerEntity extends DynamicEntity {
         this.targetHistory = new ArrayList<>(List.of(position.copy()));
         this.curvePoints = new ArrayList<>(List.of(position.copy()));
         this.currentCurveIndex = 0;
-        this.health = healthMax;
+        this.health = this.healthMax;
         this.isDead = false;
         this.deathEffectTimer = 0;
         this.damageFlashTimer = 0;
         this.isMoving = false;
+        // 重生视为重新出生:子弹补满
+        this.bulletCount = this.bulletMaxCount;
         this.stamina = staminaMax;
         this.isSprinting = false;
         this.staminaRecoveryDelayRemaining = 0;
@@ -864,6 +874,55 @@ public final class PlayerEntity extends DynamicEntity {
         return Math.min(1, Research.DEATH_KEEP_CHANCE_PER_LEVEL * Research.getLevel(research, "death_keep"));
     }
 
+    /** 专研"弹量"提供的最大子弹数加成(各等级增量之和) */
+    public int getAmmoResearchBonus() {
+        return Research.ammoMaxBonus(Research.getLevel(research, "ammo"));
+    }
+
+    /** 当前剩余的子弹容量(已满时为 0) */
+    public int getBulletCapacity() {
+        return Math.max(0, bulletMaxCount - bulletCount);
+    }
+
+    /** 是否还有子弹可以开火 */
+    public boolean hasBullet() {
+        return bulletCount > 0;
+    }
+
+    /**
+     * 消耗子弹(开火时调用)。
+     *
+     * @param amount 消耗数量(默认 1)
+     * @return 是否消耗成功(子弹不足时不消耗并返回 false)
+     */
+    public boolean consumeBullet(int amount) {
+        int need = Math.max(1, amount);
+        if (bulletCount < need) {
+            return false;
+        }
+        bulletCount -= need;
+        return true;
+    }
+
+    /**
+     * 补充子弹(吸收子弹球时调用)。
+     * 已达上限时不吸收;剩余容量不足时仅补充容量允许的部分。
+     *
+     * @param amount 期望补充的数量
+     * @return 实际补充的数量
+     */
+    public int addBulletCount(int amount) {
+        if (amount <= 0 || isDead) {
+            return 0;
+        }
+        int accepted = Math.min(getBulletCapacity(), amount);
+        if (accepted <= 0) {
+            return 0;
+        }
+        bulletCount += accepted;
+        return accepted;
+    }
+
     /**
      * 根据当前专研重新计算受其影响的派生属性:生命/体力上限与开火冷却,
      * 并刷新移动速度。生命/体力上限提升时把增量直接补进当前值。
@@ -889,6 +948,18 @@ public final class PlayerEntity extends DynamicEntity {
         }
         if (stamina > staminaMax) {
             stamina = staminaMax;
+        }
+
+        // 专研"弹量":提升最大子弹数;上限提升时把增量直接补进当前子弹数
+        int ammoLevel = Research.getLevel(research, "ammo");
+        int newBulletMax = BASE_BULLET_MAX + Research.ammoMaxBonus(ammoLevel);
+        int bulletDelta = newBulletMax - bulletMaxCount;
+        bulletMaxCount = newBulletMax;
+        if (bulletDelta > 0 && !isDead) {
+            bulletCount = Math.min(bulletMaxCount, bulletCount + bulletDelta);
+        }
+        if (bulletCount > bulletMaxCount) {
+            bulletCount = bulletMaxCount;
         }
 
         // 开火冷却 = 基础冷却 ÷ 射速倍率 × 冷却倍率

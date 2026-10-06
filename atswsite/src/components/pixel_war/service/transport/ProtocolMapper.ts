@@ -6,6 +6,7 @@ import type {
 } from '@/components/pixel_war/interface/Interface';
 import type {
   JavaBullet,
+  JavaBulletOrb,
   JavaClientEnvelope,
   JavaExpOrb,
   JavaGrenade,
@@ -18,6 +19,7 @@ import type {
   JavaStaticEntity,
   JavaWelcome
 } from '@/components/pixel_war/service/transport/JavaProtocol';
+import { PlayerDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 
 /**
  * 协议映射:Java 服务端协议 <-> 前端渲染数据。
@@ -43,6 +45,7 @@ const H_FIXED_SIZE = {
   grenade: 10,
   expOrb: 12,
   skillOrb: 14,
+  bulletOrb: 10,
   item: 25
 } as const;
 
@@ -117,6 +120,12 @@ export const H_toPlayerEntity = (
   isSprinting: player.sprinting,
   stamina: privateState ? privateState.stamina : player.staminaRatio * 100,
   staminaMax: privateState ? privateState.staminaMax : 100,
+  bulletCount: privateState && Number.isFinite(privateState.bulletCount)
+    ? (privateState.bulletCount as number)
+    : PlayerDynamicEntity.BASE_BULLET_COUNT,
+  bulletMaxCount: privateState && Number.isFinite(privateState.bulletMaxCount)
+    ? (privateState.bulletMaxCount as number)
+    : PlayerDynamicEntity.BASE_BULLET_MAX,
   player_score: player.score,
   game_level: player.level,
   game_exp: privateState ? privateState.exp : 0,
@@ -255,6 +264,20 @@ export const H_toSkillOrbEntity = (orb: JavaSkillOrb): Record<string, unknown> =
   isPickedUp: false
 });
 
+/** Java 子弹球 -> 前端子弹球快照 */
+export const H_toBulletOrbEntity = (orb: JavaBulletOrb): Record<string, unknown> => ({
+  id: orb.id,
+  type: 'dynamic',
+  kind: 'bullet_orb',
+  tag: 'bullet_orb',
+  name: '子弹球',
+  position: H_toPosition(orb.position),
+  width: H_FIXED_SIZE.bulletOrb,
+  height: H_FIXED_SIZE.bulletOrb,
+  value: orb.value,
+  isPickedUp: false
+});
+
 /** Java 地面物品 -> 前端物品快照 */
 export const H_toItemEntity = (item: JavaItem): Record<string, unknown> => ({
   id: item.id,
@@ -291,7 +314,8 @@ export const H_toClientMapData = (snapshot: JavaSnapshot): MapData => {
       bulletDynamicEntitys: snapshot.bullets.map(H_toBulletEntity),
       grenadeDynamicEntitys: snapshot.grenades.map(H_toGrenadeEntity),
       expOrbDynamicEntitys: snapshot.expOrbs.map(H_toExpOrbEntity),
-      skillOrbDynamicEntitys: snapshot.skillOrbs.map(H_toSkillOrbEntity)
+      skillOrbDynamicEntitys: snapshot.skillOrbs.map(H_toSkillOrbEntity),
+      bulletOrbDynamicEntitys: (snapshot.bulletOrbs ?? []).map(H_toBulletOrbEntity)
     },
     itemEntities: snapshot.items.map(H_toItemEntity)
   };
@@ -313,7 +337,8 @@ export const H_toMapDataInitialInstruct = (welcome: JavaWelcome): InstructObject
       bulletDynamicEntitys: [],
       grenadeDynamicEntitys: [],
       expOrbDynamicEntitys: [],
-      skillOrbDynamicEntitys: []
+      skillOrbDynamicEntitys: [],
+      bulletOrbDynamicEntitys: []
     },
     itemEntities: []
   }
@@ -357,6 +382,19 @@ export const H_toJavaClientMessage = (instruct: InstructObject): JavaClientEnvel
       return { type: 'inventory_update', data: { inventory: data.inventory } };
     case 'inventory_use_item':
       return { type: 'inventory_use_item', data: { uid: data.uid } };
+    case 'inventory_drop':
+      return {
+        type: 'inventory_drop',
+        data: {
+          kind: data.kind,
+          tag: data.tag,
+          name: data.name,
+          color: data.color,
+          count: data.count,
+          direction: data.direction,
+          distance: data.distance
+        }
+      };
     case 'research_choose':
       return { type: 'research_choose', data: { tag: data.tag } };
     case 'tick_pause':

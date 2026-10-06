@@ -4,7 +4,7 @@ import type { ResearchCategory, ResearchEntry } from '@/components/pixel_war/int
  * 专研(Research)系统 —— 面向玩家的自我提升天赋系统。
  *
  * 玩家每次升级时按概率触发专研界面,从随机三个研究项中选择一项进行研究。
- * - 普通研究项(蓝色):总体出现概率 90%,5 个子项均摊;
+ * - 普通研究项(蓝色):总体出现概率 90%,6 个子项均摊;
  * - 传说研究项(金色):总体出现概率 10%,3 个子项均摊。
  *
  * 本模块只定义"研究项本身"(标签/名称/类别/权重/上限/说明)与抽取、查询等纯函数;
@@ -20,6 +20,7 @@ export type ResearchTagType =
   | 'cooldown'
   | 'stamina'
   | 'health'
+  | 'ammo'
   | 'death_keep'
   | 'immovable_fortress'
   | 'lucky_star';
@@ -34,7 +35,7 @@ export interface ResearchDefinition {
   category: ResearchCategory;
   /**
    * 单次抽取时该研究项被选中的权重概率。
-   * 普通项合计 0.9(每项 0.18),传说项合计 0.1(每项 1/30),总和为 1。
+   * 普通项合计 0.9(每项 0.15),传说项合计 0.1(每项 1/30),总和为 1。
    */
   weight: number;
   /** 等级上限(null 表示无上限,可无限叠加) */
@@ -63,6 +64,10 @@ export const RESEARCH_STAMINA_DRAIN_REDUCTION_PER_LEVEL = 2;
 export const RESEARCH_STAMINA_DRAIN_MIN = 6;
 /** 生命:每级提升的生命上限(具体数值) */
 export const RESEARCH_HEALTH_MAX_BONUS_PER_LEVEL = 2;
+/** 弹量:等级 1 每级增加的最大子弹数的基准值(n = 基准 - 等级,下限 1) */
+export const RESEARCH_AMMO_BONUS_BASE = 21;
+/** 弹量:每级增加的最大子弹数的下限(保证 n ≥ 1) */
+export const RESEARCH_AMMO_BONUS_MIN = 1;
 /** 死亡不掉落:每级增加的保护概率 */
 export const RESEARCH_DEATH_KEEP_CHANCE_PER_LEVEL = 0.2;
 /** 不动堡垒:每级增加的最大吸收值 */
@@ -82,7 +87,7 @@ export const RESEARCH_LEGENDARY_COLOR = '#ffcf4d';
 /** 抽取时一次给出的研究项数量 */
 export const RESEARCH_OPTION_COUNT = 3;
 
-const NORMAL_WEIGHT = 0.9 / 5;
+const NORMAL_WEIGHT = 0.9 / 6;
 const LEGENDARY_WEIGHT = 0.1 / 3;
 
 /** 全部研究项定义(顺序即展示优先级) */
@@ -126,6 +131,14 @@ const RESEARCH_DEFINITIONS: readonly ResearchDefinition[] = [
     weight: NORMAL_WEIGHT,
     maxLevel: null,
     description: '提升玩家生命上限'
+  },
+  {
+    tag: 'ammo',
+    name: '弹量',
+    category: 'normal',
+    weight: NORMAL_WEIGHT,
+    maxLevel: null,
+    description: '提升最大子弹数(每级增加 21 - 等级 发,至少 1 发)'
   },
   {
     tag: 'death_keep',
@@ -230,6 +243,25 @@ export const H_rollResearchOptions = (
 };
 
 /**
+ * 专研「弹量」在指定等级下累计提升的最大子弹数。
+ *
+ * 每升 1 级增加 n = 21 - 当前等级(至少 1)发,因此总加成是各等级增量之和:
+ * - 等级 L ≤ 20:L × 21 - L × (L + 1) / 2;
+ * - 等级 L > 20:前 20 级的 210 发 + 每级 1 发。
+ */
+export const H_getAmmoMaxBonus = (level: number): number => {
+  const safeLevel = Math.max(0, Math.floor(level));
+  const cappedLevel = Math.min(safeLevel, RESEARCH_AMMO_BONUS_BASE - RESEARCH_AMMO_BONUS_MIN);
+  let bonus = 0;
+  for (let l = 1; l <= cappedLevel; l++) {
+    bonus += Math.max(RESEARCH_AMMO_BONUS_MIN, RESEARCH_AMMO_BONUS_BASE - l);
+  }
+  // 超过 20 级后每级固定 +1(下限 1)
+  bonus += (safeLevel - cappedLevel) * RESEARCH_AMMO_BONUS_MIN;
+  return bonus;
+};
+
+/**
  * 生成某研究项在某等级下的效果说明(用于界面"下部说明"展示)
  * @param tag 研究项标签
  * @param level 目标等级(通常为"研究后"的等级)
@@ -251,6 +283,8 @@ export const H_getResearchEffectText = (tag: string, level: number): string => {
       }/秒`;
     case 'health':
       return `生命上限 +${RESEARCH_HEALTH_MAX_BONUS_PER_LEVEL * safeLevel}`;
+    case 'ammo':
+      return `最大子弹数 +${H_getAmmoMaxBonus(safeLevel)}`;
     case 'death_keep':
       return `保护概率 ${Math.round(Math.min(1, RESEARCH_DEATH_KEEP_CHANCE_PER_LEVEL * safeLevel) * 100)}%`;
     case 'immovable_fortress':

@@ -106,6 +106,10 @@ export interface JavaPlayerPrivate {
   fireCooldownMax: number;
   /** 技能装配区各槽位的技能剩余CD(秒),下标与 equippedSkills 一致 */
   equippedSkillCooldowns: number[];
+  /** 当前子弹数(开火消耗,子弹球补充) */
+  bulletCount: number;
+  /** 最大子弹数(基础 50 + 专研「弹量」加成) */
+  bulletMaxCount: number;
   inventory: JavaInventory;
   servantIds: number[];
   /** 已研究的专研项 */
@@ -191,6 +195,13 @@ export interface JavaSkillOrb {
   skillTag: string;
 }
 
+/** 子弹球快照(碰撞体积恒为 14×14,不再下发) */
+export interface JavaBulletOrb {
+  id: number;
+  position: JavaVec;
+  value: number;
+}
+
 export interface JavaItem {
   id: number;
   tag: string;
@@ -220,6 +231,7 @@ export interface JavaSnapshot {
   grenades: JavaGrenade[];
   expOrbs: JavaExpOrb[];
   skillOrbs: JavaSkillOrb[];
+  bulletOrbs: JavaBulletOrb[];
   items: JavaItem[];
 }
 
@@ -238,6 +250,7 @@ export type JavaClientMessageType =
   | 'respawn'
   | 'inventory_update'
   | 'inventory_use_item'
+  | 'inventory_drop'
   | 'research_choose'
   | 'tick_pause'
   | 'ping';

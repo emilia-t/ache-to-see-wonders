@@ -109,7 +109,9 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
     this.mapColor = PurpleFireworkOa18Entity.MAIN_COLOR;
     // 战利品:击杀后概率掉落其持有的「环射烟花」技能球
     this.loot = [
-      { type: 'skillOrb', tag: Oa18ShootSkill.TAG, odds: PurpleFireworkOa18Entity.LOOT_ODDS }
+      { type: 'skillOrb', tag: Oa18ShootSkill.TAG, odds: PurpleFireworkOa18Entity.LOOT_ODDS },
+      // 子弹球:会发射普通子弹的 NPC 均有概率掉落(概率 75%)
+      { type: 'bulletOrb', tag: 'bullet_orb', odds: 0.75 }
     ];
   }
 

@@ -29,6 +29,7 @@ import {
   RESEARCH_STAMINA_DRAIN_MIN,
   RESEARCH_STAMINA_DRAIN_REDUCTION_PER_LEVEL,
   RESEARCH_STAMINA_MAX_BONUS_PER_LEVEL,
+  H_getAmmoMaxBonus,
   H_getResearchEntry,
   H_getResearchDefinition,
   H_getResearchLevel,
@@ -139,6 +140,10 @@ class PlayerDynamicEntity extends DynamicEntity {
   public static readonly MOVE_SPEED = 410;
   public static readonly MIN_MOVE_SPEED = 50;
   public static readonly HEALTH_MAX = 10;// 玩家生命值上限
+  /** 出生时的默认当前子弹数 */
+  public static readonly BASE_BULLET_COUNT = 50;
+  /** 出生时的默认最大子弹数 */
+  public static readonly BASE_BULLET_MAX = 50;
   public static readonly PLAYER_MOTION_DAMPING = 8.5;// 玩家移动阻尼，值越大松手后减速越快
   public static readonly PLAYER_MOTION_TURN_RESPONSE = 10.5;// 玩家转向响应，值越大移动转向越跟手
   public static readonly playerMoveState = {W: false,A: false,S: false,D: false,Shift: false};
@@ -244,6 +249,10 @@ class PlayerDynamicEntity extends DynamicEntity {
   public teamId: number | null;
   public player_score: number;
   public game_level: number;// 游戏等级
+  /** 当前子弹数(开火每次消耗 1 发;为 0 时无法开火,由子弹球补充) */
+  public bulletCount: number;
+  /** 最大子弹数(基础 50 + 专研「弹量」加成) */
+  public bulletMaxCount: number;
   public stamina: number;// 当前体力值(0-100)
   public staminaMax: number;// 体力值上限(100)
   public isSprinting: boolean = false;// 是否处于疾跑状态
@@ -343,6 +352,8 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.player_score = 0;
     this.game_level = 0;
     this.game_exp = 0;
+    this.bulletCount = PlayerDynamicEntity.BASE_BULLET_COUNT;
+    this.bulletMaxCount = PlayerDynamicEntity.BASE_BULLET_MAX;
     this.research = [];
     this.researchPendingOptions = [];
     this.researchPendingRolls = 0;
@@ -460,6 +471,48 @@ class PlayerDynamicEntity extends DynamicEntity {
     return Math.min(1, RESEARCH_DEATH_KEEP_CHANCE_PER_LEVEL * level);
   }
 
+  /** 专研"弹量"提供的最大子弹数加成(各等级增量之和) */
+  public getAmmoResearchBonus(): number {
+    return H_getAmmoMaxBonus(H_getResearchLevel(this.research, 'ammo'));
+  }
+
+  /** 当前剩余的子弹容量(已满时为 0) */
+  public getBulletCapacity(): number {
+    return Math.max(0, this.bulletMaxCount - this.bulletCount);
+  }
+
+  /** 是否还有子弹可以开火 */
+  public hasBullet(): boolean {
+    return this.bulletCount > 0;
+  }
+
+  /**
+   * 消耗子弹(开火时调用)。
+   * @param amount 消耗数量(默认 1)
+   * @returns 是否消耗成功(子弹不足时不消耗并返回 false)
+   */
+  public consumeBullet(amount: number = 1): boolean {
+    const need = Math.max(1, Math.floor(amount));
+    if (this.bulletCount < need) return false;
+    this.bulletCount -= need;
+    return true;
+  }
+
+  /**
+   * 补充子弹(吸收子弹球时调用)。
+   * 已达上限时不吸收;剩余容量不足时仅补充容量允许的部分。
+   * @param amount 期望补充的数量
+   * @returns 实际补充的数量
+   */
+  public addBulletCount(amount: number): number {
+    const want = Math.floor(amount);
+    if (!(want > 0) || this.isDead) return 0;
+    const accepted = Math.min(this.getBulletCapacity(), want);
+    if (accepted <= 0) return 0;
+    this.bulletCount += accepted;
+    return accepted;
+  }
+
   /**
    * 根据当前专研重新计算受其影响的派生属性:
    * - 生命上限(+具体数值)
@@ -489,6 +542,16 @@ class PlayerDynamicEntity extends DynamicEntity {
       this.stamina = Math.min(this.staminaMax, this.stamina + staminaDelta);
     }
     if (this.stamina > this.staminaMax) this.stamina = this.staminaMax;
+
+    // 专研"弹量":提升最大子弹数;上限提升时把增量直接补进当前子弹数
+    const ammoLevel = H_getResearchLevel(this.research, 'ammo');
+    const newBulletMax = PlayerDynamicEntity.BASE_BULLET_MAX + H_getAmmoMaxBonus(ammoLevel);
+    const bulletDelta = newBulletMax - this.bulletMaxCount;
+    this.bulletMaxCount = newBulletMax;
+    if (bulletDelta > 0 && !this.isDead) {
+      this.bulletCount = Math.min(this.bulletMaxCount, this.bulletCount + bulletDelta);
+    }
+    if (this.bulletCount > this.bulletMaxCount) this.bulletCount = this.bulletMaxCount;
 
     // 开火冷却 = 基础冷却 ÷ 射速倍率 × 冷却倍率(两者均会缩短间隔)
     const fireRateMultiplier = this.getFireRateMultiplier();
@@ -1237,6 +1300,8 @@ class PlayerDynamicEntity extends DynamicEntity {
     this.deathEffectTimer = 0;
     this.damageFlashTimer = 0;
     this.isMoving = false;
+    // 重生视为重新出生:子弹补满
+    this.bulletCount = this.bulletMaxCount;
     this.stamina = this.staminaMax;
     this.isSprinting = false;
     this.staminaRecoveryDelayRemaining = 0;

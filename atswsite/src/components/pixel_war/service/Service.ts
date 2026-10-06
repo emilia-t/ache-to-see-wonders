@@ -34,7 +34,8 @@ import {
   HealingGemItemEntity,
   GrenadeDynamicEntity,
   ExpOrbDynamicEntity,
-  SkillOrbDynamicEntity
+  SkillOrbDynamicEntity,
+  BulletOrbDynamicEntity
 } from '@/components/pixel_war/class';
 
 import gameConfig from '@/components/pixel_war/service/GameConfig';
@@ -67,7 +68,8 @@ const MAP_DATA: MapData = {
     npcDynamicEntitys: [],
     playerDynamicEntitys: [],
     expOrbDynamicEntitys: [],
-    skillOrbDynamicEntitys: []
+    skillOrbDynamicEntitys: [],
+    bulletOrbDynamicEntitys: []
   },
   staticEntities: [],
   itemEntities: []
@@ -462,7 +464,10 @@ const spawnPlayerBullet = (target: Point, playerId: number) => {
   const dy = target.y - playerEntity.position.y;
   const len = Math.hypot(dx, dy);
   if (len < 0.0001) return;
+// 开火消耗 1 发子弹:子弹不足时无法开火(子弹由「子弹球」补充)
+  if (!playerEntity.consumeBullet(1)) return;
 
+  
   const direction = { x: dx / len, y: dy / len };
   const spawnDistance = playerEntity.width * 0.6;
   const bulletColor = playerEntity.playerRule.bulletColor;
@@ -488,8 +493,8 @@ const spawnPlayerBullet = (target: Point, playerId: number) => {
       // 激光生成回调:供「激光束」等线段型技能使用
       spawnLaserBullet: (position: Point, dir: Point, color: string, options) => {
         const laser = new LaserBulletDynamicEntity(position, dir, ownerId, teamId, '', color, options);
-        // 记录发射位置:与 NPC 激光同规则——玩家一旦移动,该光束立刻失去源头并被移除
-        laser.laserAnchor = { x: playerEntity.position.x, y: playerEntity.position.y };
+        // 记录发射者当前坐标:供权威端每帧计算位移增量,使激光跟随发射者同步移动
+        laser.laserShooterPosition = { x: playerEntity.position.x, y: playerEntity.position.y };
         MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(laser);
       }
     });
@@ -622,29 +627,23 @@ const H_applyBulletDamage = (
   }
 };
 
-/** 激光"失去源头"的判定容差(px):发射者离开锚点超过该距离即视为已经移动 */
-const LASER_ANCHOR_TOLERANCE = 0.5;
-
 /**
- * 判断一束激光是否已"失去源头"而应立刻移除。
+ * 查找一束激光的发射者(玩家或 NPC,含玩家的从者 NPC)。
  *
- * 激光的设定是"从固定炮位射出的静止光束":无论发射者是玩家还是 NPC,
- * 在光束存活期间都必须原地不动。因此只要发射者离开发射点——被其它实体推动、
- * 玩家移动/闪现、NPC 被吸附为从者后瞬移回网格、被释放后重新开始游走等——
- * 这束激光就失去了源头,必须立刻移除,否则会留下一道与发射者脱节的无源光束
- * (表现为"镭射弹留在原地")。
+ * 激光的 ownerId 在生成时写入:
+ * <ul>
+ *   <li>玩家技能「激光束」→ 玩家 id;</li>
+ *   <li>幽蓝孤光(野生) → 该 NPC id;</li>
+ *   <li>幽蓝孤光(从者) → 该从者 NPC 自己的 id(而非主人 id)。</li>
+ * </ul>
  *
- * @param laser 待判断的激光弹
- * @returns 是否需要立刻移除该激光
+ * @returns 发射者实体;发射者不存在(已被击杀清理/断线)时返回 null
  */
-const H_isLaserDetachedFromShooter = (laser: LaserBulletDynamicEntity): boolean => {
-  const anchor = laser.laserAnchor;
-  if (anchor === null || laser.ownerId === null) return false; // 未写锚点的激光不处理
-  // 发射者既可能是玩家(技能「激光束」),也可能是 NPC(幽蓝孤光)
-  const owner = getNpcDynamicEntityById(laser.ownerId) ?? getPlayerDynamicEntityById(laser.ownerId);
-  if (owner === null) return true; // 发射者已不存在(被击杀/清理/断线)
-  // 发射者一旦移动(含被推动、玩家移动/闪现、从者瞬移回网格)即视为失去源头
-  return Math.hypot(owner.position.x - anchor.x, owner.position.y - anchor.y) > LASER_ANCHOR_TOLERANCE;
+const H_findLaserShooter = (
+  laser: LaserBulletDynamicEntity
+): PlayerDynamicEntity | NpcDynamicEntity | null => {
+  if (laser.ownerId === null) return null;
+  return getNpcDynamicEntityById(laser.ownerId) ?? getPlayerDynamicEntityById(laser.ownerId);
 };
 
 /**
@@ -761,12 +760,10 @@ const updateBulletEntities = (deltaTime: number): boolean => {
 
     // 激光弹为线段型子弹:命中/持续伤害走独立分支,且不会因命中而消失
     if (bullet instanceof LaserBulletDynamicEntity) {
-      // 发射者一旦移动(玩家移动/被推动/从者瞬移回网格)先前的激光即失去源头,必须立刻移除
-      if (H_isLaserDetachedFromShooter(bullet)) {
-        bullet.shouldRemove = true;
-        changed = true;
-        continue;
-      }
+      // 激光跟随发射者同步移动:按发射者的位移增量平移整条线段(方向与长度不变);
+      // 发射者不存在时保持最后位置,直到激光自然寿命结束
+      const shooter = H_findLaserShooter(bullet);
+      if (shooter !== null) bullet.followShooter(shooter.position);
       if (updateLaserBulletHits(bullet)) changed = true;
       continue;
     }
@@ -967,33 +964,40 @@ const updateExpOrbDynamicEntities = (deltaTime: number): boolean => {
 
 /**
  * 在指定位置爆出一个技能球
- * @param position 掉落位置(通常为 NPC 死亡位置)
+ * @param position 掉落位置(通常为 NPC 死亡位置 / 丢弃落点)
  * @param skillTag 技能标签
+ * @param spread   是否随机散布并给一个爆出冲量。
+ *                 NPC 死亡掉落用 true(有"爆出"手感);
+ *                 **背包拖拽丢弃必须用 false** —— 否则随机偏移可能把球扔回技能球的吸引范围内,
+ *                 导致"刚丢出去就被立刻吸回来"。
  */
-const spawnSkillOrb = (position: Point, skillTag: string): void => {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 10 + Math.random() * 26;
-  const orb = new SkillOrbDynamicEntity(
-    {
-      x: position.x + Math.cos(angle) * dist,
-      y: position.y + Math.sin(angle) * dist
-    },
-    skillTag
-  );
-  // 给一个随机的初始冲量,制造"爆出"的手感
-  const burstAngle = Math.random() * Math.PI * 2;
-  const burstSpeed = 50 + Math.random() * 90;
-  orb.motionVelocity = {
-    x: Math.cos(burstAngle) * burstSpeed,
-    y: Math.sin(burstAngle) * burstSpeed
-  };
+const spawnSkillOrb = (position: Point, skillTag: string, spread: boolean = true): void => {
+  let spawnX = position.x;
+  let spawnY = position.y;
+  if (spread) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 10 + Math.random() * 26;
+    spawnX += Math.cos(angle) * dist;
+    spawnY += Math.sin(angle) * dist;
+  }
+  const orb = new SkillOrbDynamicEntity({ x: spawnX, y: spawnY }, skillTag);
+  if (spread) {
+    // 给一个随机的初始冲量,制造"爆出"的手感
+    const burstAngle = Math.random() * Math.PI * 2;
+    const burstSpeed = 50 + Math.random() * 90;
+    orb.motionVelocity = {
+      x: Math.cos(burstAngle) * burstSpeed,
+      y: Math.sin(burstAngle) * burstSpeed
+    };
+  }
   MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys.push(orb);
 };
 
 /**
  * 结算 NPC 死亡时的战利品掉落
  * 依据 NPC 的 loot 配置逐条按概率掉落:
- * - 目前仅支持 type === 'skillOrb',掉落一颗对应技能的技能球
+ * - type === 'skillOrb' 时掉落一颗对应技能的技能球;
+ * - type === 'bulletOrb' 时掉落一颗子弹球(会发射子弹的 NPC 均有配置);
  * - 每个 NPC 只结算一次(deathLootProcessed)
  * - 仅无主的敌对/中立 NPC 掉落,玩家自己的从者与超远端销毁的 NPC 不产出战利品
  */
@@ -1013,10 +1017,13 @@ const handleNpcDeathLoot = (): void => {
     const luckyBonus = killer ? killer.getLuckyStarBonus() : 0;
 
     for (const loot of npc.loot) {
-      if (loot.type !== 'skillOrb') continue;
       const odds = Math.max(0, Math.min(1, Number(loot.odds) + luckyBonus));
       if (!(Math.random() < odds)) continue;
-      spawnSkillOrb(npc.position, loot.tag);
+      if (loot.type === 'skillOrb') {
+        spawnSkillOrb(npc.position, loot.tag);
+      } else if (loot.type === 'bulletOrb') {
+        spawnBulletOrb(npc.position);
+      }
     }
   }
 };
@@ -1033,6 +1040,105 @@ const updateSkillOrbDynamicEntities = (deltaTime: number): boolean => {
   const oldLength = MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys.length;
   MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys = MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys.filter(orb => !orb.isPickedUp);
   return oldLength !== MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys.length;
+};
+
+/**
+ * 在指定位置爆出一颗子弹球
+ * @param position 掉落位置(通常为 NPC 死亡位置)
+ * @param value 承载的子弹数(默认 1 发)
+ */
+const spawnBulletOrb = (
+  position: Point,
+  value: number = BulletOrbDynamicEntity.DEFAULT_VALUE
+): void => {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 10 + Math.random() * 26;
+  const orb = new BulletOrbDynamicEntity(
+    {
+      x: position.x + Math.cos(angle) * dist,
+      y: position.y + Math.sin(angle) * dist
+    },
+    value
+  );
+  // 给一个随机的初始冲量,制造"爆出"的手感
+  const burstAngle = Math.random() * Math.PI * 2;
+  const burstSpeed = 50 + Math.random() * 90;
+  orb.motionVelocity = {
+    x: Math.cos(burstAngle) * burstSpeed,
+    y: Math.sin(burstAngle) * burstSpeed
+  };
+  MAP_DATA.dynamicEntitie.bulletOrbDynamicEntitys.push(orb);
+};
+
+/**
+ * 更新子弹球实体(移动、吸引、拾取)
+ * 子弹球被拾取后由实体自身为玩家补充子弹(已满则不吸收,容量不足时只吸收一部分)。
+ */
+const updateBulletOrbDynamicEntities = (deltaTime: number): boolean => {
+  if (MAP_DATA.dynamicEntitie.bulletOrbDynamicEntitys.length === 0) return false;
+  for (const orb of MAP_DATA.dynamicEntitie.bulletOrbDynamicEntitys) {
+    orb.update(deltaTime, MAP_DATA.staticEntities, MAP_DATA.dynamicEntitie, GCFG);
+  }
+  const oldLength = MAP_DATA.dynamicEntitie.bulletOrbDynamicEntitys.length;
+  MAP_DATA.dynamicEntitie.bulletOrbDynamicEntitys = MAP_DATA.dynamicEntitie.bulletOrbDynamicEntitys.filter(orb => !orb.isPickedUp);
+  return oldLength !== MAP_DATA.dynamicEntitie.bulletOrbDynamicEntitys.length;
+};
+
+/**
+ * 计算丢弃物的落点:从玩家位置沿 direction 抛出 distance px。
+ * 落点与静态实体(围墙)冲突时沿同一方向逐步收缩;始终找不到可用点时退回玩家位置。
+ */
+const H_resolveInventoryDropPosition = (
+  player: PlayerDynamicEntity,
+  direction: Point,
+  distance: number
+): Point => {
+  const len = Math.hypot(direction?.x ?? 0, direction?.y ?? 0);
+  const dir = len < 0.0001 ? { x: 1, y: 0 } : { x: direction.x / len, y: direction.y / len };
+  const maxDistance = Math.max(0, Number.isFinite(distance) ? Number(distance) : 0);
+  const steps = 12;
+  for (let i = steps; i >= 0; i--) {
+    const d = maxDistance * (i / steps);
+    const candidate = { x: player.position.x + dir.x * d, y: player.position.y + dir.y * d };
+    if (!staticEntitySpatialGrid || !staticEntitySpatialGrid.isPointColliding(candidate.x, candidate.y)) {
+      return candidate;
+    }
+  }
+  return { ...player.position };
+};
+
+/**
+ * 处理客户端"拖拽丢弃"请求:按给定方向与距离把条目抛到地面。
+ *
+ * 客户端已在本地背包中移除该条目并另行提交 inventory_update,
+ * 因此这里只负责生成地面实体(技能 → 技能球,物品 → 地面物品)。
+ */
+const dropInventoryEntry = (
+  player: PlayerDynamicEntity,
+  drop: {
+    kind: 'item' | 'skill';
+    tag: string;
+    name: string;
+    color: string;
+    count: number;
+    direction: Point;
+    distance: number;
+  }
+): void => {
+  if (!drop || typeof drop.tag !== 'string' || drop.tag.length === 0) return;
+  const position = H_resolveInventoryDropPosition(
+    player,
+    drop.direction ?? { x: 1, y: 0 },
+    drop.distance ?? 0
+  );
+  if (drop.kind === 'skill') {
+    // 丢弃的技能球用精确落点(不随机散布、无爆出冲量),保证不会被立刻吸回
+    spawnSkillOrb(position, drop.tag, false);
+    return;
+  }
+  const item = new HealingGemItemEntity(position, drop.name || '', drop.tag);
+  item.count = Math.max(1, Math.floor(Number(drop.count) || 1));
+  MAP_DATA.itemEntities.push(item);
 };
 
 
@@ -1660,9 +1766,10 @@ const updateGame = (deltaTime: number) => {
   updateBulletEntities(deltaTime);
   updateGrenadeEntities(deltaTime);
   handleEntityDeathExpOrbs();            // 结算死亡掉落经验球(须在清理死亡实体之前)
-  handleNpcDeathLoot();                   // 结算死亡战利品掉落(技能球)
+  handleNpcDeathLoot();                   // 结算死亡战利品掉落(技能球/子弹球)
   updateExpOrbDynamicEntities(deltaTime); // 更新经验球(移动/吸引/拾取)
   updateSkillOrbDynamicEntities(deltaTime); // 更新技能球(移动/吸引/拾取)
+  updateBulletOrbDynamicEntities(deltaTime); // 更新子弹球(移动/吸引/拾取)
   generateNpcAroundPlayerSingle(deltaTime);
   generateItemAroundPlayerSingle(deltaTime);
   removeFinishedDeadDynamicEntities();
@@ -1753,6 +1860,17 @@ const handleInstruct = (instruct: InstructObject) => {
       const playerEntity = getPlayerDynamicEntityById(instruct.data.playerId as number);
       if (playerEntity && !playerEntity.isDead) {
         playerEntity.useInventoryItem(instruct.data.uid as string);
+      }
+      break;
+    }
+
+    case 'inventory_drop': {
+      // 客户端拖拽丢弃:背包条目已在客户端本地移除并随 inventory_update 提交,
+      // 这里只负责按给定方向与距离在地面生成掉落物
+      if (gamePaused) break;
+      const playerEntity = getPlayerDynamicEntityById(instruct.data.playerId as number);
+      if (playerEntity && !playerEntity.isDead) {
+        dropInventoryEntry(playerEntity, instruct.data as unknown as Parameters<typeof dropInventoryEntry>[1]);
       }
       break;
     }

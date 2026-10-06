@@ -26,6 +26,7 @@ import { RedPixelBombEntity } from '@/components/pixel_war/class/Entity/DynamicE
 // 掉落物
 import { ExpOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/ExpOrbDynamicEntity/ExpOrbDynamicEntity';
 import { SkillOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/SkillOrbDynamicEntity/SkillOrbDynamicEntity';
+import { BulletOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletOrbDynamicEntity/BulletOrbDynamicEntity';
 import type { BulletTag, DynamicEntityKind } from '@/components/pixel_war/type/Type';
 import type { Point } from '@/components/pixel_war/interface/Interface';
 
@@ -190,6 +191,9 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
   }
   else if(kind === 'skill_orb'){
     return new SkillOrbDynamicEntity(snapshot.position, snapshot.skillTag);
+  }
+  else if(kind === 'bullet_orb'){
+    return new BulletOrbDynamicEntity(snapshot.position, snapshot.value);
   }
   else{//grenade
     const grenadeTag = snapshot.tag;

@@ -3,6 +3,7 @@ package top.atsw.pixelwar.net;
 import top.atsw.pixelwar.core.Geometry;
 import top.atsw.pixelwar.entity.dynamicEntity.BombEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.BulletEntity;
+import top.atsw.pixelwar.entity.dynamicEntity.BulletOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.ExpOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.LaserBulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
@@ -166,6 +167,17 @@ public final class SnapshotBuilder {
                     orb.skillTag));
         }
 
+        List<Protocol.BulletOrbSnapshot> bulletOrbs = new ArrayList<>();
+        for (BulletOrbEntity orb : world.bulletOrbs()) {
+            if (!inView(center, orb.position, viewRadius)) {
+                continue;
+            }
+            bulletOrbs.add(new Protocol.BulletOrbSnapshot(
+                    orb.id,
+                    new Protocol.Vec(orb.position.x, orb.position.y),
+                    orb.value));
+        }
+
         List<Protocol.ItemSnapshot> items = new ArrayList<>();
         for (ItemEntity item : world.items()) {
             if (!inView(center, item.position, viewRadius)) {
@@ -190,6 +202,7 @@ public final class SnapshotBuilder {
                 grenades,
                 expOrbs,
                 skillOrbs,
+                bulletOrbs,
                 items);
     }
 
@@ -227,6 +240,8 @@ public final class SnapshotBuilder {
                 player.isSprinting,
                 player.playerRule.fireCooldownNow,
                 player.playerRule.fireCooldownMax,
+                player.bulletCount,
+                player.bulletMaxCount,
                 toCooldownList(player.equippedSkillCooldowns),
                 toInventoryDto(player.inventory),
                 player.getAllServantIds(),

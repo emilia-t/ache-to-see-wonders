@@ -138,7 +138,9 @@ class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
     // 击杀后概率掉落四向子弹技能与闪现技能
     this.loot = [
       { type: 'skillOrb', tag: Xa4ShootSkill.TAG, odds: 0.4 },
-      { type: 'skillOrb', tag: DodgeSkill.TAG, odds: 0.4 }
+      { type: 'skillOrb', tag: DodgeSkill.TAG, odds: 0.4 },
+      // 子弹球:会发射普通子弹的 NPC 均有概率掉落(概率 75%)
+      { type: 'bulletOrb', tag: 'bullet_orb', odds: 0.75 }
     ];
   }
 

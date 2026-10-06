@@ -27,7 +27,10 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
     this.actionCooldownRemaining = 0;
     this.kill_score = 1; // 击杀该NPC获得的分数
     this.mapColor = '#ffffff'; // 地图上的颜色表示
-    this.loot = []; // 战利品:白像素不掉落任何战利品
+    this.loot = [
+      // 子弹球:会发射普通子弹的 NPC 均有概率掉落(概率 75%)
+      { type: 'bulletOrb', tag: 'bullet_orb', odds: 0.75 }
+    ];
   }
 
   public tryPickupItem(_item: ItemEntity): boolean {

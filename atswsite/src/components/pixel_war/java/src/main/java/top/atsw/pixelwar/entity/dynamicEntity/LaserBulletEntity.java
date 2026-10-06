@@ -7,9 +7,12 @@ import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
 /**
  * 激光弹(线段型子弹,与 TS 版 LaserBulletDynamicEntity 对齐)。
  *
- * <p>发射后从射击起点沿射击方向生成一道具有伤害的激光线段。线段本身不位移,
- * 而是由"激光前端"沿射击方向以展开速度(默认 6000px/s)延伸,
+ * <p>发射后从射击起点沿射击方向生成一道具有伤害的激光线段。线段本身不自行飞行,
+ * 而是由"激光前端"沿射击方向以展开速度延伸,
  * 展开时间 = 激光长度 ÷ 展开速度。线段会被围墙截断(前端碰到围墙即停止延伸)。</p>
+ *
+ * <p>激光会跟随发射者(野生 NPC / 玩家 / 玩家的从者 NPC)同步移动:世界每帧按发射者的
+ * 位移增量平移整条线段,方向与长度保持不变(见 {@link #followShooter})。</p>
  *
  * <p>生命周期分为 5 个阶段:起点发光/展开 → 渐亮(0.1s) → 持续发光(duration_tick × 20ms)
  * → 渐暗消失(0.1s);客户端据此自行还原动画,服务端只下发少量动态字段。</p>
@@ -30,7 +33,7 @@ public class LaserBulletEntity extends BulletEntity {
     /** 默认展开速度(px/s) */
     public static final double DEFAULT_EXPAND_SPEED = 6000;
     /** 默认持续发光时长(tick) */
-    public static final int DEFAULT_DURATION_TICKS = 100;
+    public static final int DEFAULT_DURATION_TICKS = 50;
     /** 单个游戏刻的秒数(1 tick = 20ms) */
     public static final double TICK_SECONDS = 0.02;
     /** 阶段 2 渐亮时长(秒) */
@@ -62,15 +65,16 @@ public class LaserBulletEntity extends BulletEntity {
     /** 辉光色 */
     public String laserGlowColor;
     /**
-     * 发射者位置锚点(玩家与 NPC 发射时都会写入)。
+     * 发射者上一帧的位置(玩家与 NPC 发射时都会写入)。
      *
-     * <p>世界据此判断发射者是否已经移动——玩家移动/闪现、被其它实体推动、
-     * NPC 被吸附为从者后每帧被锁回从者网格、或重新开始游走:只要离开锚点,
-     * 先前发射的激光就"失去源头",必须立刻移除,否则会留下无源持久光束。</p>
+     * <p>世界据此计算发射者的位移增量,让激光跟随发射者同步移动(见 {@link #followShooter})。
+     * 该字段只在权威端使用,不随快照下发。</p>
      */
-    public Geometry.Vec2 laserAnchor;
-    /** 是否已按围墙截断过长度 */
-    private boolean laserWallClamped;
+    public Geometry.Vec2 laserShooterPosition;
+    /** 发射时配置的原始激光长度(px,未按围墙截断):移动后重新截断时以其为上限 */
+    private final double laserConfiguredLength;
+    /** 上一次按围墙截断长度时激光所处的位置(位置未变化则无需重复射线检测) */
+    private Geometry.Vec2 laserClampOrigin;
 
     /**
      * 构造一束激光。
@@ -92,8 +96,9 @@ public class LaserBulletEntity extends BulletEntity {
 
         this.laserExpandSpeed = (Double.isFinite(expandSpeed) && expandSpeed > 0)
                 ? expandSpeed : DEFAULT_EXPAND_SPEED;
-        this.laserMaxLength = Math.max(MIN_LENGTH,
+        this.laserConfiguredLength = Math.max(MIN_LENGTH,
                 (Double.isFinite(length) ? length : DEFAULT_LENGTH));
+        this.laserMaxLength = this.laserConfiguredLength;
         int ticks = durationTicks > 0 ? durationTicks : DEFAULT_DURATION_TICKS;
         this.laserHoldSeconds = ticks * TICK_SECONDS;
         this.laserGlowColor = (glowColor == null || glowColor.isEmpty())
@@ -142,19 +147,58 @@ public class LaserBulletEntity extends BulletEntity {
     }
 
     /**
-     * 激光每帧推进:首次推进时按围墙截断长度,之后仅累计存在时长。
-     * 激光本体不位移,因此完全覆盖基类"直线飞行 + 撞墙即移除"的逻辑。
+     * 让激光跟随发射者同步移动:按发射者相对上一帧的位移增量,整体平移这条激光线段。
+     *
+     * <p>只做平移、不改变方向与长度,因此光束始终"挂在发射者的炮口上"。发射者不存在
+     * (已被清理/断线)时不做任何处理,激光保持最后位置直到自然寿命结束。</p>
+     *
+     * @param shooterPosition 发射者当前帧的位置
+     */
+    public void followShooter(Geometry.Vec2 shooterPosition) {
+        if (shooterPosition == null) {
+            return;
+        }
+        if (laserShooterPosition == null) {
+            laserShooterPosition = new Geometry.Vec2(shooterPosition.x, shooterPosition.y);
+            return;
+        }
+        double dx = shooterPosition.x - laserShooterPosition.x;
+        double dy = shooterPosition.y - laserShooterPosition.y;
+        if (dx == 0 && dy == 0) {
+            return;
+        }
+        position.x += dx;
+        position.y += dy;
+        updateCollisionBox();
+        laserShooterPosition.x = shooterPosition.x;
+        laserShooterPosition.y = shooterPosition.y;
+    }
+
+    /**
+     * 按围墙重新截断激光长度(仅在起点位置变化时真正执行射线检测)。
+     * 始终以"发射时配置的原始长度"为上限,因此发射者离开围墙后光束可以重新伸长。
+     */
+    private void clampLengthToWalls(WorldView world) {
+        if (laserClampOrigin != null
+                && laserClampOrigin.x == position.x
+                && laserClampOrigin.y == position.y) {
+            return;
+        }
+        laserClampOrigin = new Geometry.Vec2(position.x, position.y);
+        double wallLimit = raycastStaticDistance(laserConfiguredLength, world);
+        laserMaxLength = Math.max(0, Math.min(laserConfiguredLength, wallLimit));
+    }
+
+    /**
+     * 激光每帧推进:起点位置变化时重新按围墙截断,之后仅累计存在时长。
+     * 激光本体不自行飞行,因此完全覆盖基类"直线飞行 + 撞墙即移除"的逻辑。
      */
     @Override
     public void updateBullet(double dt, WorldView world) {
         if (shouldRemove) {
             return;
         }
-        if (!laserWallClamped) {
-            laserWallClamped = true;
-            double wallLimit = raycastStaticDistance(laserMaxLength, world);
-            laserMaxLength = Math.max(0, Math.min(laserMaxLength, wallLimit));
-        }
+        clampLengthToWalls(world);
         laserElapsed += dt;
         if (laserElapsed >= totalLifetimeSeconds()) {
             shouldRemove = true;

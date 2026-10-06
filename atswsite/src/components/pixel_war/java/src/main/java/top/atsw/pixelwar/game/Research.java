@@ -8,7 +8,7 @@ import java.util.List;
  *
  * <p>玩家每次升级时按概率触发专研界面,从随机三个研究项中选择一项进行研究。</p>
  * <ul>
- *   <li>普通研究项(蓝色):总体出现概率 90%,5 个子项均摊;</li>
+ *   <li>普通研究项(蓝色):总体出现概率 90%,6 个子项均摊;</li>
  *   <li>传说研究项(金色):总体出现概率 10%,3 个子项均摊。</li>
  * </ul>
  *
@@ -42,6 +42,10 @@ public final class Research {
     public static final double STAMINA_DRAIN_MIN = 6;
     /** 生命:每级提升的生命上限(具体数值) */
     public static final double HEALTH_MAX_BONUS_PER_LEVEL = 2;
+    /** 弹量:等级 1 每级增加的最大子弹数的基准值(n = 基准 - 等级,下限 1) */
+    public static final int AMMO_BONUS_BASE = 21;
+    /** 弹量:每级增加的最大子弹数的下限(保证 n ≥ 1) */
+    public static final int AMMO_BONUS_MIN = 1;
     /** 死亡不掉落:每级增加的保护概率 */
     public static final double DEATH_KEEP_CHANCE_PER_LEVEL = 0.2;
     /** 不动堡垒:每级增加的最大吸收值 */
@@ -52,7 +56,7 @@ public final class Research {
     /** 抽取时一次给出的研究项数量 */
     public static final int OPTION_COUNT = 3;
 
-    private static final double NORMAL_WEIGHT = 0.9 / 5;
+    private static final double NORMAL_WEIGHT = 0.9 / 6;
     private static final double LEGENDARY_WEIGHT = 0.1 / 3;
 
     /** 研究项类别 */
@@ -95,6 +99,8 @@ public final class Research {
                     "提升体力上限并降低疾跑体力消耗速度"),
             new Definition("health", "生命", Category.NORMAL, NORMAL_WEIGHT, null,
                     "提升玩家生命上限"),
+            new Definition("ammo", "弹量", Category.NORMAL, NORMAL_WEIGHT, null,
+                    "提升最大子弹数(每级增加 21 - 等级 发,至少 1 发)"),
             new Definition("death_keep", "死亡不掉落", Category.LEGENDARY, LEGENDARY_WEIGHT, 5,
                     "死亡时保护背包内的部分物品与技能不掉落,每次死亡降低 1 级"),
             new Definition("immovable_fortress", "不动堡垒", Category.LEGENDARY, LEGENDARY_WEIGHT, 5,
@@ -138,6 +144,27 @@ public final class Research {
             return false;
         }
         return getLevel(states, tag) >= definition.maxLevel();
+    }
+
+    /**
+     * 专研「弹量」在指定等级下累计提升的最大子弹数。
+     *
+     * <p>每升 1 级增加 n = 21 - 当前等级(至少 1)发,因此总加成是各等级增量之和:</p>
+     * <ul>
+     *   <li>等级 L ≤ 20:L × 21 - L × (L + 1) / 2;</li>
+     *   <li>等级 L &gt; 20:前 20 级的 210 发 + 每级 1 发。</li>
+     * </ul>
+     */
+    public static int ammoMaxBonus(int level) {
+        int safeLevel = Math.max(0, level);
+        int cappedLevel = Math.min(safeLevel, AMMO_BONUS_BASE - AMMO_BONUS_MIN);
+        int bonus = 0;
+        for (int l = 1; l <= cappedLevel; l++) {
+            bonus += Math.max(AMMO_BONUS_MIN, AMMO_BONUS_BASE - l);
+        }
+        // 超过 20 级后每级固定 +1(下限 1)
+        bonus += (safeLevel - cappedLevel) * AMMO_BONUS_MIN;
+        return bonus;
     }
 
     /**

@@ -19,6 +19,8 @@ export { RedPixelBombEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/
 export { ExpOrbDynamicEntity } from './Entity/DynamicEntity/ExpOrbDynamicEntity/ExpOrbDynamicEntity';
 // SkillOrbDynamicEntity
 export { SkillOrbDynamicEntity } from './Entity/DynamicEntity/SkillOrbDynamicEntity/SkillOrbDynamicEntity';
+// BulletOrbDynamicEntity
+export { BulletOrbDynamicEntity } from './Entity/DynamicEntity/BulletOrbDynamicEntity/BulletOrbDynamicEntity';
 // Skill(技能体系)
 export { Skill } from './Skill/Skill';
 export type { SkillTagType, SkillCastContext, SkillTrigger } from './Skill/Skill';

@@ -17,6 +17,7 @@
 | `respawn` | `{}` | 死亡后请求重生（服务端随机出生点） |
 | `inventory_update` | `{ inventory: { entries, equippedSkills } }` | 客户端背包变更后提交完整背包（服务端会规范化） |
 | `inventory_use_item` | `{ uid }` | 使用背包物品 |
+| `inventory_drop` | `{ kind, tag, name, color, count, direction, distance }` | 拖拽丢弃：在 `direction` 方向上抛出 `distance` px 落到地面（技能落成技能球、物品落成地面物品）|
 | `research_choose` | `{ tag }` | 从专研界面选择一项研究(必须属于服务端下发的待选项) |
 | `tick_pause` | `{ paused?: boolean }` | 暂停/恢复；不传 `paused` 时服务端自行切换 |
 | `ping` | `{ clientTime }` | 心跳，服务端回 `pong` |
@@ -57,6 +58,7 @@
   "grenades":  [ { "id", "tag", "position", "ownerId", "teamId", "width", "height", "fuseRatio" } ],
   "expOrbs":   [ { "id", "position", "value", "width", "height" } ],
   "skillOrbs": [ { "id", "position", "skillTag", "width", "height" } ],
+  "bulletOrbs": [ { "id", "position", "value", "width", "height" } ],
   "items":     [ { "id", "tag", "name", "position", "count", "width", "height", "lifetimeRatio" } ]
 }
 ```
@@ -76,7 +78,7 @@
 > 客户端据此在本地按时间轴还原「展开 → 渐亮 0.1s → 持续发光 → 渐暗 0.1s」动画
 > （普通子弹这些字段缺省，水合时会被跳过）。激光的持续接触伤害完全由服务端结算，不占用协议。
 
-`PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / fireCooldownNow / fireCooldownMax / equippedSkillCooldowns / inventory / servantIds / research / researchPendingOptions / deathRespawnDelay / deathRespawnRemaining / lastDamagerName / lastDeathReport`
+`PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / fireCooldownNow / fireCooldownMax / bulletCount / bulletMaxCount / equippedSkillCooldowns / inventory / servantIds / research / researchPendingOptions / deathRespawnDelay / deathRespawnRemaining / lastDamagerName / lastDeathReport`
 
 > 说明：`invincibleTimer`、`dodgeCooldownNow`、`dodgeCooldownMax` 已从玩家规则中移除。
 > 玩家不再有无敌时间；闪避冷却改由玩家装配的「闪现」技能自带的内置CD计时器管理
@@ -124,7 +126,7 @@
 ### 多人化设计要点
 
 1. **静态地图仅一次**：`welcome.staticEntities` 为全部静态实体（边界围墙 204 个）；
-2. **视野裁剪**：`npcs / bullets / grenades / expOrbs / skillOrbs / items / players` 只包含以 `self` 为中心、
+2. **视野裁剪**：`npcs / bullets / grenades / expOrbs / skillOrbs / bulletOrbs / items / players` 只包含以 `self` 为中心、
    半径 `pixel-war.snapshot-view-radius`（默认 2400px）矩形范围内的实体；
 3. **私有数据单播**：`selfPrivate` 只发送给本人，其他玩家不可见其背包与经验；
 4. **服务端权威**：位置、伤害、掉落、冷却、暂停均由服务端裁决，客户端只做输入与插值渲染。

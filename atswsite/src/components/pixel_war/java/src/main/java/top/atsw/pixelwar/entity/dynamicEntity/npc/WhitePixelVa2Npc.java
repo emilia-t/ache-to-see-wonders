@@ -33,6 +33,8 @@ public class WhitePixelVa2Npc extends WhitePixelNpc {
         this.mapColor = "#dfdfdf";
         // 战利品:击杀后 40% 概率掉落其持有的"斜向双弹"技能球
         this.loot.add(new Loot("skillOrb", Va2ShootSkill.TAG, LOOT_ODDS));
+        // 子弹球:会发射普通子弹的 NPC 均有概率掉落(概率 75%)
+        this.loot.add(new Loot("bulletOrb", "bullet_orb", 0.75));
     }
 
     @Override

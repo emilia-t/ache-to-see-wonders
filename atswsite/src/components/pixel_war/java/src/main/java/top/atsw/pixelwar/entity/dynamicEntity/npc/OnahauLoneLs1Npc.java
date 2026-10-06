@@ -44,7 +44,7 @@ public class OnahauLoneLs1Npc extends NpcEntity {
     /** 每级增加的激光长度(px) */
     private static final double LASER_LENGTH_PER_LEVEL = 200;
     /** 激光持续发光时长基准(tick,等级 0) */
-    private static final int LASER_DURATION_TICKS_BASE = 75;
+    private static final int LASER_DURATION_TICKS_BASE = 50;
     /** 每级增加的激光持续发光时长(tick) */
     private static final int LASER_DURATION_TICKS_PER_LEVEL = 20;
     /** 基础掉落经验值 */
@@ -110,6 +110,8 @@ public class OnahauLoneLs1Npc extends NpcEntity {
         this.attackDirection = new Geometry.Vec2(direction[0], direction[1]);
         // 战利品:击杀后概率掉落其持有的「激光束」技能球
         this.loot.add(new Loot("skillOrb", Ls1ShootSkill.TAG, LOOT_ODDS));
+        // 子弹球:会发射镭射子弹的 NPC 同样有概率掉落(概率 75%)
+        this.loot.add(new Loot("bulletOrb", "bullet_orb", 0.75));
     }
 
     @Override
@@ -139,7 +141,7 @@ public class OnahauLoneLs1Npc extends NpcEntity {
         return LASER_LENGTH_BASE + LASER_LENGTH_PER_LEVEL * level;
     }
 
-    /** 当前等级的激光持续发光时长(tick):duration_tick = 75 + Level × 20 */
+    /** 当前等级的激光持续发光时长(tick):duration_tick = 50 + Level × 20 */
     private int laserDurationTicks() {
         return LASER_DURATION_TICKS_BASE + LASER_DURATION_TICKS_PER_LEVEL * level;
     }
@@ -288,8 +290,8 @@ public class OnahauLoneLs1Npc extends NpcEntity {
      * 从者攻击:朝固定攻击方向发射一束激光。
      *
      * <p>从者被锁定在主人的从者网格上,因此其激光总是从当前格子中心射出;
-     * 一旦从者随玩家移动而瞬移,先前发射的激光会因"失去源头"被世界移除
-     * (见 {@code World.updateBullets}),不会留在原地。</p>
+     * 从者随玩家移动而瞬移时,先前发射的激光会跟随从者同步位移
+     * (见 {@code World.updateBullets}),不会脱离从者或被移除。</p>
      *
      * <p>攻击节奏按主人的射速倍率缩放(getActionDelta),与其它从者一致。</p>
      */
@@ -331,9 +333,8 @@ public class OnahauLoneLs1Npc extends NpcEntity {
                 laserDurationTicks(),
                 LASER_DAMAGE,
                 LASER_GLOW_COLOR);
-        // 记录发射位置:世界据此判断发射者是否已经移动(被推动/瞬移/重新游走),
-        // 从而移除失去源头的激光
-        laser.laserAnchor = new Geometry.Vec2(position.x, position.y);
+        // 记录发射者当前坐标:供世界每帧计算位移增量,使激光跟随发射者同步移动
+        laser.laserShooterPosition = new Geometry.Vec2(position.x, position.y);
         context.spawnBullet.accept(laser);
     }
 }

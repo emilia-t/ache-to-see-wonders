@@ -95,6 +95,8 @@ public class GoldenDodgeXa4Npc extends NpcEntity {
         // 击杀后概率掉落四向子弹技能与闪现技能
         this.loot.add(new Loot("skillOrb", Xa4ShootSkill.TAG, 0.4));
         this.loot.add(new Loot("skillOrb", DodgeSkill.TAG, 0.4));
+        // 子弹球:会发射普通子弹的 NPC 均有概率掉落(概率 75%)
+        this.loot.add(new Loot("bulletOrb", "bullet_orb", 0.75));
     }
 
     @Override

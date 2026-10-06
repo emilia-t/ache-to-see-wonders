@@ -68,7 +68,7 @@ class OnahauLoneLs1Entity extends HostileNpcDynamicEntity {
   /** 每级增加的激光长度(px) */
   private static readonly LASER_LENGTH_PER_LEVEL = 200;
   /** 激光持续发光时长基准(tick,等级 0) */
-  private static readonly LASER_DURATION_TICKS_BASE = 75;
+  private static readonly LASER_DURATION_TICKS_BASE = 50;
   /** 每级增加的激光持续发光时长(tick) */
   private static readonly LASER_DURATION_TICKS_PER_LEVEL = 20;
   /** 基础掉落经验值 */
@@ -112,7 +112,9 @@ class OnahauLoneLs1Entity extends HostileNpcDynamicEntity {
     this.attackDirection = { ...H_EIGHT_DIRECTIONS[Math.floor(Math.random() * H_EIGHT_DIRECTIONS.length)] };
     // 战利品:击杀后概率掉落其持有的「激光束」技能球
     this.loot = [
-      { type: 'skillOrb', tag: Ls1ShootSkill.TAG, odds: OnahauLoneLs1Entity.LOOT_ODDS }
+      { type: 'skillOrb', tag: Ls1ShootSkill.TAG, odds: OnahauLoneLs1Entity.LOOT_ODDS },
+      // 子弹球:会发射镭射子弹的 NPC 同样有概率掉落(概率 75%)
+      { type: 'bulletOrb', tag: 'bullet_orb', odds: 0.75 }
     ];
   }
 
@@ -288,8 +290,8 @@ class OnahauLoneLs1Entity extends HostileNpcDynamicEntity {
    * 从者攻击朝固定攻击方向发射一束激光。
    *
    * <p>从者被锁定在主人的从者网格上,因此其激光总是从当前格子中心射出;
-   * 一旦从者随玩家移动而瞬移,先前发射的激光会因"失去源头"被权威端移除
-   * (见 Service.updateBulletEntities / World.updateBullets),不会留在原地。</p>
+   * 从者随玩家移动而瞬移时,先前发射的激光会跟随从者同步位移
+   * (见 Service.updateBulletEntities / World.updateBullets),不会脱离从者或被移除。</p>
    *
    * 攻击节奏按主人的射速倍率缩放(getActionDelta),与其它从者一致。
    */
@@ -349,9 +351,8 @@ class OnahauLoneLs1Entity extends HostileNpcDynamicEntity {
         glowColor: OnahauLoneLs1Entity.LASER_GLOW_COLOR
       }
     );
-    // 记录发射位置:权威端据此判断发射者是否已经移动(被推动/瞬移/重新游走),
-    // 从而移除失去源头的激光
-    laser.laserAnchor = { x: this.position.x, y: this.position.y };
+    // 记录发射者当前坐标:供权威端每帧计算位移增量,使激光跟随发射者同步移动
+    laser.laserShooterPosition = { x: this.position.x, y: this.position.y };
     context.spawnBullet(laser);
   }
 

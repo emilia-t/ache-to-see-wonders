@@ -68,15 +68,19 @@ const H_isLaserClockPaused = (): boolean => laserClockPaused;
 /**
  * 激光弹(线段型子弹)。
  *
- * <p>发射后从射击起点沿射击方向生成一道具有伤害的激光线段。线段本身不位移,
- * 而是由"激光前端"沿射击方向以展开速度(默认 4000px/s)延伸,
+ * <p>发射后从射击起点沿射击方向生成一道具有伤害的激光线段。线段本身不自行飞行,
+ * 而是由"激光前端"沿射击方向以展开速度延伸,
  * 展开时间 = 激光长度 ÷ 展开速度。</p>
+ *
+ * <p>激光会跟随发射者(野生 NPC / 玩家 / 玩家的从者 NPC)同步移动:权威端每帧按发射者的
+ * 位移增量平移整条线段,方向与长度保持不变(见 {@link followShooter})。因此发射者移动时
+ * 不会再有"激光失去源头被移除"的行为,光束会像挂在炮口上一样随其一起位移。</p>
  *
  * <p>生命周期分为 5 个阶段:</p>
  * <ol start="0">
  *   <li>阶段 0/1:起点发光、激光头强光,线段自起点向前展开;</li>
  *   <li>阶段 2:线段整体渐亮(默认 0.1s);</li>
- *   <li>阶段 3:持续发光,时长 = duration_tick × 20ms(默认 100 tick);</li>
+ *   <li>阶段 3:持续发光,时长 = duration_tick × 20ms(默认 50 tick);</li>
  *   <li>阶段 4:线段、辉光与激光头同时渐暗消失(默认 0.1s)。</li>
  * </ol>
  *
@@ -92,7 +96,7 @@ class LaserBulletDynamicEntity extends BulletDynamicEntity {
   /** 默认展开速度(px/s) */
   public static readonly DEFAULT_EXPAND_SPEED = 6000;
   /** 默认持续发光时长(tick) */
-  public static readonly DEFAULT_DURATION_TICKS = 100;
+  public static readonly DEFAULT_DURATION_TICKS = 50;
   /** 单个游戏刻的秒数(1 tick = 20ms) */
   public static readonly TICK_SECONDS = 0.02;
   /** 阶段 2 渐亮时长(秒) */
@@ -137,7 +141,8 @@ class LaserBulletDynamicEntity extends BulletDynamicEntity {
 
   /**
    * 激光最大长度(px,已按围墙截断)。
-   * 由权威端首次 update 时按静态实体(围墙)截断;多人模式下随快照下发。
+   * 由权威端在起点位置变化(首次生成 / 跟随发射者移动)时按静态实体(围墙)重新截断;
+   * 多人模式下随快照下发。
    */
   public laserMaxLength: number;
   /** 激光前端展开速度(px/s) */
@@ -149,15 +154,16 @@ class LaserBulletDynamicEntity extends BulletDynamicEntity {
   /** 辉光色 */
   public laserGlowColor: string;
   /**
-   * 发射者位置锚点(玩家与 NPC 发射时都会写入,由权威端在生成后立即赋值)。
+   * 发射者上一帧的位置(玩家与 NPC 发射时都会写入,由权威端在生成后立即赋值)。
    *
-   * 权威端据此判断发射者是否已经移动——玩家移动/闪现、被其它实体推动、
-   * NPC 被吸附为从者后每帧被锁回从者网格、或重新开始游走:只要离开锚点,
-   * 先前发射的激光就"失去源头",必须立刻移除,否则会留下无源持久光束。
+   * 权威端据此计算发射者的位移增量,让激光跟随发射者同步移动(见 {@link followShooter})。
+   * 该字段只在权威端使用,不随协议下发;客户端拿到的激光位置直接来自快照。
    */
-  public laserAnchor: Point | null = null;
-  /** 是否已在权威端按围墙截断过长度 */
-  private laserWallClamped = false;
+  public laserShooterPosition: Point | null = null;
+  /** 发射时配置的原始激光长度(px,未按围墙截断):移动后重新截断时以其为上限 */
+  private readonly laserConfiguredLength: number;
+  /** 上一次按围墙截断长度时激光所处的位置(位置未变化则无需重复射线检测) */
+  private laserClampOrigin: Point | null = null;
 
   constructor(
     position: Point,
@@ -173,7 +179,8 @@ class LaserBulletDynamicEntity extends BulletDynamicEntity {
     const configuredLength = Number.isFinite(options.length)
       ? (options.length as number)
       : LaserBulletDynamicEntity.DEFAULT_LENGTH;
-    this.laserMaxLength = Math.max(LaserBulletDynamicEntity.MIN_LENGTH, configuredLength);
+    this.laserConfiguredLength = Math.max(LaserBulletDynamicEntity.MIN_LENGTH, configuredLength);
+    this.laserMaxLength = this.laserConfiguredLength;
     this.laserExpandSpeed = Number.isFinite(options.expandSpeed) && (options.expandSpeed as number) > 0
       ? (options.expandSpeed as number)
       : LaserBulletDynamicEntity.DEFAULT_EXPAND_SPEED;
@@ -188,7 +195,7 @@ class LaserBulletDynamicEntity extends BulletDynamicEntity {
     this.damage = Number.isFinite(options.damage)
       ? (options.damage as number)
       : BulletDynamicEntity.DEFAULT_DAMAGE;
-    // 激光本体不位移(位置固定为射击起点),由"前端延伸"表达射速。
+    // 激光本体不自行飞行(初始位置在射击起点,之后仅随发射者平移),由"前端延伸"表达射速。
     // 速度字段仍存放"单位方向 × 展开速度":既与普通子弹的语义一致,
     // 也让客户端能直接由快照的 velocity 推导出射击方向。
     const dirLength = Math.hypot(direction.x, direction.y);
@@ -276,22 +283,60 @@ class LaserBulletDynamicEntity extends BulletDynamicEntity {
   }
 
   /**
-   * 每帧推进:首次推进时把激光长度按围墙截断,之后仅累计存在时长。
-   * 激光本体不位移,因此完全覆盖基类"直线飞行 + 撞墙即移除"的逻辑。
+   * 让激光跟随发射者同步移动:按发射者相对上一帧的位移增量,整体平移这条激光线段。
+   *
+   * 只做平移、不改变方向与长度,因此光束始终"挂在发射者的炮口上"。发射者不存在
+   * (已被清理/断线)时不做任何处理,激光保持最后位置直到自然寿命结束。
+   *
+   * @param shooterPosition 发射者当前帧的位置
+   */
+  public followShooter(shooterPosition: Point): void {
+    const last = this.laserShooterPosition;
+    if (last === null) {
+      this.laserShooterPosition = { x: shooterPosition.x, y: shooterPosition.y };
+      return;
+    }
+    const dx = shooterPosition.x - last.x;
+    const dy = shooterPosition.y - last.y;
+    if (dx === 0 && dy === 0) return;
+    this.position.x += dx;
+    this.position.y += dy;
+    this.updateCollisionBox();
+    last.x = shooterPosition.x;
+    last.y = shooterPosition.y;
+  }
+
+  /**
+   * 每帧推进:起点位置变化时重新把激光长度按围墙截断,之后仅累计存在时长。
+   * 激光本体不自行飞行,因此完全覆盖基类"直线飞行 + 撞墙即移除"的逻辑。
    */
   public override update(dt: number, staticEntities: StaticEntity[]): void {
     if (this.shouldRemove) return;
 
-    if (!this.laserWallClamped) {
-      this.laserWallClamped = true;
-      const wallLimit = this.raycastStaticDistance(this.laserMaxLength, staticEntities);
-      this.laserMaxLength = Math.max(0, Math.min(this.laserMaxLength, wallLimit));
-    }
+    this.clampLengthToWalls(staticEntities);
 
     this.laserElapsed += dt;
     if (this.laserElapsed >= this.getTotalLifetimeSeconds()) {
       this.shouldRemove = true;
     }
+  }
+
+  /**
+   * 按围墙重新截断激光长度(仅在起点位置变化时真正执行射线检测)。
+   * 始终以"发射时配置的原始长度"为上限,因此发射者离开围墙后光束可以重新伸长。
+   */
+  private clampLengthToWalls(staticEntities: StaticEntity[]): void {
+    const clampOrigin = this.laserClampOrigin;
+    if (
+      clampOrigin !== null &&
+      clampOrigin.x === this.position.x &&
+      clampOrigin.y === this.position.y
+    ) {
+      return;
+    }
+    this.laserClampOrigin = { x: this.position.x, y: this.position.y };
+    const wallLimit = this.raycastStaticDistance(this.laserConfiguredLength, staticEntities);
+    this.laserMaxLength = Math.max(0, Math.min(this.laserConfiguredLength, wallLimit));
   }
 
   /** 无位移看门狗对激光无意义(位置固定) */

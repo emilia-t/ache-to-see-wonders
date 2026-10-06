@@ -239,6 +239,33 @@ export class Instruct {
     };
 
     /**
+     * 丢弃背包条目指令(拖拽至背包外)
+     *
+     * 客户端已在本地背包中移除该条目并另行提交 inventory_update,本指令只负责让权威端
+     * 在指定方向上抛出地面实体(物品落成地面物品、技能落成技能球)。
+     *
+     * @param playerId 玩家ID
+     * @param drop 丢弃内容与抛出参数(direction 为单位方向,distance 为抛出距离 px)
+     */
+    public static I_InventoryDrop = (playerId: number, drop: {
+        kind: 'item' | 'skill';
+        tag: string;
+        name: string;
+        color: string;
+        count: number;
+        direction: Point;
+        distance: number;
+    }): InstructObject => {
+        return {
+            type: 'inventory_drop',
+            class: '',
+            conveyor: 'client',
+            time: this.H_getFormatTime(),
+            data: { playerId, ...drop }
+        };
+    };
+
+    /**
      * 专研选择指令
      * 玩家在专研界面中选定一项研究后提交,由权威端结算研究等级与效果。
      * @param playerId 玩家ID

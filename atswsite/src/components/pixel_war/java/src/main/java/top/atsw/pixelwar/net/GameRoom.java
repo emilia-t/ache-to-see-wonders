@@ -217,6 +217,12 @@ public final class GameRoom {
                         world.playerUseItem(playerId, input.uid());
                     }
                 }
+                case Protocol.ClientType.INVENTORY_DROP -> {
+                    Protocol.InventoryDrop input = mapper.treeToValue(data, Protocol.InventoryDrop.class);
+                    if (input != null) {
+                        world.dropInventoryEntry(playerId, input);
+                    }
+                }
                 case Protocol.ClientType.RESEARCH_CHOOSE -> {
                     Protocol.ResearchChoose input = mapper.treeToValue(data, Protocol.ResearchChoose.class);
                     if (input != null) {

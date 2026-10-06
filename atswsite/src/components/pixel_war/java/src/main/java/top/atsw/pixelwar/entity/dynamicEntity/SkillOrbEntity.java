@@ -16,8 +16,12 @@ public final class SkillOrbEntity extends DynamicEntity {
     /** 物理碰撞体积 */
     public static final double WIDTH = 14;
     public static final double HEIGHT = 14;
-    /** 吸引范围(px) */
-    public static final double ATTRACT_RANGE = 200;
+    /**
+     * 吸引范围(px)。
+     *
+     * <p>必须小于"背包拖拽丢弃"的最小抛出距离(80px):否则丢弃出去的技能球会立刻被玩家吸回来。</p>
+     */
+    public static final double ATTRACT_RANGE = 70;
     /** 拾取范围(px) */
     public static final double PICKUP_RANGE = 26;
     /** 存在时长(秒) */

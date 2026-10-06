@@ -17,7 +17,12 @@ import { H_getSkillByTag } from '@/components/pixel_war/registry/SkillRegistry';
 class SkillOrbDynamicEntity extends DynamicEntity {
   public static readonly WIDTH = 14;// 物理碰撞体积(宽,px)
   public static readonly HEIGHT = 14;// 物理碰撞体积(高,px)
-  public static readonly ATTRACT_RANGE = 200;// 吸引范围(px)
+  /**
+   * 吸引范围(px)。
+   *
+   * 必须小于"背包拖拽丢弃"的最小抛出距离(80px):否则丢弃出去的技能球会立刻被玩家吸回来。
+   */
+  public static readonly ATTRACT_RANGE = 70;
   public static readonly PICKUP_RANGE = 26;// 拾取范围(px)
   public static readonly LIFETIME = 45;// 技能球存在时长(秒)
   public static readonly FALLBACK_COLOR = '#9fe8ff';// 技能未注册时的兜底颜色

@@ -34,6 +34,7 @@ public final class Protocol {
         public static final String RESPAWN = "respawn";
         public static final String INVENTORY_UPDATE = "inventory_update";
         public static final String INVENTORY_USE_ITEM = "inventory_use_item";
+        public static final String INVENTORY_DROP = "inventory_drop";
         public static final String RESEARCH_CHOOSE = "research_choose";
         public static final String TICK_PAUSE = "tick_pause";
         public static final String PING = "ping";
@@ -124,6 +125,35 @@ public final class Protocol {
     public record InventoryUseItem(String uid) {
     }
 
+    /**
+     * 拖拽丢弃背包条目。
+     *
+     * <p>客户端已在本地背包中移除该条目并随 {@code inventory_update} 提交,本消息只负责
+     * 让服务端在指定方向上抛出地面实体(物品落成地面物品、技能落成技能球)。</p>
+     *
+     * @param kind      条目种类:'item' | 'skill'
+     * @param tag       物品 tag / 技能 tag
+     * @param name      显示名称(物品落地时使用)
+     * @param color     主题色
+     * @param count     丢弃数量(物品堆叠数量)
+     * @param direction 抛出方向(单位向量)
+     * @param distance  抛出距离(px)
+     */
+    public record InventoryDrop(
+            String kind,
+            String tag,
+            String name,
+            String color,
+            int count,
+            Vec direction,
+            double distance
+    ) {
+
+        public InventoryDrop {
+            distance = quantize(distance);
+        }
+    }
+
     /** 专研选择:tag 为选中的研究项标签 */
     public record ResearchChoose(String tag) {
     }
@@ -192,6 +222,7 @@ public final class Protocol {
             List<GrenadeSnapshot> grenades,
             List<ExpOrbSnapshot> expOrbs,
             List<SkillOrbSnapshot> skillOrbs,
+            List<BulletOrbSnapshot> bulletOrbs,
             List<ItemSnapshot> items
     ) {
     }
@@ -237,6 +268,10 @@ public final class Protocol {
             boolean sprinting,
             double fireCooldownNow,
             double fireCooldownMax,
+            /** 当前子弹数(开火消耗,子弹球补充) */
+            int bulletCount,
+            /** 最大子弹数(基础 50 + 专研「弹量」加成) */
+            int bulletMaxCount,
             /** 技能装配区各槽位剩余CD(秒),下标与 inventory.equippedSkills 一致 */
             List<Double> equippedSkillCooldowns,
             InventoryDto inventory,
@@ -407,6 +442,14 @@ public final class Protocol {
             long id,
             Vec position,
             String skillTag
+    ) {
+    }
+
+    /** 子弹球快照(碰撞体积恒为 14×14,不再下发) */
+    public record BulletOrbSnapshot(
+            long id,
+            Vec position,
+            int value
     ) {
     }
 
