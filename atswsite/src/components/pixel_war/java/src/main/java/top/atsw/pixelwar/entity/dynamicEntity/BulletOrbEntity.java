@@ -1,8 +1,7 @@
 package top.atsw.pixelwar.entity.dynamicEntity;
 
 import top.atsw.pixelwar.core.Geometry;
-
-import java.util.List;
+import top.atsw.pixelwar.game.Skill;
 
 /**
  * 子弹球(由前端 TS 版 BulletOrbDynamicEntity 迁移)。
@@ -10,13 +9,14 @@ import java.util.List;
  * <p>与经验球 / 技能球同为"掉落物"型动态实体:</p>
  * <ul>
  *   <li>击杀"具备发射子弹能力"的 NPC(普通子弹 / 镭射子弹)时按概率掉落;</li>
- *   <li>会向附近的存活玩家飘行;被玩家拾取后补充玩家的当前子弹数;</li>
- *   <li>玩家子弹已达上限时无法拾取(子弹球留在原地);</li>
+ *   <li><b>自身不寻找玩家</b>:只做"存在时长 + 惯性滑行";
+ *       由 {@code World.updatePickups} 的"玩家主动搜索并吸取"逻辑牵引与吸收;</li>
+ *   <li>玩家子弹已达上限时不可吸取(玩家会跳过它,子弹球静置在原地);</li>
  *   <li>玩家剩余容量不足时只吸收一部分,剩余的子弹球继续留在地上;</li>
- *   <li>超过存在时长未被拾取则自动消失。</li>
+ *   <li>超时未被吸取则自动消失。</li>
  * </ul>
  */
-public final class BulletOrbEntity extends DynamicEntity {
+public final class BulletOrbEntity extends DynamicEntity implements AbsorbableOrb {
 
     /** 物理碰撞体积 */
     public static final double WIDTH = 10;
@@ -54,8 +54,8 @@ public final class BulletOrbEntity extends DynamicEntity {
         this.maxMoveSpeed = 0;
     }
 
-    /** 子弹球每帧更新:吸引 + 拾取(补充子弹) + 超时消失 */
-    public void updateOrb(double dt, List<PlayerEntity> players) {
+    /** 子弹球每帧更新:仅存在时长与惯性滑行(不再自行寻找玩家) */
+    public void updateOrb(double dt) {
         if (isPickedUp) {
             return;
         }
@@ -65,47 +65,72 @@ public final class BulletOrbEntity extends DynamicEntity {
             return;
         }
 
-        // 寻找最近的存活玩家
-        PlayerEntity nearestPlayer = null;
-        double nearestDist = Double.MAX_VALUE;
-        for (PlayerEntity player : players) {
-            if (player.isDead) {
-                continue;
-            }
-            double d = Geometry.distance(position.x, position.y, player.position.x, player.position.y);
-            if (d < nearestDist) {
-                nearestDist = d;
-                nearestPlayer = player;
-            }
-        }
+        // 仅保留惯性滑行(爆出时的冲量逐渐衰减)
+        applyAirResistance(dt);
+        position.x += motionVelocity.x * dt;
+        position.y += motionVelocity.y * dt;
+        updateCollisionBox();
+    }
 
-        if (nearestPlayer != null && nearestDist <= ATTRACT_RANGE && nearestDist > 0.0001) {
-            // 向玩家飘行,距离越近速度越快
-            double dirX = (nearestPlayer.position.x - position.x) / nearestDist;
-            double dirY = (nearestPlayer.position.y - position.y) / nearestDist;
-            double speed = 150 + (1 - nearestDist / ATTRACT_RANGE) * 380;
-            position.x += dirX * speed * dt;
-            position.y += dirY * speed * dt;
-            updateCollisionBox();
-        } else {
-            // 无目标时使用空气阻力减速(掉落时的随机冲量逐渐衰减)
-            applyAirResistance(dt);
-            position.x += motionVelocity.x * dt;
-            position.y += motionVelocity.y * dt;
-            updateCollisionBox();
-        }
+    // ==================================================================
+    // 被玩家主动吸取(由 World.updatePickups 调用)
+    // ==================================================================
 
-        // 拾取判定:容量为 0 时不吸收(子弹球留在原地),容量不足时只吸收一部分
-        if (nearestPlayer != null) {
-            double d = Geometry.distance(position.x, position.y, nearestPlayer.position.x, nearestPlayer.position.y);
-            if (d <= PICKUP_RANGE) {
-                int accepted = nearestPlayer.addBulletCount(value);
-                if (accepted >= value) {
-                    isPickedUp = true;
-                } else if (accepted > 0) {
-                    value -= accepted;// 仅部分吸收,剩余部分继续留在地上
-                }
-            }
+    /** 吸取范围(px) */
+    @Override
+    public double absorbRange() {
+        return ATTRACT_RANGE;
+    }
+
+    /** 拾取范围(px):子弹球为点判定,与玩家体积无关 */
+    @Override
+    public double pickupRange(PlayerEntity player) {
+        return PICKUP_RANGE;
+    }
+
+    /**
+     * 玩家当前能否接受本子弹球。
+     *
+     * <p>子弹已满时返回 false —— 此时玩家不会牽引它,因此子弹球会安静地待在地上,
+     * 而不是绕着"装不下"的玩家反复弹跳。</p>
+     */
+    @Override
+    public boolean canBeAbsorbedBy(PlayerEntity player) {
+        return player.getBulletCapacity() > 0;
+    }
+
+    /** 被玩家牽引一帧:朝玩家飘行,距离越近速度越快 */
+    @Override
+    public void attractTowardPlayer(PlayerEntity player, double dt) {
+        if (isPickedUp) {
+            return;
         }
+        double dx = player.position.x - position.x;
+        double dy = player.position.y - position.y;
+        double distance = Math.hypot(dx, dy);
+        if (distance <= 0.0001) {
+            return;
+        }
+        double speed = 150 + (1 - distance / ATTRACT_RANGE) * 380;
+        position.x += dx / distance * speed * dt;
+        position.y += dy / distance * speed * dt;
+        updateCollisionBox();
+    }
+
+    /** 被玩家吸收:容量为 0 时不吸收(留在原地),容量不足时只吸收一部分 */
+    @Override
+    public void absorbByPlayer(PlayerEntity player, Skill.Provider skills) {
+        int accepted = player.addBulletCount(value);
+        if (accepted >= value) {
+            isPickedUp = true;
+        } else if (accepted > 0) {
+            value -= accepted;// 仅部分吸收,剩余部分继续留在地上
+        }
+    }
+
+    /** 是否已被拾取(含超时消失) */
+    @Override
+    public boolean isAbsorbed() {
+        return isPickedUp;
     }
 }

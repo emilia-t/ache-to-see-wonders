@@ -1,7 +1,6 @@
 import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
 import { LaserBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/LaserBulletDynamicEntity/LaserBulletDynamicEntity';
 import { Ls1ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Ls1ShootSkill/Ls1ShootSkill';
-import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type {
   Point,
@@ -116,14 +115,6 @@ class OnahauLoneLs1Entity extends HostileNpcDynamicEntity {
       // 子弹球:会发射镭射子弹的 NPC 同样有概率掉落(概率 75%)
       { type: 'bulletOrb', tag: 'bullet_orb', odds: 0.75 }
     ];
-  }
-
-  public tryPickupItem(_item: ItemEntity): boolean {
-    return false;
-  }
-
-  public pickupItem(_item: ItemEntity): void {
-    // 幽蓝孤光不拾取任何物品
   }
 
   /** 等级上限:5(与其他上限 5 的 NPC 共用 6 档等级概率表) */

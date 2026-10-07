@@ -1,5 +1,4 @@
 import { FriendlyNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
-import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type {
   Point,
@@ -97,14 +96,6 @@ class PurpleShieldEntity extends FriendlyNpcDynamicEntity {
     this.spiralCenter = { ...position };
     this.spiralAngle = Math.random() * Math.PI * 2;
     this.spiralRadius = PurpleShieldEntity.SPIRAL_MIN_RADIUS;
-  }
-
-  public tryPickupItem(_item: ItemEntity): boolean {
-    return false;
-  }
-
-  public pickupItem(_item: ItemEntity): void {
-    // 友好 NPC 不拾取任何物品
   }
 
   /** 等级上限:2 */

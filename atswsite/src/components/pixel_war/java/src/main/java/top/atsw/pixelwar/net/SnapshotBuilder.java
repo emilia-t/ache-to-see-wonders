@@ -8,6 +8,7 @@ import top.atsw.pixelwar.entity.dynamicEntity.ExpOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.LaserBulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.SkillOrbEntity;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.CoralRedTentacleT1Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
 import top.atsw.pixelwar.entity.itemEntity.ItemEntity;
 import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
@@ -99,7 +100,9 @@ public final class SnapshotBuilder {
                     npc.mapColor,
                     npc.killScore,
                     npc.deathEffectTimer,
-                    npc.level));
+                    npc.level,
+                    // 触手旋转相位:仅珊瑚红触手使用,其余 NPC 不下发
+                    npc instanceof CoralRedTentacleT1Npc tentacleNpc ? tentacleNpc.tentacleTicks : null));
         }
 
         List<Protocol.BulletSnapshot> bullets = new ArrayList<>();

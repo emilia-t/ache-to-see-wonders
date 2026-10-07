@@ -1,7 +1,6 @@
 ﻿import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 import { BulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/BulletDynamicEntity';
 import { GrenadeDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/GrenadeDynamicEntity/GrenadeDynamicEntity';
-import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type {Point, ActionLoopContext, NpcLoot, EntityDebugFlags} from '@/components/pixel_war/interface/Interface';
 import type { NpcAttitude } from '@/components/pixel_war/type/Type';
@@ -90,8 +89,6 @@ abstract class NpcDynamicEntity extends DynamicEntity {
     this.deathLootProcessed = false;
   }
 
-  public abstract tryPickupItem(item: ItemEntity): boolean;
-  public abstract pickupItem(item: ItemEntity): void;
   public abstract actionLoop(context: ActionLoopContext): void;
   public abstract action(context: ActionLoopContext): void;
   public abstract actionBefore(context: ActionLoopContext): void;

@@ -2,7 +2,6 @@ import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/Dyn
 import { OrdinaryBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
 import { Xa4ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Xa4ShootSkill/Xa4ShootSkill';
 import { DodgeSkill } from '@/components/pixel_war/class/Skill/Skills/DodgeSkill/DodgeSkill';
-import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type {
   Point,
@@ -142,14 +141,6 @@ class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
       // 子弹球:会发射普通子弹的 NPC 均有概率掉落(概率 75%)
       { type: 'bulletOrb', tag: 'bullet_orb', odds: 0.75 }
     ];
-  }
-
-  public tryPickupItem(_item: ItemEntity): boolean {
-    return false;
-  }
-
-  public pickupItem(_item: ItemEntity): void {
-    // 闪避者不拾取任何物品
   }
 
   /** 当前攻击间隔(秒):随等级缩短(ACTION_INTERVAL - 0.2 × Level) */

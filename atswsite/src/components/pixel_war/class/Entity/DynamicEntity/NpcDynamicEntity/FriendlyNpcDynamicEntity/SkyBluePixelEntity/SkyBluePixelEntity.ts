@@ -1,5 +1,4 @@
 import { FriendlyNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
-import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type {
   Point,
@@ -37,14 +36,6 @@ class SkyBluePixelEntity extends FriendlyNpcDynamicEntity {
     // 将感知范围设为主动靠近的范围,便于调试圈可视化
     this.perceptionRange = SkyBluePixelEntity.APPROACH_RANGE;
     this.loot = [];              // 战利品:友好 NPC 不掉落任何战利品
-  }
-
-  public tryPickupItem(_item: ItemEntity): boolean {
-    return false;
-  }
-
-  public pickupItem(_item: ItemEntity): void {
-    // 友好NPC不拾取任何物品
   }
 
   /** 等级上限:2 */

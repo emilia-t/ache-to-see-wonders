@@ -30,6 +30,7 @@ import {
   GoldenDodgeXa4Entity,
   PurpleFireworkOa18Entity,
   OnahauLoneLs1Entity,
+  CoralRedTentacleT1Entity,
   DodgeSkill,
   HealingGemItemEntity,
   GrenadeDynamicEntity,
@@ -37,6 +38,7 @@ import {
   SkillOrbDynamicEntity,
   BulletOrbDynamicEntity
 } from '@/components/pixel_war/class';
+import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 
 import gameConfig from '@/components/pixel_war/service/GameConfig';
 import { H_rollNpcLevel } from '@/components/pixel_war/registry/NpcLevelTable';
@@ -83,7 +85,8 @@ const SPAWNABLE_NPC_CLASSES = [
   PurpleShieldEntity,
   GoldenDodgeXa4Entity,
   PurpleFireworkOa18Entity,
-  OnahauLoneLs1Entity
+  OnahauLoneLs1Entity,
+  CoralRedTentacleT1Entity
   // more
 ] as const;
 
@@ -534,38 +537,9 @@ const updateItemEntityLifetimes = (deltaTime: number): boolean => {
   return MAP_DATA.itemEntities.length !== oldLength;
 };
 
-const updateDynamicEntityItemPickups = (): boolean => {
-  const dynamicEntityList = getNpcPlayerDynamicEntityList();
-  if (MAP_DATA.itemEntities.length === 0 || dynamicEntityList.length === 0) return false;
-
-  let pickedAny = false;
-  for (const item of MAP_DATA.itemEntities) {
-    if (item.isDisappearing) continue;
-    for (const dynamicEntity of dynamicEntityList) {
-      if (dynamicEntity.isDead) continue;
-      if (dynamicEntity instanceof PlayerDynamicEntity) {
-        if (!dynamicEntity.tryPickupItem(item)) continue;
-        // 掉落物可能是一堆(count>1,如死亡掉落),按背包剩余空间结算,装不下的继续留在地上
-        const droppedCount = Math.max(1, Math.floor(item.count));
-        const accepted = dynamicEntity.acquireItemCount(item.tag, item.name, droppedCount);
-        if (accepted <= 0) break;// 背包已满,等玩家腾出空间后再拾取
-        item.count = droppedCount - accepted;
-        if (item.count <= 0) item.beginDisappear();
-        pickedAny = true;
-        break;
-      }
-      if (dynamicEntity instanceof NpcDynamicEntity) {
-        if (dynamicEntity.tryPickupItem(item)) {
-          dynamicEntity.pickupItem(item);
-          item.beginDisappear();
-          pickedAny = true;
-          break;
-        }
-      }
-    }
-  }
-  return pickedAny;
-};
+// 说明:地面物品(ItemEntity)的拾取已并入统一拾取管线 updatePickups ——
+// 它与经验球/技能球/子弹球实现同一套契约(getAbsorbRange / getPickupRange /
+// canBeAbsorbedBy / attractTowardPlayer / absorbByPlayer),只是吸引范围为 0(不磁吸)。
 
 const spawnBulletDynamicEntity = (bullet: BulletDynamicEntity) => {
   MAP_DATA.dynamicEntitie.bulletDynamicEntitys.push(bullet);
@@ -578,6 +552,15 @@ const spawnBulletDynamicEntity = (bullet: BulletDynamicEntity) => {
  * 目标离开线段后对应条目会被清除,从而"再次接触时重新触发首次接触伤害"。
  */
 const laserContactTicks = new Map<number, Map<number, number>>();
+
+/**
+ * 珊瑚红触手 NPC 的持续接触计时:NPC id -> (玩家 id -> 已累计接触 tick 数)。
+ *
+ * 与激光弹的持续接触计时同构(见 {@link laserContactTicks}),仅在权威端(单人的 Worker /
+ * 多人的 Java 服务端)使用,不参与渲染与协议。玩家离开触手线段后对应条目会被清除,
+ * 从而"再次接触时重新触发首次接触伤害"。
+ */
+const coralRedTentacleContactTicks = new Map<number, Map<number, number>>();
 
 /** 点到线段的最短距离(线段退化为点时即点到点距离) */
 const H_pointToSegmentDistance = (px: number, py: number, start: Point, end: Point): number => {
@@ -718,6 +701,126 @@ const updateLaserBulletHits = (bullet: LaserBulletDynamicEntity): boolean => {
     }
   }
   return hitAny;
+};
+
+/**
+ * 珊瑚红触手(CoralRedTentacleT1Entity)的触手命中结算。
+ *
+ * <p>触手不是独立实体,而是 NPC 自身的一条线段:起点 = 本体中心(故随本体移动),
+ * 方向以本体为中心顺时针旋转(角度由 tentacleTicks 派生)、长度随等级成长。</p>
+ *
+ * <ul>
+ *   <li>玩家目标:触碰线段即受伤(触手不会因命中消失);</li>
+ *   <li>NPC 目标:仅当该触手已被玩家吸附为从者时才会攻击 —— 野生触手只打玩家,
+ *       避免野生 NPC 之间互相残杀;从者触手可攻击其他野生 NPC 与其他玩家的从者;</li>
+ *   <li>首次接触立即造成 1 点伤害;</li>
+ *   <li>持续接触每累计 TENTACLE_CONTACT_TICK_INTERVAL(10) 刻再造成 1 点伤害;</li>
+ *   <li>离开线段后计时重置,再次接触时重新触发首次接触伤害;</li>
+ *   <li>该 NPC 被吸附为从者时不对主人造成伤害(同队玩家/从者同样不受伤)。</li>
+ * </ul>
+ */
+const updateCoralRedTentacleHits = (): void => {
+  const npcList = MAP_DATA.dynamicEntitie.npcDynamicEntitys;
+
+  // 清理已消失 NPC 的持续接触计时,避免长期运行下残留无用条目
+  if (coralRedTentacleContactTicks.size > 0) {
+    const aliveIds = new Set(npcList.map((npc) => npc.id));
+    for (const id of Array.from(coralRedTentacleContactTicks.keys())) {
+      if (!aliveIds.has(id)) coralRedTentacleContactTicks.delete(id);
+    }
+  }
+
+  for (const npc of npcList) {
+    if (!(npc instanceof CoralRedTentacleT1Entity)) continue;
+    if (npc.isDead) {
+      coralRedTentacleContactTicks.delete(npc.id);
+      continue;
+    }
+
+    const segment = npc.getTentacleSegment();
+    const hitRadius = CoralRedTentacleT1Entity.TENTACLE_HALF_WIDTH;
+    let perTarget = coralRedTentacleContactTicks.get(npc.id);
+    const touched = new Set<number>();
+
+    // 玩家目标:触碰线段即受伤
+    for (const player of MAP_DATA.dynamicEntitie.playerDynamicEntitys) {
+      if (player.isDead) continue;
+      // 从者特例:被吸附为从者后不能伤害主人
+      if (npc.ownerId !== null && npc.ownerId === player.id) continue;
+      // 不误伤同队玩家(从者的 teamId 会被同步为主人的队伍)
+      if (npc.teamId !== null && npc.teamId === player.teamId) continue;
+
+      perTarget = H_applyTentacleContact(npc, player, perTarget, segment, touched);
+    }
+
+    // NPC 目标:仅从者状态的触手攻击 NPC(野生触手保持"只打玩家")
+    if (npc.ownerId !== null) {
+      for (const other of npcList) {
+        if (other === npc || other.isDead) continue;
+        // 不误伤同队 NPC(同主人的其他从者 teamId 相同)
+        if (npc.teamId !== null && other.teamId !== null && npc.teamId === other.teamId) continue;
+        // 同一主人的其他从者同样不受伤(兜底:个别实体的 teamId 可能尚未同步)
+        if (other.ownerId !== null && other.ownerId === npc.ownerId) continue;
+
+        perTarget = H_applyTentacleContact(npc, other, perTarget, segment, touched);
+      }
+    }
+
+    // 离开线段的目标重置计时
+    if (perTarget !== undefined) {
+      for (const id of Array.from(perTarget.keys())) {
+        if (!touched.has(id)) perTarget.delete(id);
+      }
+    }
+  }
+};
+
+/**
+ * 结算触手与某个目标的单次接触:命中则累加接触刻数,并在首次接触 / 每累计
+ * TENTACLE_CONTACT_TICK_INTERVAL 刻施加一次伤害。
+ *
+ * @returns 更新后的持续接触计时表(首次命中时才创建)
+ */
+const H_applyTentacleContact = (
+  tentacleNpc: CoralRedTentacleT1Entity,
+  target: PlayerDynamicEntity | NpcDynamicEntity,
+  perTarget: Map<number, number> | undefined,
+  segment: { start: Point; end: Point },
+  touched: Set<number>
+): Map<number, number> | undefined => {
+  const distance = H_pointToSegmentDistance(
+    target.position.x,
+    target.position.y,
+    segment.start,
+    segment.end
+  );
+  if (distance > target.width * 0.45 + CoralRedTentacleT1Entity.TENTACLE_HALF_WIDTH) {
+    return perTarget;
+  }
+
+  touched.add(target.id);
+  let table = perTarget;
+  if (table === undefined) {
+    table = new Map<number, number>();
+    coralRedTentacleContactTicks.set(tentacleNpc.id, table);
+  }
+
+  const ticks = table.get(target.id);
+  if (ticks === undefined) {
+    // 首次接触:立即造成 1 次伤害
+    table.set(target.id, 0);
+    H_applyBulletDamage(tentacleNpc.id, tentacleNpc.teamId, target, CoralRedTentacleT1Entity.TENTACLE_DAMAGE);
+    return table;
+  }
+
+  const next = ticks + 1;
+  if (next >= CoralRedTentacleT1Entity.TENTACLE_CONTACT_TICK_INTERVAL) {
+    table.set(target.id, 0);
+    H_applyBulletDamage(tentacleNpc.id, tentacleNpc.teamId, target, CoralRedTentacleT1Entity.TENTACLE_DAMAGE);
+  } else {
+    table.set(target.id, next);
+  }
+  return table;
 };
 
 const spawnGrenadeDynamicEntity = (grenade: GrenadeDynamicEntity) => {
@@ -950,7 +1053,140 @@ const spawnPlayerDeathDrops = (position: Point, drop: PlayerDeathDrop): void => 
 };
 
 /**
- * 更新经验球实体(移动、吸引、拾取)
+ * 掉落物(经验球 / 技能球 / 子弹球 / 地面物品)的统一拾取契约。
+ *
+ * <p>四者提供同一套接口,因此可以由同一条「以掉落物为中心」的拾取管线统一处理:</p>
+ * <ul>
+ *   <li>{@code getAbsorbRange()} 吸引范围(px):物品为 0,表示不磁吸;</li>
+ *   <li>{@code getPickupRange(player)} 拾取范围(px):可依赖玩家体积(物品用"接触半径");</li>
+ *   <li>{@code canBeAbsorbedBy(player)} 玩家当前能否接受(子弹满 / 背包满时为 false);</li>
+ *   <li>{@code attractTowardPlayer(player, dt)} 牵引一帧(物品为空实现);</li>
+ *   <li>{@code absorbByPlayer(player)} 结算吸收(支持部分吸收);</li>
+ *   <li>{@code isAbsorbed()} 是否已被拾取。</li>
+ * </ul>
+ */
+type PickupableDynamicEntity =
+  | ExpOrbDynamicEntity
+  | SkillOrbDynamicEntity
+  | BulletOrbDynamicEntity
+  | ItemEntity;
+
+/**
+ * 玩家空间哈希的单元格边长(px)。
+ *
+ * <p>必须 ≥ 所有掉落物的最大影响半径(当前为子弹球的 ATTRACT_RANGE = 200),
+ * 这样「以掉落物为中心取 3×3 邻域」必定覆盖其影响范围。</p>
+ */
+const H_PICKUP_PLAYER_CELL_SIZE = 256;
+
+/** 玩家空间哈希:单元格键 → 该单元格内的玩家列表 */
+type PlayerSpatialGrid = Map<number, PlayerDynamicEntity[]>;
+
+/** 把单元格坐标打包成唯一整数键(cx/cy 均为小区间内的整数,不会冲突) */
+const H_packPlayerCell = (cx: number, cy: number): number => cx * 100003 + cy;
+
+/** 构建「玩家空间哈希」(跳过死亡玩家),供拾取管线快速查询邻近玩家 */
+const H_buildPlayerGrid = (players: PlayerDynamicEntity[]): PlayerSpatialGrid => {
+  const grid: PlayerSpatialGrid = new Map();
+  for (const player of players) {
+    if (player.isDead) continue;
+    const cx = Math.floor(player.position.x / H_PICKUP_PLAYER_CELL_SIZE);
+    const cy = Math.floor(player.position.y / H_PICKUP_PLAYER_CELL_SIZE);
+    const key = H_packPlayerCell(cx, cy);
+    const bucket = grid.get(key);
+    if (bucket) bucket.push(player);
+    else grid.set(key, [player]);
+  }
+  return grid;
+};
+
+/** 收集 (x,y) 周围 3×3 单元格内的玩家,写入 out(复用数组,避免每帧分配) */
+const H_queryNearbyPlayers = (
+  grid: PlayerSpatialGrid,
+  x: number,
+  y: number,
+  out: PlayerDynamicEntity[]
+): void => {
+  out.length = 0;
+  const cx = Math.floor(x / H_PICKUP_PLAYER_CELL_SIZE);
+  const cy = Math.floor(y / H_PICKUP_PLAYER_CELL_SIZE);
+  for (let gx = cx - 1; gx <= cx + 1; gx++) {
+    for (let gy = cy - 1; gy <= cy + 1; gy++) {
+      const bucket = grid.get(H_packPlayerCell(gx, gy));
+      if (bucket) {
+        for (const player of bucket) out.push(player);
+      }
+    }
+  }
+};
+
+/**
+ * 掉落物拾取(统一管线):经验球 / 技能球 / 子弹球 / 地面物品共用。
+ *
+ * <p><b>性能</b>:距离比较全部改用<b>平方距离</b>(不再调用 Math.hypot→sqrt);
+ * 并以「玩家空间哈希」把候选玩家限制在掉落物周围 3×3 单元格内,
+ * 避免旧实现 O(玩家数 × 掉落物数) 的全量两两距离计算。</p>
+ *
+ * <p><b>公平</b>:循环以<b>掉落物为中心</b> —— 每个掉落物只由「影响范围内<b>最近的合格玩家</b>」
+ * 牵引并拾取,因此多人抢夺时由距离决定归属(而非玩家数组顺序),也不再需要 claimed 去重集合。</p>
+ *
+ * <p>流程:掉落物 → 邻域内最近的合格玩家 → 牵引一帧 → 进入拾取距离则结算吸收。
+ * 掉落物自身仍不寻找玩家(只做「存在时长 + 惯性滑行」),搜索权在玩家侧。</p>
+ */
+const updatePickups = (deltaTime: number): void => {
+  const players = MAP_DATA.dynamicEntitie.playerDynamicEntitys;
+  if (players.length === 0) return;
+
+  const pickupableLists: PickupableDynamicEntity[][] = [
+    MAP_DATA.dynamicEntitie.expOrbDynamicEntitys,
+    MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys,
+    MAP_DATA.dynamicEntitie.bulletOrbDynamicEntitys,
+    MAP_DATA.itemEntities
+  ];
+  if (pickupableLists.every((list) => list.length === 0)) return;
+
+  const playerGrid = H_buildPlayerGrid(players);
+  const nearby: PlayerDynamicEntity[] = [];
+
+  for (const list of pickupableLists) {
+    for (const pickup of list) {
+      if (pickup.isAbsorbed()) continue;
+
+      H_queryNearbyPlayers(playerGrid, pickup.position.x, pickup.position.y, nearby);
+
+      // 选「影响范围内最近的合格玩家」
+      let best: PlayerDynamicEntity | null = null;
+      let bestDistSq = Infinity;
+      for (const player of nearby) {
+        if (!pickup.canBeAbsorbedBy(player)) continue;
+        const dx = player.position.x - pickup.position.x;
+        const dy = player.position.y - pickup.position.y;
+        const distSq = dx * dx + dy * dy;
+        // 影响范围 = max(吸引范围, 拾取范围):物品吸引范围为 0,只在其「接触半径」内被选中
+        const influence = Math.max(pickup.getAbsorbRange(), pickup.getPickupRange(player));
+        if (distSq > influence * influence) continue;
+        if (distSq < bestDistSq) {
+          best = player;
+          bestDistSq = distSq;
+        }
+      }
+      if (best === null) continue;
+
+      // 牵引一帧后再判定(与旧行为一致:避免因少吸一帧而延迟拾取)
+      pickup.attractTowardPlayer(best, deltaTime);
+      const dx = best.position.x - pickup.position.x;
+      const dy = best.position.y - pickup.position.y;
+      const pickupRange = pickup.getPickupRange(best);
+      if (dx * dx + dy * dy <= pickupRange * pickupRange) pickup.absorbByPlayer(best);
+    }
+  }
+};
+
+// 说明:经验球 / 技能球 / 子弹球 / 地面物品的拾取已统一到 updatePickups(见上)。
+
+/**
+ * 更新经验球实体(存在时长 / 惯性滑行)
+ * 吸取由玩家侧主动发起,见 updatePickups。
  */
 const updateExpOrbDynamicEntities = (deltaTime: number): boolean => {
   if (MAP_DATA.dynamicEntitie.expOrbDynamicEntitys.length === 0) return false;
@@ -1029,8 +1265,8 @@ const handleNpcDeathLoot = (): void => {
 };
 
 /**
- * 更新技能球实体(移动、吸引、拾取)
- * 技能球被拾取后由实体自身将技能授予玩家。
+ * 更新技能球实体(存在时长 / 惯性滑行)
+ * 吸取由玩家侧主动发起,见 updatePickups。
  */
 const updateSkillOrbDynamicEntities = (deltaTime: number): boolean => {
   if (MAP_DATA.dynamicEntitie.skillOrbDynamicEntitys.length === 0) return false;
@@ -1071,8 +1307,8 @@ const spawnBulletOrb = (
 };
 
 /**
- * 更新子弹球实体(移动、吸引、拾取)
- * 子弹球被拾取后由实体自身为玩家补充子弹(已满则不吸收,容量不足时只吸收一部分)。
+ * 更新子弹球实体(存在时长 / 惯性滑行)
+ * 吸取由玩家侧主动发起,见 updatePickups。
  */
 const updateBulletOrbDynamicEntities = (deltaTime: number): boolean => {
   if (MAP_DATA.dynamicEntitie.bulletOrbDynamicEntitys.length === 0) return false;
@@ -1762,14 +1998,15 @@ const updateGame = (deltaTime: number) => {
   if (gamePaused) return;
   updateItemEntityLifetimes(deltaTime);
   updateDynamicEntities(deltaTime);
-  updateDynamicEntityItemPickups();
+  updateCoralRedTentacleHits();          // 珊瑚红触手:线段型攻击的持续伤害结算(需在实体位移之后)
   updateBulletEntities(deltaTime);
   updateGrenadeEntities(deltaTime);
   handleEntityDeathExpOrbs();            // 结算死亡掉落经验球(须在清理死亡实体之前)
   handleNpcDeathLoot();                   // 结算死亡战利品掉落(技能球/子弹球)
-  updateExpOrbDynamicEntities(deltaTime); // 更新经验球(移动/吸引/拾取)
-  updateSkillOrbDynamicEntities(deltaTime); // 更新技能球(移动/吸引/拾取)
-  updateBulletOrbDynamicEntities(deltaTime); // 更新子弹球(移动/吸引/拾取)
+  updateExpOrbDynamicEntities(deltaTime); // 更新经验球(存在时长/惯性滑行)
+  updateSkillOrbDynamicEntities(deltaTime); // 更新技能球(存在时长/惯性滑行)
+  updateBulletOrbDynamicEntities(deltaTime); // 更新子弹球(存在时长/惯性滑行)
+  updatePickups(deltaTime);                // 统一拾取:Orb 磁吸 + 地面物品接触拾取
   generateNpcAroundPlayerSingle(deltaTime);
   generateItemAroundPlayerSingle(deltaTime);
   removeFinishedDeadDynamicEntities();

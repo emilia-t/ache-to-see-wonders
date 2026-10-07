@@ -1,16 +1,16 @@
 package top.atsw.pixelwar.entity.dynamicEntity;
 
 import top.atsw.pixelwar.core.Geometry;
-
-import java.util.List;
+import top.atsw.pixelwar.game.Skill;
 
 /**
  * 经验球(由前端 TS 版 ExpOrbDynamicEntity 迁移)。
  *
- * <p>会向附近的存活玩家飘行,被拾取后为玩家增加游戏经验;超过存在时长自动消失。
- * 视觉尺寸随经验值档位变化,但碰撞体积固定。</p>
+ * <p><b>自身不寻找玩家</b>:只做"存在时长 + 惯性滑行";
+ * 由 {@code World.updatePickups} 的"玩家主动搜索并吸取"逻辑牵引与吸收。</p>
+ * <p>视觉尺寸随经验值档位变化,但碰撞体积固定。</p>
  */
-public final class ExpOrbEntity extends DynamicEntity {
+public final class ExpOrbEntity extends DynamicEntity implements AbsorbableOrb {
 
     /** 统一物理碰撞体积 */
     public static final double WIDTH = 12;
@@ -41,51 +41,75 @@ public final class ExpOrbEntity extends DynamicEntity {
         this.maxMoveSpeed = 0;
     }
 
-    /** 经验球每帧更新:吸引 + 拾取 + 超时消失 */
-    public void updateOrb(double dt, List<PlayerEntity> players) {
+    /** 经验球每帧更新:仅存在时长与惯性滑行(不再自行寻找玩家) */
+    public void updateOrb(double dt) {
         if (isPickedUp) {
             return;
         }
         age += dt;
         if (age >= LIFETIME) {
-            isPickedUp = true;
+            isPickedUp = true;// 超时消失
             return;
         }
 
-        PlayerEntity nearestPlayer = null;
-        double nearestDist = Double.MAX_VALUE;
-        for (PlayerEntity player : players) {
-            if (player.isDead) {
-                continue;
-            }
-            double d = Geometry.distance(position.x, position.y, player.position.x, player.position.y);
-            if (d < nearestDist) {
-                nearestDist = d;
-                nearestPlayer = player;
-            }
-        }
+        // 仅保留惯性滑行(死亡时随机爆出的冲量逐渐衰减)
+        applyAirResistance(dt);
+        position.x += motionVelocity.x * dt;
+        position.y += motionVelocity.y * dt;
+        updateCollisionBox();
+    }
 
-        if (nearestPlayer != null && nearestDist <= ATTRACT_RANGE && nearestDist > 0.0001) {
-            double dirX = (nearestPlayer.position.x - position.x) / nearestDist;
-            double dirY = (nearestPlayer.position.y - position.y) / nearestDist;
-            double speed = 140 + (1 - nearestDist / ATTRACT_RANGE) * 360;
-            position.x += dirX * speed * dt;
-            position.y += dirY * speed * dt;
-            updateCollisionBox();
-        } else {
-            applyAirResistance(dt);
-            position.x += motionVelocity.x * dt;
-            position.y += motionVelocity.y * dt;
-            updateCollisionBox();
-        }
+    // ==================================================================
+    // 被玩家主动吸取(由 World.updatePickups 调用)
+    // ==================================================================
 
-        if (nearestPlayer != null) {
-            double d = Geometry.distance(position.x, position.y, nearestPlayer.position.x, nearestPlayer.position.y);
-            if (d <= PICKUP_RANGE) {
-                nearestPlayer.gainExp(value);
-                isPickedUp = true;
-            }
+    /** 吸取范围(px) */
+    @Override
+    public double absorbRange() {
+        return ATTRACT_RANGE;
+    }
+
+    /** 拾取范围(px):经验球为点判定,与玩家体积无关 */
+    @Override
+    public double pickupRange(PlayerEntity player) {
+        return PICKUP_RANGE;
+    }
+
+    /** 玩家当前能否接受本经验球(经验值恒可累加,始终可接受) */
+    @Override
+    public boolean canBeAbsorbedBy(PlayerEntity player) {
+        return true;
+    }
+
+    /** 被玩家牵引一帧:朝玩家飘行,距离越近速度越快 */
+    @Override
+    public void attractTowardPlayer(PlayerEntity player, double dt) {
+        if (isPickedUp) {
+            return;
         }
+        double dx = player.position.x - position.x;
+        double dy = player.position.y - position.y;
+        double distance = Math.hypot(dx, dy);
+        if (distance <= 0.0001) {
+            return;
+        }
+        double speed = 140 + (1 - distance / ATTRACT_RANGE) * 360;
+        position.x += dx / distance * speed * dt;
+        position.y += dy / distance * speed * dt;
+        updateCollisionBox();
+    }
+
+    /** 被玩家吸收:为玩家增加经验并标记为已拾取 */
+    @Override
+    public void absorbByPlayer(PlayerEntity player, Skill.Provider skills) {
+        player.gainExp(value);
+        isPickedUp = true;
+    }
+
+    /** 是否已被拾取(含超时消失) */
+    @Override
+    public boolean isAbsorbed() {
+        return isPickedUp;
     }
 
     /** 按经验值拆分为若干经验球(贪心匹配档位,与《我的世界》一致) */

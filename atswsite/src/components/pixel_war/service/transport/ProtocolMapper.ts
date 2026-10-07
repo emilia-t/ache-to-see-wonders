@@ -192,7 +192,9 @@ export const H_toNpcEntity = (npc: JavaNpc): Record<string, unknown> => ({
   kill_score: npc.killScore ?? 1,
   deathEffectTimer: npc.deathEffectTimer ?? 0,
   // NPC 等级(0 不下发,缺省视为 0)
-  level: npc.level ?? 0
+  level: npc.level ?? 0,
+  // 触手旋转相位(仅珊瑚红触手有值;缺省保持实体默认值 0)
+  tentacleTicks: npc.tentacleTicks ?? undefined
 });
 
 /** Java 子弹 -> 前端子弹快照(普通子弹的激光字段为 undefined,水合时会被跳过) */

@@ -1,7 +1,6 @@
 import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
 import { OrdinaryBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
 import { Oa18ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Oa18ShootSkill/Oa18ShootSkill';
-import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type {
   Point,
@@ -113,14 +112,6 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
       // 子弹球:会发射普通子弹的 NPC 均有概率掉落(概率 75%)
       { type: 'bulletOrb', tag: 'bullet_orb', odds: 0.75 }
     ];
-  }
-
-  public tryPickupItem(_item: ItemEntity): boolean {
-    return false;
-  }
-
-  public pickupItem(_item: ItemEntity): void {
-    // 紫色烟花不拾取任何物品
   }
 
   /** 等级上限:2(与其他上限 2 的 NPC 共用 3 档等级概率表) */

@@ -1,6 +1,5 @@
 import { OrdinaryBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
 import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
-import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { Point,DynamicEntitieList,GameConfig,ActionLoopContext,EntityDebugFlags } from '@/components/pixel_war/interface/Interface';
 
@@ -31,14 +30,6 @@ class WhitePixelEntity extends HostileNpcDynamicEntity {
       // 子弹球:会发射普通子弹的 NPC 均有概率掉落(概率 75%)
       { type: 'bulletOrb', tag: 'bullet_orb', odds: 0.75 }
     ];
-  }
-
-  public tryPickupItem(_item: ItemEntity): boolean {
-    return false;
-  }
-
-  public pickupItem(_item: ItemEntity): void {
-    // 白色像素不拾取任何物品。
   }
 
   /** 当前攻击间隔(秒):随等级缩短(ACTION_INTERVAL - 0.1 × Level) */

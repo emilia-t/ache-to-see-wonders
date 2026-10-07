@@ -329,7 +329,8 @@ public final class Protocol {
      * NPC 快照。
      *
      * <p>width/height 固定为 25 不再下发;name 为空字符串时置 null(序列化时直接被忽略);
-     * deathEffectTimer 仅在死亡特效期间有值(平时 null);level 为 0 时置 null(默认等级 0 不下发)。</p>
+     * deathEffectTimer 仅在死亡特效期间有值(平时 null);level 为 0 时置 null(默认等级 0 不下发);
+     * tentacleTicks 仅珊瑚红触手等自带旋转线段的 NPC 使用,为 0 时置 null(不下发)。</p>
      */
     public record NpcSnapshot(
             long id,
@@ -347,7 +348,9 @@ public final class Protocol {
             String mapColor,
             Integer killScore,
             Double deathEffectTimer,
-            Integer level
+            Integer level,
+            /** 触手旋转相位(tick 计数):仅带旋转线段的 NPC(珊瑚红触手)使用 */
+            Integer tentacleTicks
     ) {
 
         public NpcSnapshot {
@@ -364,6 +367,9 @@ public final class Protocol {
             }
             if (level != null && level <= 0) {
                 level = null;// 默认等级 0 不下发
+            }
+            if (tentacleTicks != null && tentacleTicks <= 0) {
+                tentacleTicks = null;// 相位 0 不下发(缺省视为 0)
             }
         }
     }

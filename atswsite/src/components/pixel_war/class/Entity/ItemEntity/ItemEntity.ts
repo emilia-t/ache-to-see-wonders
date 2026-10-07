@@ -1,5 +1,6 @@
 ﻿import { Entity } from '@/components/pixel_war/class/Entity/Entity';
 import type { EntityDebugFlags, Point } from '@/components/pixel_war/interface/Interface';
+import type { PlayerDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 
 abstract class ItemEntity extends Entity {
   public lifetimeTotal: number; // 初始寿命（秒）
@@ -61,6 +62,54 @@ abstract class ItemEntity extends Entity {
   public isReadyToRemove() {
     return this.isDisappearing && this.disappearTimer <= 0;
   }
+
+  ////////////////////
+  // 统一「掉落物拾取」契约 -->
+  //
+  // 与经验球 / 技能球 / 子弹球实现同一套接口,因此可由权威端的同一条
+  // 「以掉落物为中心」的拾取管线(Service.updatePickups)统一处理。
+  // 物品不磁吸:吸引范围为 0,只在玩家「碰到」时拾取。
+  ////////////////////
+
+  /** 吸引范围(px):物品不磁吸,恒为 0 */
+  public getAbsorbRange(): number {
+    return 0;
+  }
+
+  /** 拾取范围(px):玩家与物品的「接触半径」(两者半宽之和),与旧行为一致 */
+  public getPickupRange(player: PlayerDynamicEntity): number {
+    return (player.width + this.width) / 2;
+  }
+
+  /** 背包放得下时才能被该玩家拾取 */
+  public canBeAbsorbedBy(player: PlayerDynamicEntity): boolean {
+    return !this.isDisappearing && player.canAcceptItem(this.tag);
+  }
+
+  /** 物品不磁吸:牵引为空实现 */
+  public attractTowardPlayer(_player: PlayerDynamicEntity, _dt: number): void {
+    // 物品不移动
+  }
+
+  /**
+   * 被玩家拾取:按背包剩余空间结算(可堆叠),装不下的部分继续留在地上。
+   */
+  public absorbByPlayer(player: PlayerDynamicEntity): void {
+    const want = Math.max(1, Math.floor(this.count));
+    const accepted = player.acquireItemCount(this.tag, this.name, want);
+    if (accepted <= 0) return;
+    this.count = want - accepted;
+    if (this.count <= 0) this.beginDisappear();
+  }
+
+  /** 是否已被拾取(进入消失阶段即视为已拾取) */
+  public isAbsorbed(): boolean {
+    return this.isDisappearing;
+  }
+
+  ////////////////////
+  // <-- 统一「掉落物拾取」契约
+  ////////////////////
 
   public getLifetimeOpacity() {
     if (this.lifetimeTotal <= 0) return 1;

@@ -99,6 +99,7 @@ export { RedPixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileN
 export { GoldenDodgeXa4Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/GoldenDodgeXa4Entity/GoldenDodgeXa4Entity';
 export { PurpleFireworkOa18Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/PurpleFireworkOa18Entity/PurpleFireworkOa18Entity';
 export { OnahauLoneLs1Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/OnahauLoneLs1Entity/OnahauLoneLs1Entity';
+export { CoralRedTentacleT1Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/CoralRedTentacleT1Entity/CoralRedTentacleT1Entity';
 // NeutralNpcDynamicEntity
 export { NeutralNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/NeutralNpcDynamicEntity';
 // PlayerDynamicEntity

@@ -39,7 +39,6 @@ import {
 
 import { DynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/DynamicEntity';
 import { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
-import { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import {
   INVENTORY_SKILL_SLOT_COUNT,
   H_createEmptyPlayerInventory,
@@ -936,32 +935,6 @@ class PlayerDynamicEntity extends DynamicEntity {
     }
   }
 
-  /**
-   * 拾取物品检测
-   * 只要背包还能容纳该物品且距离足够近即可拾取(物品进入背包,由玩家主动使用)
-   * @param item 待拾取的物品实体
-   * @returns 是否可以拾取
-   */
-  public tryPickupItem(item: ItemEntity): boolean {
-    if (!item || item.isDisappearing) return false;
-    // 添加碰撞/距离检测
-    const distance = Math.hypot(
-      this.position.x - item.position.x,
-      this.position.y - item.position.y
-    );
-    const pickupRadius = (this.width + item.width) / 2; // 玩家和物品半径之和
-    if (distance > pickupRadius) return false;
-    return this.canAcceptItem(item.tag);
-  }
-
-  /**
-   * 拾取物品:放入背包(可堆叠,单格上限 50)
-   * @param item 待拾取的物品实体
-   */
-  public pickupItem(item: ItemEntity): void {
-    this.acquireItem(item.tag, item.name);
-  }
-
   ////////////////////
   // 背包与技能相关 -->
   ////////////////////
@@ -1086,14 +1059,6 @@ class PlayerDynamicEntity extends DynamicEntity {
    */
   public canAcceptItem(itemTag: string): boolean {
     return H_inventoryCanAcceptItem(this.getInventory(), itemTag);
-  }
-
-  /**
-   * 获得物品:放入背包(自动按 50 堆叠)
-   * @returns 实际放入的数量
-   */
-  public acquireItem(itemTag: string, itemName: string = ''): number {
-    return this.acquireItemCount(itemTag, itemName, 1);
   }
 
   /**

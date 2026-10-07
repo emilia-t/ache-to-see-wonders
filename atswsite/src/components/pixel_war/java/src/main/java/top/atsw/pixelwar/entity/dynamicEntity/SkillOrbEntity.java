@@ -3,15 +3,14 @@ package top.atsw.pixelwar.entity.dynamicEntity;
 import top.atsw.pixelwar.core.Geometry;
 import top.atsw.pixelwar.game.Skill;
 
-import java.util.List;
-
 /**
  * 技能球(由前端 TS 版 SkillOrbDynamicEntity 迁移)。
  *
- * <p>击杀携带 loot 配置的 NPC 时按概率掉落;会向附近的存活玩家飘行,
- * 被玩家拾取后玩家获得对应技能;超过存在时长自动消失。</p>
+ * <p>击杀携带 loot 配置的 NPC 时按概率掉落;<b>自身不寻找玩家</b>,
+ * 由 {@code World.updatePickups} 的"玩家主动搜索并吸取"逻辑牵引与吸收;
+ * 超时未被吸取则自动消失。</p>
  */
-public final class SkillOrbEntity extends DynamicEntity {
+public final class SkillOrbEntity extends DynamicEntity implements AbsorbableOrb {
 
     /** 物理碰撞体积 */
     public static final double WIDTH = 14;
@@ -52,50 +51,75 @@ public final class SkillOrbEntity extends DynamicEntity {
         return skill == null ? FALLBACK_COLOR : skill.color();
     }
 
-    /** 技能球每帧更新:吸引 + 拾取(授予技能) + 超时消失 */
-    public void updateOrb(double dt, List<PlayerEntity> players, Skill.Provider skills) {
+    /** 技能球每帧更新:仅存在时长与惯性滑行(不再自行寻找玩家) */
+    public void updateOrb(double dt) {
         if (isPickedUp) {
             return;
         }
         age += dt;
         if (age >= LIFETIME) {
-            isPickedUp = true;
+            isPickedUp = true;// 超时消失
             return;
         }
 
-        PlayerEntity nearestPlayer = null;
-        double nearestDist = Double.MAX_VALUE;
-        for (PlayerEntity player : players) {
-            if (player.isDead) {
-                continue;
-            }
-            double d = Geometry.distance(position.x, position.y, player.position.x, player.position.y);
-            if (d < nearestDist) {
-                nearestDist = d;
-                nearestPlayer = player;
-            }
-        }
+        // 仅保留惯性滑行(爆出/丢弃时的冲量逐渐衰减)
+        applyAirResistance(dt);
+        position.x += motionVelocity.x * dt;
+        position.y += motionVelocity.y * dt;
+        updateCollisionBox();
+    }
 
-        if (nearestPlayer != null && nearestDist <= ATTRACT_RANGE && nearestDist > 0.0001) {
-            double dirX = (nearestPlayer.position.x - position.x) / nearestDist;
-            double dirY = (nearestPlayer.position.y - position.y) / nearestDist;
-            double speed = 150 + (1 - nearestDist / ATTRACT_RANGE) * 380;
-            position.x += dirX * speed * dt;
-            position.y += dirY * speed * dt;
-            updateCollisionBox();
-        } else {
-            applyAirResistance(dt);
-            position.x += motionVelocity.x * dt;
-            position.y += motionVelocity.y * dt;
-            updateCollisionBox();
-        }
+    // ==================================================================
+    // 被玩家主动吸取(由 World.updatePickups 调用)
+    // ==================================================================
 
-        if (nearestPlayer != null) {
-            double d = Geometry.distance(position.x, position.y, nearestPlayer.position.x, nearestPlayer.position.y);
-            if (d <= PICKUP_RANGE) {
-                nearestPlayer.acquireSkill(skillTag, skills);
-                isPickedUp = true;
-            }
+    /** 吸取范围(px) */
+    @Override
+    public double absorbRange() {
+        return ATTRACT_RANGE;
+    }
+
+    /** 拾取范围(px):技能球为点判定,与玩家体积无关 */
+    @Override
+    public double pickupRange(PlayerEntity player) {
+        return PICKUP_RANGE;
+    }
+
+    /** 玩家当前能否接受本技能球(技能可重复获取,始终可接受) */
+    @Override
+    public boolean canBeAbsorbedBy(PlayerEntity player) {
+        return true;
+    }
+
+    /** 被玩家牵引一帧:朝玩家飘行,距离越近速度越快 */
+    @Override
+    public void attractTowardPlayer(PlayerEntity player, double dt) {
+        if (isPickedUp) {
+            return;
         }
+        double dx = player.position.x - position.x;
+        double dy = player.position.y - position.y;
+        double distance = Math.hypot(dx, dy);
+        if (distance <= 0.0001) {
+            return;
+        }
+        double speed = 150 + (1 - distance / ATTRACT_RANGE) * 380;
+        position.x += dx / distance * speed * dt;
+        position.y += dy / distance * speed * dt;
+        updateCollisionBox();
+    }
+
+    /** 被玩家吸收:玩家获得对应技能并标记为已拾取 */
+    @Override
+    public void absorbByPlayer(PlayerEntity player, Skill.Provider skills) {
+        // 已持有相同技能时也直接消耗技能球,避免地面堆积重复技能球
+        player.acquireSkill(skillTag, skills);
+        isPickedUp = true;
+    }
+
+    /** 是否已被拾取(含超时消失) */
+    @Override
+    public boolean isAbsorbed() {
+        return isPickedUp;
     }
 }

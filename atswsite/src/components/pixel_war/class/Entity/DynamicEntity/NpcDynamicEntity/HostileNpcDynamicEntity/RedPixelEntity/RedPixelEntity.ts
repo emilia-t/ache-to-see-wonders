@@ -1,6 +1,5 @@
 import { HostileNpcDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
 import { RedPixelBombEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/GrenadeDynamicEntity/RedPixelBombEntity/RedPixelBombEntity';
-import type { ItemEntity } from '@/components/pixel_war/class/Entity/ItemEntity/ItemEntity';
 import type { StaticEntity } from '@/components/pixel_war/class/Entity/StaticEntity/StaticEntity';
 import type { GameConfig, Point } from '@/components/pixel_war/interface/Interface';
 import type { EntityDebugFlags, DynamicEntitieList, ActionLoopContext} from '@/components/pixel_war/interface/Interface';
@@ -58,14 +57,6 @@ class RedPixelEntity extends HostileNpcDynamicEntity {
   /** 等级变化时重算等级相关属性(经验值随等级提升) */
   protected override onNpcLevelApplied(): void {
     this.game_exp = 4 + this.level * 4;
-  }
-
-  public tryPickupItem(_item: ItemEntity): boolean {
-    return false;
-  }
-
-  public pickupItem(_item: ItemEntity): void {
-    // 黑像素不拾取物品
   }
 
   // 覆盖移动目标设定：向玩家位置移动

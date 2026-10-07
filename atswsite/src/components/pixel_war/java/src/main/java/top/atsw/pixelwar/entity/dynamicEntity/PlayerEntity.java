@@ -419,11 +419,6 @@ public final class PlayerEntity extends DynamicEntity {
         return Inventory.canAcceptItem(inventory, itemTag);
     }
 
-    /** 获得物品:放入背包(自动按堆叠上限堆叠) */
-    public int acquireItem(String itemTag, String itemName) {
-        return acquireItemCount(itemTag, itemName, 1);
-    }
-
     /**
      * 获得指定数量的物品。
      *

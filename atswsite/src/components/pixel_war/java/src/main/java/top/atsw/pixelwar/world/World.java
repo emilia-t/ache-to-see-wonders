@@ -2,7 +2,9 @@ package top.atsw.pixelwar.world;
 
 import top.atsw.pixelwar.core.GameConfig;
 import top.atsw.pixelwar.core.Geometry;
+import top.atsw.pixelwar.entity.Entity;
 import top.atsw.pixelwar.entity.WorldView;
+import top.atsw.pixelwar.entity.dynamicEntity.AbsorbableOrb;
 import top.atsw.pixelwar.entity.dynamicEntity.BombEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.BulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.BulletOrbEntity;
@@ -11,6 +13,7 @@ import top.atsw.pixelwar.entity.dynamicEntity.ExpOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.LaserBulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.SkillOrbEntity;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.CoralRedTentacleT1Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.GoldenDodgeXa4Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.OnahauLoneLs1Npc;
@@ -66,6 +69,12 @@ public final class World implements WorldView {
      * 目标离开线段后对应条目会被清除,从而"再次接触时重新触发首次接触伤害"。
      */
     private final Map<Long, Map<Long, Integer>> laserContactTicks = new HashMap<>();
+    /**
+     * 珊瑚红触手 NPC 的持续接触计时:NPC id -&gt; (玩家 id -&gt; 已累计接触 tick 数)。
+     * 仅服务端使用,不参与协议;玩家离开触手线段后对应条目会被清除,
+     * 从而"再次接触时重新触发首次接触伤害"。
+     */
+    private final Map<Long, Map<Long, Integer>> coralRedTentacleContactTicks = new HashMap<>();
     private final List<ExpOrbEntity> expOrbs = new ArrayList<>();
     private final List<SkillOrbEntity> skillOrbs = new ArrayList<>();
     private final List<BulletOrbEntity> bulletOrbs = new ArrayList<>();
@@ -427,11 +436,12 @@ public final class World implements WorldView {
         beginTick(dt);
         updateItemLifetimes(dt);
         updateDynamicEntities(dt);
-        updateItemPickups();
+        updateCoralRedTentacleHits();// 珊瑚红触手:线段型攻击的持续伤害结算(需在实体位移之后)
         updateBullets(dt);
         updateBombs(dt);
         settleDeaths();
         updateOrbs(dt);
+        updatePickups(dt);// 统一拾取:Orb 磁吸 + 地面物品接触拾取(平方距离 + 玩家空间哈希 + 最近合格玩家优先)
         runNpcActionLoops();
         spawnAroundPlayers(dt);
         removeFinishedDeadEntities();
@@ -465,40 +475,8 @@ public final class World implements WorldView {
         items.removeIf(ItemEntity::isReadyToRemove);
     }
 
-    /** 玩家拾取地面物品(按堆叠数量结算,装不下的继续留在地上) */
-    private void updateItemPickups() {
-        if (items.isEmpty() || players.isEmpty()) {
-            return;
-        }
-        for (ItemEntity item : items) {
-            if (item.isDisappearing) {
-                continue;
-            }
-            for (PlayerEntity player : players) {
-                if (player.isDead) {
-                    continue;
-                }
-                double pickupRadius = (player.width + item.width) / 2;
-                if (Geometry.distance(player.position.x, player.position.y, item.position.x, item.position.y) > pickupRadius) {
-                    continue;
-                }
-                if (!player.canAcceptItem(item.tag)) {
-                    break;
-                }
-                int accepted = player.acquireItemCount(item.tag, item.name, item.count);
-                if (accepted <= 0) {
-                    break;
-                }
-                item.count -= accepted;
-                if (item.count <= 0) {
-                    item.beginDisappear();
-                }
-                pushEvent("item_picked", Map.of(
-                        "playerId", player.id, "tag", item.tag, "count", accepted));
-                break;
-            }
-        }
-    }
+    // 说明:地面物品的拾取已并入统一拾取管线 updatePickups ——
+    // 它与经验球/技能球/子弹球实现同一套契约(AbsorbableOrb),只是吸引范围为 0(不磁吸)。
 
     /** 子弹飞行与命中判定(空间哈希加速) */
     private void updateBullets(double dt) {
@@ -692,6 +670,134 @@ public final class World implements WorldView {
 
         // 离开线段的目标重置计时
         perTarget.keySet().removeIf(id -> !touched.contains(id));
+    }
+
+    /**
+     * 珊瑚红触手(CoralRedTentacleT1Npc)的触手命中结算。
+     *
+     * <p>触手不是独立实体,而是 NPC 自身的一条线段:起点 = 本体中心(故随本体移动),
+     * 方向以本体为中心顺时针旋转(角度由 tentacleTicks 派生)、长度随等级成长。</p>
+     *
+     * <ul>
+     *   <li>玩家目标:触碰线段即受伤(触手不会因命中消失);</li>
+     *   <li>NPC 目标:仅当该触手已被玩家吸附为从者时才会攻击 —— 野生触手只打玩家,
+     *       避免野生 NPC 之间互相残杀;从者触手可攻击其他野生 NPC 与其他玩家的从者;</li>
+     *   <li>首次接触立即造成 1 点伤害;</li>
+     *   <li>持续接触每累计 TENTACLE_CONTACT_TICK_INTERVAL(10) 刻再造成 1 点伤害;</li>
+     *   <li>离开线段后计时重置,再次接触时重新触发首次接触伤害;</li>
+     *   <li>该 NPC 被吸附为从者时不对主人造成伤害(同队玩家/从者同样不受伤)。</li>
+     * </ul>
+     */
+    private void updateCoralRedTentacleHits() {
+        if (npcs.isEmpty()) {
+            return;
+        }
+
+        // 清理已消失 NPC 的持续接触计时,避免长期运行下残留无用条目
+        if (!coralRedTentacleContactTicks.isEmpty()) {
+            Set<Long> aliveNpcIds = new HashSet<>();
+            for (NpcEntity npc : npcs) {
+                aliveNpcIds.add(npc.id);
+            }
+            coralRedTentacleContactTicks.keySet().removeIf(id -> !aliveNpcIds.contains(id));
+        }
+
+        for (NpcEntity npc : npcs) {
+            if (!(npc instanceof CoralRedTentacleT1Npc tentacle)) {
+                continue;
+            }
+            if (npc.isDead) {
+                coralRedTentacleContactTicks.remove(npc.id);
+                continue;
+            }
+
+            Geometry.Vec2 start = npc.position;
+            Geometry.Vec2 end = tentacle.tentacleEnd();
+            Map<Long, Integer> perTarget = coralRedTentacleContactTicks.get(npc.id);
+            Set<Long> touched = new HashSet<>();
+
+            // 玩家目标:触碰线段即受伤
+            for (PlayerEntity player : players) {
+                if (player.isDead) {
+                    continue;
+                }
+                // 从者特例:被吸附为从者后不能伤害主人
+                if (npc.ownerId != null && npc.ownerId == player.id) {
+                    continue;
+                }
+                // 不误伤同队玩家(从者的 teamId 会被同步为主人的队伍)
+                if (npc.teamId != null && npc.teamId.equals(player.teamId)) {
+                    continue;
+                }
+
+                perTarget = applyTentacleContact(tentacle, player, perTarget, touched, start, end);
+            }
+
+            // NPC 目标:仅从者状态的触手攻击 NPC(野生触手保持"只打玩家")
+            if (npc.ownerId != null) {
+                for (NpcEntity other : npcs) {
+                    if (other == npc || other.isDead) {
+                        continue;
+                    }
+                    // 不误伤同队 NPC(同主人的其他从者 teamId 相同)
+                    if (npc.teamId != null && other.teamId != null && npc.teamId.equals(other.teamId)) {
+                        continue;
+                    }
+                    // 同一主人的其他从者同样不受伤(兜底:个别实体的 teamId 可能尚未同步)
+                    if (other.ownerId != null && other.ownerId.equals(npc.ownerId)) {
+                        continue;
+                    }
+
+                    perTarget = applyTentacleContact(tentacle, other, perTarget, touched, start, end);
+                }
+            }
+
+            // 离开线段的目标重置计时
+            if (perTarget != null) {
+                perTarget.keySet().removeIf(id -> !touched.contains(id));
+            }
+        }
+    }
+
+    /**
+     * 结算触手与某个目标的单次接触:命中则累加接触刻数,并在首次接触 / 每累计
+     * TENTACLE_CONTACT_TICK_INTERVAL 刻施加一次伤害。
+     *
+     * @return 更新后的持续接触计时表(首次命中时才创建)
+     */
+    private Map<Long, Integer> applyTentacleContact(CoralRedTentacleT1Npc tentacle, DynamicEntity target,
+                                                    Map<Long, Integer> perTarget, Set<Long> touched,
+                                                    Geometry.Vec2 start, Geometry.Vec2 end) {
+        double distance = distancePointToSegment(
+                target.position.x, target.position.y,
+                start.x, start.y, end.x, end.y);
+        if (distance > target.width * 0.45 + CoralRedTentacleT1Npc.TENTACLE_HALF_WIDTH) {
+            return perTarget;
+        }
+
+        touched.add(target.id);
+        Map<Long, Integer> table = perTarget;
+        if (table == null) {
+            table = new HashMap<>();
+            coralRedTentacleContactTicks.put(tentacle.id, table);
+        }
+
+        Integer ticks = table.get(target.id);
+        if (ticks == null) {
+            // 首次接触:立即造成 1 次伤害
+            table.put(target.id, 0);
+            applyBulletDamage(tentacle.id, tentacle.teamId, target, CoralRedTentacleT1Npc.TENTACLE_DAMAGE);
+            return table;
+        }
+
+        int next = ticks + 1;
+        if (next >= CoralRedTentacleT1Npc.TENTACLE_CONTACT_TICK_INTERVAL) {
+            table.put(target.id, 0);
+            applyBulletDamage(tentacle.id, tentacle.teamId, target, CoralRedTentacleT1Npc.TENTACLE_DAMAGE);
+        } else {
+            table.put(target.id, next);
+        }
+        return table;
     }
 
     /** 点到线段的最短距离(线段退化为点时即点到点距离) */
@@ -916,22 +1022,151 @@ public final class World implements WorldView {
         }
     }
 
-    /** 经验球与技能球更新(吸引 / 拾取 / 超时消失) */
+    /** Orb 实体更新(存在时长 / 惯性滑行;不再自行寻找玩家,吸取由 updatePickups 统一处理) */
     private void updateOrbs(double dt) {
         for (ExpOrbEntity orb : expOrbs) {
-            orb.updateOrb(dt, players);
+            orb.updateOrb(dt);
         }
         expOrbs.removeIf(orb -> orb.isPickedUp || orb.isDeathEffectFinished() && orb.isDead);
 
         for (SkillOrbEntity orb : skillOrbs) {
-            orb.updateOrb(dt, players, skills);
+            orb.updateOrb(dt);
         }
         skillOrbs.removeIf(orb -> orb.isPickedUp);
 
         for (BulletOrbEntity orb : bulletOrbs) {
-            orb.updateOrb(dt, players);
+            orb.updateOrb(dt);
         }
         bulletOrbs.removeIf(orb -> orb.isPickedUp);
+    }
+
+    /** 玩家空间哈希的单元格边长(px):必须 ≥ 所有掉落物的最大影响半径(子弹球 200) */
+    private static final double PICKUP_PLAYER_CELL_SIZE = 256;
+
+    /** 把单元格坐标打包成唯一整数键(cx/cy 均为小区间内的整数,不会冲突) */
+    private static long playerCellKey(double x, double y) {
+        long cx = (long) Math.floor(x / PICKUP_PLAYER_CELL_SIZE);
+        long cy = (long) Math.floor(y / PICKUP_PLAYER_CELL_SIZE);
+        return cx * 100003L + cy;
+    }
+
+    /** 构建「玩家空间哈希」(跳过死亡玩家),供拾取管线快速查询邻近玩家 */
+    private Map<Long, List<PlayerEntity>> buildPlayerGrid() {
+        Map<Long, List<PlayerEntity>> grid = new HashMap<>();
+        for (PlayerEntity player : players) {
+            if (player.isDead) {
+                continue;
+            }
+            grid.computeIfAbsent(playerCellKey(player.position.x, player.position.y),
+                    k -> new ArrayList<>()).add(player);
+        }
+        return grid;
+    }
+
+    /** 收集 (x,y) 周围 3×3 单元格内的玩家,写入 out(复用列表,避免每帧分配) */
+    private void queryNearbyPlayers(Map<Long, List<PlayerEntity>> grid, double x, double y,
+                                    List<PlayerEntity> out) {
+        out.clear();
+        long cx = (long) Math.floor(x / PICKUP_PLAYER_CELL_SIZE);
+        long cy = (long) Math.floor(y / PICKUP_PLAYER_CELL_SIZE);
+        for (long gx = cx - 1; gx <= cx + 1; gx++) {
+            for (long gy = cy - 1; gy <= cy + 1; gy++) {
+                List<PlayerEntity> bucket = grid.get(gx * 100003L + gy);
+                if (bucket != null) {
+                    out.addAll(bucket);
+                }
+            }
+        }
+    }
+
+    /**
+     * 掉落物拾取(统一管线):经验球 / 技能球 / 子弹球 / 地面物品共用。
+     *
+     * <p><b>性能</b>:距离比较全部改用<b>平方距离</b>(不再调用 Geometry.distance → hypot);
+     * 并以「玩家空间哈希」把候选玩家限制在掉落物周围 3×3 单元格内,
+     * 避免旧实现 O(玩家数 × 掉落物数) 的全量两两距离计算。</p>
+     *
+     * <p><b>公平</b>:循环以<b>掉落物为中心</b> —— 每个掉落物只由「影响范围内<b>最近的合格玩家</b>」
+     * 牵引并拾取,因此多人抢夺时由距离决定归属(而非玩家数组顺序),也不再需要 claimed 去重集合。</p>
+     *
+     * <p>掉落物自身仍不寻找玩家(只做「存在时长 + 惯性滑行」),搜索权在玩家侧。</p>
+     */
+    private void updatePickups(double dt) {
+        if (players.isEmpty()) {
+            return;
+        }
+        if (expOrbs.isEmpty() && skillOrbs.isEmpty() && bulletOrbs.isEmpty() && items.isEmpty()) {
+            return;
+        }
+        Map<Long, List<PlayerEntity>> grid = buildPlayerGrid();
+        List<PlayerEntity> nearby = new ArrayList<>();
+        for (ExpOrbEntity orb : expOrbs) {
+            pickupOne(orb, grid, nearby, dt);
+        }
+        for (SkillOrbEntity orb : skillOrbs) {
+            pickupOne(orb, grid, nearby, dt);
+        }
+        for (BulletOrbEntity orb : bulletOrbs) {
+            pickupOne(orb, grid, nearby, dt);
+        }
+        for (ItemEntity item : items) {
+            pickupOne(item, grid, nearby, dt);
+        }
+    }
+
+    /**
+     * 单个掉落物的拾取流程:邻域取玩家 → 选「影响范围内最近的合格玩家」→ 牵引一帧 → 进入拾取距离则结算吸收。
+     */
+    private <T extends Entity & AbsorbableOrb> void pickupOne(
+            T pickup, Map<Long, List<PlayerEntity>> grid, List<PlayerEntity> nearby, double dt) {
+        if (pickup.isAbsorbed()) {
+            return;
+        }
+        queryNearbyPlayers(grid, pickup.position.x, pickup.position.y, nearby);
+
+        PlayerEntity best = null;
+        double bestDistSq = Double.MAX_VALUE;
+        for (PlayerEntity player : nearby) {
+            if (!pickup.canBeAbsorbedBy(player)) {
+                continue;
+            }
+            double dx = player.position.x - pickup.position.x;
+            double dy = player.position.y - pickup.position.y;
+            double distSq = dx * dx + dy * dy;
+            // 影响范围 = max(吸引范围, 拾取范围):物品吸引范围为 0,只在其「接触半径」内被选中
+            double influence = Math.max(pickup.absorbRange(), pickup.pickupRange(player));
+            if (distSq > influence * influence) {
+                continue;
+            }
+            if (distSq < bestDistSq) {
+                best = player;
+                bestDistSq = distSq;
+            }
+        }
+        if (best == null) {
+            return;
+        }
+
+        // 牵引一帧后再判定(与旧行为一致:避免因少吸一帧而延迟拾取)
+        pickup.attractTowardPlayer(best, dt);
+        double dx = best.position.x - pickup.position.x;
+        double dy = best.position.y - pickup.position.y;
+        double pickupRange = pickup.pickupRange(best);
+        if (dx * dx + dy * dy > pickupRange * pickupRange) {
+            return;
+        }
+
+        if (pickup instanceof ItemEntity item) {
+            int before = item.count;
+            item.absorbByPlayer(best, skills);
+            int accepted = before - Math.max(0, item.count);
+            if (accepted > 0) {
+                pushEvent("item_picked", Map.of(
+                        "playerId", best.id, "tag", item.tag, "count", accepted));
+            }
+        } else {
+            pickup.absorbByPlayer(best, skills);
+        }
     }
 
     /** 在指定位置随机爆出经验球 */
@@ -1122,10 +1357,10 @@ public final class World implements WorldView {
     /**
      * 按权重随机创建一个 NPC。
      * 权重与 TS 版一致:白像素 0.8、va2 0.4、天蓝像素 0.2、红像素 0.1、紫盾 0.08、
-     * 金色闪避者 0.11、紫色烟花 oa18 0.21、幽蓝孤光 ls1 0.14。
+     * 金色闪避者 0.11、紫色烟花 oa18 0.21、幽蓝孤光 ls1 0.14、珊瑚红触手 t1 0.22。
      */
     private NpcEntity createRandomNpc(Geometry.Vec2 position) {
-        double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08 + 0.11 + 0.21 + 0.14;
+        double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08 + 0.11 + 0.21 + 0.14 + 0.22;
         double random = Math.random() * total;
         NpcEntity npc;
         if (random < 0.8) {
@@ -1142,6 +1377,8 @@ public final class World implements WorldView {
             npc = new PurpleFireworkOa18Npc(position, null, null);
         } else if ((random -= 0.21) < 0.14) {
             npc = new OnahauLoneLs1Npc(position, null, null);
+        } else if ((random -= 0.14) < 0.22) {
+            npc = new CoralRedTentacleT1Npc(position, null, null);
         } else {
             npc = new PurpleShieldNpc(position, null, null);
         }

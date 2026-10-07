@@ -52,7 +52,8 @@
   "selfPrivate": { /* PlayerPrivate:背包/经验/冷却/从者,仅单播给自己 */ },
   "players": [ /* PlayerPublic[]:视野内的玩家(含自己,自己的实体固定排在首位的是 self) */ ],
   "npcs":      [ { "id", "tag", "name", "ownerId", "teamId", "attitude", "position", "facingDirection",
-                   "width", "height", "health", "healthMax", "dead", "moving", "mapColor", "killScore", "level" } ],
+                   "width", "height", "health", "healthMax", "dead", "moving", "mapColor", "killScore", "level",
+                   /* 仅带旋转线段的 NPC(珊瑚红触手)额外携带 */ "tentacleTicks" } ],
   "bullets":   [ { "id", "position", "velocity", "ownerId", "bulletColor",
                    /* 仅激光弹额外携带 */ "tag", "laserMaxLength", "laserExpandSpeed", "laserHoldSeconds", "laserElapsed", "laserGlowColor" } ],
   "grenades":  [ { "id", "tag", "position", "ownerId", "teamId", "width", "height", "fuseRatio" } ],
@@ -69,6 +70,12 @@
 > 紫盾生命值/防护方块数、经验值均随等级变化，见 `game/NpcLevelTable` 与 `NpcEntity.applyNpcLevel`）。
 > 为节省带宽，**等级 0 时该字段不下发**，客户端缺省视为 0。刷怪时按等级概率表随机等级
 > （上限 5 用 45/25/15/8/5/2%，上限 2 用 65/25/10%）。
+
+> `NpcSnapshot.tentacleTicks`：**仅珊瑚红触手（`coral_red_tentacle_t1`）使用**，为触手的旋转相位
+> （累计 tick 计数，每 tick +1）。触手的当前角度由该计数派生：`angle = 180° - ticks × 2°`
+> （初始正西、顺时针旋转，长度 `Len = 100 + Level × 25` px）。该字段为 0 时不下发，客户端缺省视为 0；
+> 客户端不会调用实体 `update()`，因此必须由服务端下发该相位才能画出与权威判定一致的角度。
+> 触手的持续接触伤害完全由服务端结算（首次接触 1 点，持续接触每 10 tick 再 1 点），不占用协议。
 
 > `BulletSnapshot`：普通子弹只下发 `id / position / velocity / ownerId / bulletColor`
 > （尺寸恒为 8×8、伤害恒为 1 且命中由服务端裁决，不再下发）。

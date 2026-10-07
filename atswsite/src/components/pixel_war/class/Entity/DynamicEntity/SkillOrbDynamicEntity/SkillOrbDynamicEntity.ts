@@ -9,8 +9,9 @@ import { H_getSkillByTag } from '@/components/pixel_war/registry/SkillRegistry';
  *
  * 与经验球(ExpOrbDynamicEntity)同为"掉落物"型动态实体:
  * - 击杀携带 loot 配置的 NPC 时按概率掉落
- * - 会向附近的存活玩家飘行,被玩家拾取后玩家获得对应技能
- * - 超过存在时长未被拾取则自动消失
+ * - **自身不寻找玩家**:只做"存在时长 + 惯性滑行";
+ *   由权威端的"玩家主动搜索并吸取"逻辑(Service.updatePickups)按距离牵引与吸收
+ * - 超时未被吸取则自动消失
  *
  * 技能球不堆叠、不参与战斗碰撞,仅用于承载一个技能 tag。
  */
@@ -71,7 +72,7 @@ class SkillOrbDynamicEntity extends DynamicEntity {
   public override update(
     dt: number,
     _staticEntities: StaticEntity[],
-    dynamicEntities: DynamicEntitieList,
+    _dynamicEntities: DynamicEntitieList,
     _gameConfig: GameConfig
   ): void {
     if (this.isPickedUp) return;
@@ -82,46 +83,60 @@ class SkillOrbDynamicEntity extends DynamicEntity {
       return;
     }
 
-    // 寻找最近的存活玩家
-    let nearestPlayer: PlayerDynamicEntity | null = null;
-    let nearestDist = Infinity;
-    for (const player of dynamicEntities.playerDynamicEntitys) {
-      if (player.isDead) continue;
-      const d = Math.hypot(this.position.x - player.position.x, this.position.y - player.position.y);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearestPlayer = player;
-      }
-    }
-
-    if (nearestPlayer && nearestDist <= SkillOrbDynamicEntity.ATTRACT_RANGE) {
-      // 向玩家飘行,距离越近速度越快
-      const dir = {
-        x: (nearestPlayer.position.x - this.position.x) / nearestDist,
-        y: (nearestPlayer.position.y - this.position.y) / nearestDist
-      };
-      const speed = 150 + (1 - nearestDist / SkillOrbDynamicEntity.ATTRACT_RANGE) * 380;
-      this.position.x += dir.x * speed * dt;
-      this.position.y += dir.y * speed * dt;
-    } else {
-      // 无目标时使用空气阻力减速(掉落时的随机冲量逐渐衰减)
-      this.applyAirResistance(dt);
-      this.position.x += this.motionVelocity.x * dt;
-      this.position.y += this.motionVelocity.y * dt;
-    }
-
+    // 仅保留惯性滑行(爆出/丢弃时的冲量逐渐衰减):不再自行寻找玩家
+    this.applyAirResistance(dt);
+    this.position.x += this.motionVelocity.x * dt;
+    this.position.y += this.motionVelocity.y * dt;
     this.updateCollisionBox();
-
-    // 拾取判定:拾取成功后技能进入玩家背包
-    if (nearestPlayer) {
-      const d = Math.hypot(this.position.x - nearestPlayer.position.x, this.position.y - nearestPlayer.position.y);
-      if (d <= SkillOrbDynamicEntity.PICKUP_RANGE) {
-        // 已持有相同技能时也直接消耗技能球,避免地面堆积重复技能球
-        nearestPlayer.acquireSkill(this.skillTag);
-        this.isPickedUp = true;
-      }
-    }
   }
+
+  ////////////////////
+  // 被玩家主动吸取(由权威端调用) -->
+  ////////////////////
+
+  /** 吸取范围(px):玩家在此范围内会主动牵引本技能球 */
+  public getAbsorbRange(): number {
+    return SkillOrbDynamicEntity.ATTRACT_RANGE;
+  }
+
+  /** 拾取范围(px):进入该距离即被玩家吸收(技能球为点判定,与玩家体积无关) */
+  public getPickupRange(_player: PlayerDynamicEntity): number {
+    return SkillOrbDynamicEntity.PICKUP_RANGE;
+  }
+
+  /** 玩家当前能否接受本技能球(技能可重复获取,始终可接受) */
+  public canBeAbsorbedBy(_player: PlayerDynamicEntity): boolean {
+    return true;
+  }
+
+  /** 被玩家牵引一帧:朝玩家飘行,距离越近速度越快 */
+  public attractTowardPlayer(player: PlayerDynamicEntity, dt: number): void {
+    if (this.isPickedUp) return;
+    const dx = player.position.x - this.position.x;
+    const dy = player.position.y - this.position.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= 0.0001) return;
+    const speed = 150 + (1 - distance / SkillOrbDynamicEntity.ATTRACT_RANGE) * 380;
+    this.position.x += (dx / distance) * speed * dt;
+    this.position.y += (dy / distance) * speed * dt;
+    this.updateCollisionBox();
+  }
+
+  /** 被玩家吸收:玩家获得对应技能并标记为已拾取 */
+  public absorbByPlayer(player: PlayerDynamicEntity): void {
+    // 已持有相同技能时也直接消耗技能球,避免地面堆积重复技能球
+    player.acquireSkill(this.skillTag);
+    this.isPickedUp = true;
+  }
+
+  /** 是否已被拾取(统一拾取管线使用的读取器) */
+  public isAbsorbed(): boolean {
+    return this.isPickedUp;
+  }
+
+  ////////////////////
+  // <-- 被玩家主动吸取
+  ////////////////////
 
   /**
    * 生成六边形路径(顶点朝向 angle)

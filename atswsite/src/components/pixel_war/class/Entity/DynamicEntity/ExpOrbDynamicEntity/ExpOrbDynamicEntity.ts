@@ -7,7 +7,8 @@ import type { Point, DynamicEntitieList, GameConfig, EntityDebugFlags } from '@/
  * 经验球实体（exp_orb）
  * - 独立动态实体,物理碰撞体积统一
  * - 视觉大小与颜色随内含经验值变化(共 11 档),价值≥17 时中心出现橙色核心
- * - 会向附近的存活玩家飘行,被玩家拾取后为玩家增加游戏经验
+ * - **自身不寻找玩家**:只做"存在时长 + 惯性滑行";
+ *   由权威端的"玩家主动搜索并吸取"逻辑(Service.updatePickups)按距离牵引与吸收
  */
 class ExpOrbDynamicEntity extends DynamicEntity {
   public static readonly WIDTH = 12;// 统一物理碰撞体积(宽,px)
@@ -54,7 +55,7 @@ class ExpOrbDynamicEntity extends DynamicEntity {
   public override update(
     dt: number,
     _staticEntities: StaticEntity[],
-    dynamicEntities: DynamicEntitieList,
+    _dynamicEntities: DynamicEntitieList,
     _gameConfig: GameConfig
   ): void {
     if (this.isPickedUp) return;
@@ -65,45 +66,59 @@ class ExpOrbDynamicEntity extends DynamicEntity {
       return;
     }
 
-    // 寻找最近的存活玩家
-    let nearestPlayer: PlayerDynamicEntity | null = null;
-    let nearestDist = Infinity;
-    for (const player of dynamicEntities.playerDynamicEntitys) {
-      if (player.isDead) continue;
-      const d = Math.hypot(this.position.x - player.position.x, this.position.y - player.position.y);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearestPlayer = player;
-      }
-    }
-
-    if (nearestPlayer && nearestDist <= ExpOrbDynamicEntity.ATTRACT_RANGE) {
-      // 向玩家飘行,距离越近速度越快
-      const dir = {
-        x: (nearestPlayer.position.x - this.position.x) / nearestDist,
-        y: (nearestPlayer.position.y - this.position.y) / nearestDist,
-      };
-      const speed = 140 + (1 - nearestDist / ExpOrbDynamicEntity.ATTRACT_RANGE) * 360;
-      this.position.x += dir.x * speed * dt;
-      this.position.y += dir.y * speed * dt;
-    } else {
-      // 无目标时使用空气阻力减速(死亡时随机爆出的冲量逐渐衰减)
-      this.applyAirResistance(dt);
-      this.position.x += this.motionVelocity.x * dt;
-      this.position.y += this.motionVelocity.y * dt;
-    }
-
+    // 仅保留惯性滑行(死亡时随机爆出的冲量逐渐衰减):不再自行寻找玩家
+    this.applyAirResistance(dt);
+    this.position.x += this.motionVelocity.x * dt;
+    this.position.y += this.motionVelocity.y * dt;
     this.updateCollisionBox();
-
-    // 拾取判定(移动后重新计算距离)
-    if (nearestPlayer) {
-      const d = Math.hypot(this.position.x - nearestPlayer.position.x, this.position.y - nearestPlayer.position.y);
-      if (d <= ExpOrbDynamicEntity.PICKUP_RANGE) {
-        nearestPlayer.gainExp(this.value);
-        this.isPickedUp = true;
-      }
-    }
   }
+
+  ////////////////////
+  // 被玩家主动吸取(由权威端调用) -->
+  ////////////////////
+
+  /** 吸取范围(px):玩家在此范围内会主动牵引本经验球 */
+  public getAbsorbRange(): number {
+    return ExpOrbDynamicEntity.ATTRACT_RANGE;
+  }
+
+  /** 拾取范围(px):进入该距离即被玩家吸收(经验球为点判定,与玩家体积无关) */
+  public getPickupRange(_player: PlayerDynamicEntity): number {
+    return ExpOrbDynamicEntity.PICKUP_RANGE;
+  }
+
+  /** 玩家当前能否接受本经验球(经验值恒可累加,始终可接受) */
+  public canBeAbsorbedBy(_player: PlayerDynamicEntity): boolean {
+    return true;
+  }
+
+  /** 被玩家牵引一帧:朝玩家飘行,距离越近速度越快 */
+  public attractTowardPlayer(player: PlayerDynamicEntity, dt: number): void {
+    if (this.isPickedUp) return;
+    const dx = player.position.x - this.position.x;
+    const dy = player.position.y - this.position.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= 0.0001) return;
+    const speed = 140 + (1 - distance / ExpOrbDynamicEntity.ATTRACT_RANGE) * 360;
+    this.position.x += (dx / distance) * speed * dt;
+    this.position.y += (dy / distance) * speed * dt;
+    this.updateCollisionBox();
+  }
+
+  /** 被玩家吸收:为玩家增加经验并标记为已拾取 */
+  public absorbByPlayer(player: PlayerDynamicEntity): void {
+    player.gainExp(this.value);
+    this.isPickedUp = true;
+  }
+
+  /** 是否已被拾取(统一拾取管线使用的读取器) */
+  public isAbsorbed(): boolean {
+    return this.isPickedUp;
+  }
+
+  ////////////////////
+  // <-- 被玩家主动吸取
+  ////////////////////
 
   public draw(
     ctx: CanvasRenderingContext2D,

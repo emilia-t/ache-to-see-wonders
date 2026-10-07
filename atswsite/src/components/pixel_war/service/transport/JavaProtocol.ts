@@ -146,6 +146,8 @@ export interface JavaNpc {
   deathEffectTimer?: number | null;
   /** NPC 等级(服务端仅在 > 0 时下发,缺省视为 0) */
   level?: number | null;
+  /** 触手旋转相位(tick 计数):仅带旋转线段的 NPC(珊瑚红触手)有值,缺省视为 0 */
+  tentacleTicks?: number | null;
 }
 
 /**

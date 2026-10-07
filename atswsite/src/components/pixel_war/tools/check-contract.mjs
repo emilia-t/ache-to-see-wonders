@@ -384,6 +384,7 @@ const ENTITY_ONE_SIDED_EXPECTED = new Set([
   'OrdinaryBullet',  // Java 用 BulletEntity(基类)直接表示普通子弹
   'GroundItem',      // TS 侧叫 ItemDynamicEntity,与 Java GroundItemEntity 命名不同构
   'WorldView',       // Java 专有的实体层视图接口
+  'AbsorbableOrb',   // Java 专有的掉落物接口(TS 侧用联合类型表达)
   'Empty',           // TS 专用的纯渲染实体
   'FoodItem',        // TS 侧物品分类,Java 用带 tag 的单一 GroundItemEntity 表示
   'HealingGemItem',  // 同上
