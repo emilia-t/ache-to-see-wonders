@@ -13,8 +13,11 @@ import top.atsw.pixelwar.entity.dynamicEntity.ExpOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.LaserBulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.SkillOrbEntity;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.AmberTurretAt7Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.CoralRedTentacleT1Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.GoldenDodgeXa4Npc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.MagentaSwarmSw5Npc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.TitaniumPrismTp9Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.OnahauLoneLs1Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.PurpleFireworkOa18Npc;
@@ -1357,10 +1360,12 @@ public final class World implements WorldView {
     /**
      * 按权重随机创建一个 NPC。
      * 权重与 TS 版一致:白像素 0.8、va2 0.4、天蓝像素 0.2、红像素 0.1、紫盾 0.08、
-     * 金色闪避者 0.11、紫色烟花 oa18 0.21、幽蓝孤光 ls1 0.14、珊瑚红触手 t1 0.22。
+     * 金色闪避者 0.11、紫色烟花 oa18 0.21、幽蓝孤光 ls1 0.14、珊瑚红触手 t1 0.22、
+     * 琥珀炮台 at7 0.09、品红蜂群 sw5 0.17、钛白棱镜 tp9 0.13。
      */
     private NpcEntity createRandomNpc(Geometry.Vec2 position) {
-        double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08 + 0.11 + 0.21 + 0.14 + 0.22;
+        double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08 + 0.11 + 0.21 + 0.14 + 0.22
+                + 0.09 + 0.17 + 0.13;
         double random = Math.random() * total;
         NpcEntity npc;
         if (random < 0.8) {
@@ -1379,6 +1384,12 @@ public final class World implements WorldView {
             npc = new OnahauLoneLs1Npc(position, null, null);
         } else if ((random -= 0.14) < 0.22) {
             npc = new CoralRedTentacleT1Npc(position, null, null);
+        } else if ((random -= 0.22) < 0.09) {
+            npc = new AmberTurretAt7Npc(position, null, null);
+        } else if ((random -= 0.09) < 0.17) {
+            npc = new MagentaSwarmSw5Npc(position, null, null);
+        } else if ((random -= 0.17) < 0.13) {
+            npc = new TitaniumPrismTp9Npc(position, null, null);
         } else {
             npc = new PurpleShieldNpc(position, null, null);
         }

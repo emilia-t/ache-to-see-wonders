@@ -427,6 +427,15 @@ class PurpleFireworkOa18Entity extends HostileNpcDynamicEntity {
 
     // 等级徽标(调试开关 showLevel 开启时)
     this.drawNpcLevelBadge(ctx, worldToScreen, debugFlags);
+
+    // 调试信息:tag
+    if (debugFlags) {
+      if (debugFlags.showTag) {//底部的tag
+        ctx.font = '10px Arial';
+        ctx.fillStyle = '#ffff00';
+        ctx.fillText(this.tag, screenPos.x, screenPos.y + (this.renderHeight/2) + 20);
+      }
+    }
   }
 }
 

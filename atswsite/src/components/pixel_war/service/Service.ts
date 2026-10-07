@@ -31,6 +31,9 @@ import {
   PurpleFireworkOa18Entity,
   OnahauLoneLs1Entity,
   CoralRedTentacleT1Entity,
+  AmberTurretAt7Entity,
+  MagentaSwarmSw5Entity,
+  TitaniumPrismTp9Entity,
   DodgeSkill,
   HealingGemItemEntity,
   GrenadeDynamicEntity,
@@ -86,7 +89,10 @@ const SPAWNABLE_NPC_CLASSES = [
   GoldenDodgeXa4Entity,
   PurpleFireworkOa18Entity,
   OnahauLoneLs1Entity,
-  CoralRedTentacleT1Entity
+  CoralRedTentacleT1Entity,
+  AmberTurretAt7Entity,
+  MagentaSwarmSw5Entity,
+  TitaniumPrismTp9Entity
   // more
 ] as const;
 

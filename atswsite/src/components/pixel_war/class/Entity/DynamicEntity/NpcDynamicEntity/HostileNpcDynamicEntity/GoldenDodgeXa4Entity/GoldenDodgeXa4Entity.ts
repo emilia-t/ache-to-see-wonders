@@ -555,6 +555,12 @@ class GoldenDodgeXa4Entity extends HostileNpcDynamicEntity {
 
     // 6. 调试信息
     if (debugFlags) {
+      // 调试信息:tag
+      if (debugFlags.showTag) {//底部的tag
+        ctx.font = '10px Arial';
+        ctx.fillStyle = '#ffff00';
+        ctx.fillText(this.tag, screenPos.x, screenPos.y + (this.renderHeight/2) + 20);
+      }
       if (debugFlags.showHealth) {
         ctx.font = '10px Consolas, "Courier New", monospace';
         ctx.fillStyle = '#ffff00';

@@ -55,7 +55,8 @@
                    "width", "height", "health", "healthMax", "dead", "moving", "mapColor", "killScore", "level",
                    /* 仅带旋转线段的 NPC(珊瑚红触手)额外携带 */ "tentacleTicks" } ],
   "bullets":   [ { "id", "position", "velocity", "ownerId", "bulletColor",
-                   /* 仅激光弹额外携带 */ "tag", "laserMaxLength", "laserExpandSpeed", "laserHoldSeconds", "laserElapsed", "laserGlowColor" } ],
+                   /* 非普通弹携带自身弹种 tag */ "tag",
+                   /* 仅激光弹额外携带 */ "laserMaxLength", "laserExpandSpeed", "laserHoldSeconds", "laserElapsed", "laserGlowColor" } ],
   "grenades":  [ { "id", "tag", "position", "ownerId", "teamId", "width", "height", "fuseRatio" } ],
   "expOrbs":   [ { "id", "position", "value", "width", "height" } ],
   "skillOrbs": [ { "id", "position", "skillTag", "width", "height" } ],
@@ -77,13 +78,23 @@
 > 客户端不会调用实体 `update()`，因此必须由服务端下发该相位才能画出与权威判定一致的角度。
 > 触手的持续接触伤害完全由服务端结算（首次接触 1 点，持续接触每 10 tick 再 1 点），不占用协议。
 
-> `BulletSnapshot`：普通子弹只下发 `id / position / velocity / ownerId / bulletColor`
+> 新增 NPC（`amber_turret_at7` 琥珀炮台 / `magenta_swarm_sw5` 品红蜂群 / `titanium_prism_tp9` 钛白棱镜）
+> **不引入任何新字段**：全部复用 `NpcSnapshot` 的通用字段（位置/朝向/生命/等级等），
+> 开火与命中均完全由服务端裁决。
+
+> `BulletSnapshot`：所有子弹都下发 `id / position / velocity / ownerId / bulletColor`
 > （尺寸恒为 8×8、伤害恒为 1 且命中由服务端裁决，不再下发）。
-> **激光弹（`entity/dynamicEntity/LaserBulletEntity`）**额外下发 6 个字段——`tag`（`laser_bullet`），
-> `laserMaxLength`（最大长度 px，已按围墙截断）、`laserExpandSpeed`（前端展开速度 px/s）、
-> `laserHoldSeconds`（阶段 3 持续发光秒数）、`laserElapsed`（已存在秒数）、`laserGlowColor`（辉光色）。
+> `tag` 用于区分弹种：**普通子弹不下发**（客户端缺省视为 `ordinary_bullet`），
+> 其余弹种下发自身 tag —— `laser_bullet` / `sniper_bullet` / `buckshot_bullet` / `spiral_bullet`
+> （对应 `entity/dynamicEntity/` 下的 `LaserBulletEntity` / `SniperBulletEntity` /
+> `BuckshotBulletEntity` / `SpiralBulletEntity`）。
+> **激光弹**在此基础上额外下发 5 个字段：`laserMaxLength`（最大长度 px，已按围墙截断）、
+> `laserExpandSpeed`（前端展开速度 px/s）、`laserHoldSeconds`（阶段 3 持续发光秒数）、
+> `laserElapsed`（已存在秒数）、`laserGlowColor`（辉光色）；
 > 客户端据此在本地按时间轴还原「展开 → 渐亮 0.1s → 持续发光 → 渐暗 0.1s」动画
-> （普通子弹这些字段缺省，水合时会被跳过）。激光的持续接触伤害完全由服务端结算，不占用协议。
+> （其余弹种这些字段缺省，水合时会被跳过）。
+> 激光的持续接触伤害完全由服务端结算，不占用协议；
+> 螺旋弹（`spiral_bullet`）的弯曲由服务端推进，`velocity` 已是当前（偏转后）方向，客户端无需额外逻辑。
 
 `PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / fireCooldownNow / fireCooldownMax / bulletCount / bulletMaxCount / equippedSkillCooldowns / inventory / servantIds / research / researchPendingOptions / deathRespawnDelay / deathRespawnRemaining / lastDamagerName / lastDeathReport`
 

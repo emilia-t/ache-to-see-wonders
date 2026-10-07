@@ -15,6 +15,9 @@ import { GoldenDodgeXa4Entity } from '@/components/pixel_war/class/Entity/Dynami
 import { PurpleFireworkOa18Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/PurpleFireworkOa18Entity/PurpleFireworkOa18Entity';
 import { OnahauLoneLs1Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/OnahauLoneLs1Entity/OnahauLoneLs1Entity';
 import { CoralRedTentacleT1Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/CoralRedTentacleT1Entity/CoralRedTentacleT1Entity';
+import { AmberTurretAt7Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/AmberTurretAt7Entity/AmberTurretAt7Entity';
+import { MagentaSwarmSw5Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/MagentaSwarmSw5Entity/MagentaSwarmSw5Entity';
+import { TitaniumPrismTp9Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/TitaniumPrismTp9Entity/TitaniumPrismTp9Entity';
 import { SkyBluePixelEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/SkyBluePixelEntity/SkyBluePixelEntity';
 import { PurpleShieldEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/PurpleShieldEntity/PurpleShieldEntity';
 // 玩家与弹体
@@ -23,6 +26,7 @@ import { OrdinaryBulletDynamicEntity } from '@/components/pixel_war/class/Entity
 import { LaserBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/LaserBulletDynamicEntity/LaserBulletDynamicEntity';
 import { SniperBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/SniperBulletDynamicEntity/SniperBulletDynamicEntity';
 import { BuckshotBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/BuckshotBulletDynamicEntity/BuckshotBulletDynamicEntity';
+import { SpiralBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/SpiralBulletDynamicEntity/SpiralBulletDynamicEntity';
 import { RedPixelBombEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/GrenadeDynamicEntity/RedPixelBombEntity/RedPixelBombEntity';
 // 掉落物
 import { ExpOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/ExpOrbDynamicEntity/ExpOrbDynamicEntity';
@@ -140,6 +144,24 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.ownerId,
           snapshot.teamId
         );
+      case 'amber_turret_at7':
+        return new AmberTurretAt7Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'magenta_swarm_sw5':
+        return new MagentaSwarmSw5Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'titanium_prism_tp9':
+        return new TitaniumPrismTp9Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
     }
   }
   else if(kind === 'player'){
@@ -185,6 +207,14 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
         );
       case 'buckshot_bullet':
         return new BuckshotBulletDynamicEntity(
+          snapshot.position,
+          H_getBulletDirectionFromSnapshot(snapshot),
+          snapshot.ownerId,
+          snapshot.teamId,
+          snapshot.name
+        );
+      case 'spiral_bullet':
+        return new SpiralBulletDynamicEntity(
           snapshot.position,
           H_getBulletDirectionFromSnapshot(snapshot),
           snapshot.ownerId,

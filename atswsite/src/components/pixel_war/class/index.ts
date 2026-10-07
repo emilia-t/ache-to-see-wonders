@@ -9,6 +9,7 @@ export { BuckshotBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynami
 export { LaserBulletDynamicEntity, H_setLaserClockPaused, H_isLaserClockPaused } from './Entity/DynamicEntity/BulletDynamicEntity/LaserBulletDynamicEntity/LaserBulletDynamicEntity';
 export { OrdinaryBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
 export { SniperBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/SniperBulletDynamicEntity/SniperBulletDynamicEntity';
+export { SpiralBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/SpiralBulletDynamicEntity/SpiralBulletDynamicEntity';
 // GrenadeDynamicEntity and its subclasses
 export { GrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/GrenadeDynamicEntity';
 export { FragGrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/FragGrenadeDynamicEntity/FragGrenadeDynamicEntity';
@@ -100,6 +101,9 @@ export { GoldenDodgeXa4Entity } from './Entity/DynamicEntity/NpcDynamicEntity/Ho
 export { PurpleFireworkOa18Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/PurpleFireworkOa18Entity/PurpleFireworkOa18Entity';
 export { OnahauLoneLs1Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/OnahauLoneLs1Entity/OnahauLoneLs1Entity';
 export { CoralRedTentacleT1Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/CoralRedTentacleT1Entity/CoralRedTentacleT1Entity';
+export { AmberTurretAt7Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/AmberTurretAt7Entity/AmberTurretAt7Entity';
+export { MagentaSwarmSw5Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/MagentaSwarmSw5Entity/MagentaSwarmSw5Entity';
+export { TitaniumPrismTp9Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/TitaniumPrismTp9Entity/TitaniumPrismTp9Entity';
 // NeutralNpcDynamicEntity
 export { NeutralNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/NeutralNpcDynamicEntity';
 // PlayerDynamicEntity

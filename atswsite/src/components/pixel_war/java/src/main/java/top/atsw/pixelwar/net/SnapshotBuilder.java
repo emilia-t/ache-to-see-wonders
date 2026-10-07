@@ -127,7 +127,8 @@ public final class SnapshotBuilder {
                     new Protocol.Vec(bullet.velocity.x, bullet.velocity.y),
                     bullet.ownerId,
                     bullet.bulletColor,
-                    laser != null ? laser.tag : null,
+                    // 子弹类型标签:普通子弹不下发(客户端缺省视为 ordinary_bullet),其余类型下发自身 tag
+                    (bullet.tag != null && !"ordinary_bullet".equals(bullet.tag)) ? bullet.tag : null,
                     laser != null ? laser.laserMaxLength : null,
                     laser != null ? laser.laserExpandSpeed : null,
                     laser != null ? laser.laserHoldSeconds : null,
