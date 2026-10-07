@@ -3,6 +3,9 @@ import { Xa4ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Xa4Shoo
 import { Oa18ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Oa18ShootSkill/Oa18ShootSkill';
 import { Ls1ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Ls1ShootSkill/Ls1ShootSkill';
 import { DodgeSkill } from '@/components/pixel_war/class/Skill/Skills/DodgeSkill/DodgeSkill';
+import { NovaShootSkill } from '@/components/pixel_war/class/Skill/Skills/NovaShootSkill/NovaShootSkill';
+import { FanShootSkill } from '@/components/pixel_war/class/Skill/Skills/FanShootSkill/FanShootSkill';
+import { SpiralDanceSkill } from '@/components/pixel_war/class/Skill/Skills/SpiralDanceSkill/SpiralDanceSkill';
 import type { Skill } from '@/components/pixel_war/class/Skill/Skill';
 
 /**
@@ -18,7 +21,10 @@ const SKILL_REGISTRY: ReadonlyMap<string, Skill> = new Map<string, Skill>([
   [Xa4ShootSkill.TAG, new Xa4ShootSkill()],
   [Oa18ShootSkill.TAG, new Oa18ShootSkill()],
   [Ls1ShootSkill.TAG, new Ls1ShootSkill()],
-  [DodgeSkill.TAG, new DodgeSkill()]
+  [DodgeSkill.TAG, new DodgeSkill()],
+  [NovaShootSkill.TAG, new NovaShootSkill()],
+  [FanShootSkill.TAG, new FanShootSkill()],
+  [SpiralDanceSkill.TAG, new SpiralDanceSkill()]
 ]);
 
 /**

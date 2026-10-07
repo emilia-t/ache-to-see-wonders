@@ -7,4 +7,4 @@ export type NpcAttitude = 'friendly' | 'neutral' | 'hostile';//友好、中立�
 export type GrenadePurpose = 'smoke' | 'frag' | 'stun' | 'bomb';//烟雾弹、破片手雷、闪光弹、炸弹
 export type BulletRangeType = 'short' | 'long';//近程弹、远程弹
 
-export type BulletTag = 'ordinary_bullet' | 'laser_bullet' | 'sniper_bullet' | 'buckshot_bullet' | 'spiral_bullet' | 'piercing_bullet' | 'ricochet_bullet';//普通弹、激光弹、狙击弹、霄弹、螺旋弹、穿甲弹、跳弹
+export type BulletTag = 'ordinary_bullet' | 'laser_bullet' | 'sniper_bullet' | 'buckshot_bullet' | 'spiral_bullet' | 'piercing_bullet' | 'ricochet_bullet' | 'accelerating_bullet' | 'boomerang_bullet' | 'wave_bullet';//普通弹、激光弹、狙击弹、霄弹、螺旋弹、穿甲弹、跳弹、疾进弹、回旋弹、波纹弹

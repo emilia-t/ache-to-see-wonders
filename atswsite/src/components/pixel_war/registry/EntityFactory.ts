@@ -20,9 +20,14 @@ import { MagentaSwarmSw5Entity } from '@/components/pixel_war/class/Entity/Dynam
 import { TitaniumPrismTp9Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/TitaniumPrismTp9Entity/TitaniumPrismTp9Entity';
 import { CobaltBouncerCb6Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/CobaltBouncerCb6Entity/CobaltBouncerCb6Entity';
 import { IvoryWandererIw1Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/IvoryWandererIw1Entity/IvoryWandererIw1Entity';
+import { AmethystDrifterAd5Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/AmethystDrifterAd5Entity/AmethystDrifterAd5Entity';
 import { CeladonMenderCm9Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/CeladonMenderCm9Entity/CeladonMenderCm9Entity';
 import { SkyBluePixelEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/SkyBluePixelEntity/SkyBluePixelEntity';
 import { PurpleShieldEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/PurpleShieldEntity/PurpleShieldEntity';
+import { RoseBeaconRb7Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/RoseBeaconRb7Entity/RoseBeaconRb7Entity';
+import { SaltSentinelSs2Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/SaltSentinelSs2Entity/SaltSentinelSs2Entity';
+import { AshenBoomerangAh3Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/AshenBoomerangAh3Entity/AshenBoomerangAh3Entity';
+import { VerdantLancerVl4Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/VerdantLancerVl4Entity/VerdantLancerVl4Entity';
 // 玩家与弹体
 import { PlayerDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 import { OrdinaryBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
@@ -32,6 +37,9 @@ import { BuckshotBulletDynamicEntity } from '@/components/pixel_war/class/Entity
 import { SpiralBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/SpiralBulletDynamicEntity/SpiralBulletDynamicEntity';
 import { PiercingBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/PiercingBulletDynamicEntity/PiercingBulletDynamicEntity';
 import { RicochetBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/RicochetBulletDynamicEntity/RicochetBulletDynamicEntity';
+import { AcceleratingBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/AcceleratingBulletDynamicEntity/AcceleratingBulletDynamicEntity';
+import { BoomerangBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/BoomerangBulletDynamicEntity/BoomerangBulletDynamicEntity';
+import { WaveBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/WaveBulletDynamicEntity/WaveBulletDynamicEntity';
 import { RedPixelBombEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/GrenadeDynamicEntity/RedPixelBombEntity/RedPixelBombEntity';
 // 掉落物
 import { ExpOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/ExpOrbDynamicEntity/ExpOrbDynamicEntity';
@@ -60,6 +68,19 @@ const H_getBulletDirectionFromSnapshot = (snapshot: any): Point => {
     x: velocity.x / len,
     y: velocity.y / len,
   };
+};
+
+/**
+ * 从快照的 velocity 推导子弹速度大小(px/s)。
+ *
+ * 多人快照不携带子弹速度常量,而拖尾长度按速度缩放(见 BulletDynamicEntity.getTrailSpeedScale),
+ * 因此这里用 velocity 的模长还原速度;缺失或非法时返回 undefined,由实体构造器回退到默认速度。
+ */
+const H_getBulletSpeedFromSnapshot = (snapshot: any): number | undefined => {
+  const velocity = snapshot.velocity;
+  if (!velocity) return undefined;
+  const speed = Math.hypot(velocity.x ?? 0, velocity.y ?? 0);
+  return Number.isFinite(speed) && speed > 0 ? speed : undefined;
 };
 
 /**
@@ -173,6 +194,36 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.ownerId,
           snapshot.teamId
         );
+      case 'salt_sentinel_ss2':
+        return new SaltSentinelSs2Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'ashen_boomerang_ah3':
+        return new AshenBoomerangAh3Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'verdant_lancer_vl4':
+        return new VerdantLancerVl4Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'amethyst_drifter_ad5':
+        return new AmethystDrifterAd5Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'rose_beacon_rb7':
+        return new RoseBeaconRb7Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
       case 'ivory_wanderer_iw1':
         return new IvoryWandererIw1Entity(
           snapshot.position,
@@ -259,6 +310,33 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.ownerId,
           snapshot.teamId,
           snapshot.name
+        );
+      case 'accelerating_bullet':
+        return new AcceleratingBulletDynamicEntity(
+          snapshot.position,
+          H_getBulletDirectionFromSnapshot(snapshot),
+          snapshot.ownerId,
+          snapshot.teamId,
+          snapshot.name,
+          H_getBulletSpeedFromSnapshot(snapshot)
+        );
+      case 'boomerang_bullet':
+        return new BoomerangBulletDynamicEntity(
+          snapshot.position,
+          H_getBulletDirectionFromSnapshot(snapshot),
+          snapshot.ownerId,
+          snapshot.teamId,
+          snapshot.name,
+          H_getBulletSpeedFromSnapshot(snapshot)
+        );
+      case 'wave_bullet':
+        return new WaveBulletDynamicEntity(
+          snapshot.position,
+          H_getBulletDirectionFromSnapshot(snapshot),
+          snapshot.ownerId,
+          snapshot.teamId,
+          snapshot.name,
+          H_getBulletSpeedFromSnapshot(snapshot)
         );
     }
   }

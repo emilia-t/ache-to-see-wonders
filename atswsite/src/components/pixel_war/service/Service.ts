@@ -37,6 +37,11 @@ import {
   CobaltBouncerCb6Entity,
   IvoryWandererIw1Entity,
   CeladonMenderCm9Entity,
+  SaltSentinelSs2Entity,
+  AshenBoomerangAh3Entity,
+  VerdantLancerVl4Entity,
+  AmethystDrifterAd5Entity,
+  RoseBeaconRb7Entity,
   DodgeSkill,
   HealingGemItemEntity,
   GrenadeDynamicEntity,
@@ -98,7 +103,12 @@ const SPAWNABLE_NPC_CLASSES = [
   TitaniumPrismTp9Entity,
   CobaltBouncerCb6Entity,
   IvoryWandererIw1Entity,
-  CeladonMenderCm9Entity
+  CeladonMenderCm9Entity,
+  SaltSentinelSs2Entity,
+  AshenBoomerangAh3Entity,
+  VerdantLancerVl4Entity,
+  AmethystDrifterAd5Entity,
+  RoseBeaconRb7Entity
   // more
 ] as const;
 

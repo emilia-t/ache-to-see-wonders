@@ -12,6 +12,9 @@ export { SniperBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicE
 export { SpiralBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/SpiralBulletDynamicEntity/SpiralBulletDynamicEntity';
 export { PiercingBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/PiercingBulletDynamicEntity/PiercingBulletDynamicEntity';
 export { RicochetBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/RicochetBulletDynamicEntity/RicochetBulletDynamicEntity';
+export { AcceleratingBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/AcceleratingBulletDynamicEntity/AcceleratingBulletDynamicEntity';
+export { BoomerangBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/BoomerangBulletDynamicEntity/BoomerangBulletDynamicEntity';
+export { WaveBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/WaveBulletDynamicEntity/WaveBulletDynamicEntity';
 // GrenadeDynamicEntity and its subclasses
 export { GrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/GrenadeDynamicEntity';
 export { FragGrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/FragGrenadeDynamicEntity/FragGrenadeDynamicEntity';
@@ -32,6 +35,9 @@ export { Xa4ShootSkill } from './Skill/Skills/Xa4ShootSkill/Xa4ShootSkill';
 export { Oa18ShootSkill } from './Skill/Skills/Oa18ShootSkill/Oa18ShootSkill';
 export { Ls1ShootSkill } from './Skill/Skills/Ls1ShootSkill/Ls1ShootSkill';
 export { DodgeSkill } from './Skill/Skills/DodgeSkill/DodgeSkill';
+export { NovaShootSkill } from './Skill/Skills/NovaShootSkill/NovaShootSkill';
+export { FanShootSkill } from './Skill/Skills/FanShootSkill/FanShootSkill';
+export { SpiralDanceSkill } from './Skill/Skills/SpiralDanceSkill/SpiralDanceSkill';
 export {
   H_preloadSkillIconTextures,
   H_isSkillIconTextureReady,
@@ -95,6 +101,7 @@ export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntit
 export { SkyBluePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/SkyBluePixelEntity/SkyBluePixelEntity';
 export { PurpleShieldEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/PurpleShieldEntity/PurpleShieldEntity';
 export { CeladonMenderCm9Entity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/CeladonMenderCm9Entity/CeladonMenderCm9Entity';
+export { RoseBeaconRb7Entity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/RoseBeaconRb7Entity/RoseBeaconRb7Entity';
 // HostileNpcDynamicEntity and its subclasses
 export { HostileNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
 export { WhitePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelEntity';
@@ -108,9 +115,13 @@ export { AmberTurretAt7Entity } from './Entity/DynamicEntity/NpcDynamicEntity/Ho
 export { MagentaSwarmSw5Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/MagentaSwarmSw5Entity/MagentaSwarmSw5Entity';
 export { TitaniumPrismTp9Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/TitaniumPrismTp9Entity/TitaniumPrismTp9Entity';
 export { CobaltBouncerCb6Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/CobaltBouncerCb6Entity/CobaltBouncerCb6Entity';
+export { SaltSentinelSs2Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/SaltSentinelSs2Entity/SaltSentinelSs2Entity';
+export { AshenBoomerangAh3Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/AshenBoomerangAh3Entity/AshenBoomerangAh3Entity';
+export { VerdantLancerVl4Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/VerdantLancerVl4Entity/VerdantLancerVl4Entity';
 // NeutralNpcDynamicEntity
 export { NeutralNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/NeutralNpcDynamicEntity';
 export { IvoryWandererIw1Entity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/IvoryWandererIw1Entity/IvoryWandererIw1Entity';
+export { AmethystDrifterAd5Entity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/AmethystDrifterAd5Entity/AmethystDrifterAd5Entity';
 // PlayerDynamicEntity
 export { PlayerDynamicEntity } from './Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 // EmptyEntity

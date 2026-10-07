@@ -10,6 +10,9 @@ export { Xa4ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Xa4Shoo
 export { Oa18ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Oa18ShootSkill/Oa18ShootSkill';
 export { Ls1ShootSkill } from '@/components/pixel_war/class/Skill/Skills/Ls1ShootSkill/Ls1ShootSkill';
 export { DodgeSkill } from '@/components/pixel_war/class/Skill/Skills/DodgeSkill/DodgeSkill';
+export { NovaShootSkill } from '@/components/pixel_war/class/Skill/Skills/NovaShootSkill/NovaShootSkill';
+export { FanShootSkill } from '@/components/pixel_war/class/Skill/Skills/FanShootSkill/FanShootSkill';
+export { SpiralDanceSkill } from '@/components/pixel_war/class/Skill/Skills/SpiralDanceSkill/SpiralDanceSkill';
 // 技能图标贴图(resource/skill_icon 下的 100px × 100px PNG)
 export {
   H_getSkillIconTexture,

@@ -14,12 +14,16 @@ import top.atsw.pixelwar.entity.dynamicEntity.LaserBulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.SkillOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.AmberTurretAt7Npc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.AmethystDrifterAd5Npc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.AshenBoomerangAh3Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.CeladonMenderCm9Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.CobaltBouncerCb6Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.CoralRedTentacleT1Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.GoldenDodgeXa4Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.IvoryWandererIw1Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.MagentaSwarmSw5Npc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.RoseBeaconRb7Npc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.SaltSentinelSs2Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.TitaniumPrismTp9Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.OnahauLoneLs1Npc;
@@ -27,6 +31,7 @@ import top.atsw.pixelwar.entity.dynamicEntity.npc.PurpleFireworkOa18Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.PurpleShieldNpc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.RedPixelNpc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.SkyBluePixelNpc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.VerdantLancerVl4Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.WhitePixelNpc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.WhitePixelVa2Npc;
 import top.atsw.pixelwar.entity.itemEntity.ItemEntity;
@@ -1375,11 +1380,14 @@ public final class World implements WorldView {
      * 权重与 TS 版一致:白像素 0.8、va2 0.4、天蓝像素 0.2、红像素 0.1、紫盾 0.08、
      * 金色闪避者 0.11、紫色烟花 oa18 0.21、幽蓝孤光 ls1 0.14、珊瑚红触手 t1 0.22、
      * 琥珀炮台 at7 0.09、品红蜂群 sw5 0.17、钛白棱镜 tp9 0.13、
-     * 钴蓝跳弹手 cb6 0.11、象牙游荡者 iw1 0.06、青玉再生者 cm9 0.07。
+     * 钴蓝跳弹手 cb6 0.11、象牙游荡者 iw1 0.06、青玉再生者 cm9 0.07、
+     * 盐白哨兵 ss2 0.12、灰烬回旋手 ah3 0.13、青翠枪骑兵 vl4 0.12、
+     * 紫晶漂流者 ad5 0.05、蔷薇信标 rb7 0.06。
      */
     private NpcEntity createRandomNpc(Geometry.Vec2 position) {
         double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08 + 0.11 + 0.21 + 0.14 + 0.22
-                + 0.09 + 0.17 + 0.13 + 0.11 + 0.06 + 0.07;
+                + 0.09 + 0.17 + 0.13 + 0.11 + 0.06 + 0.07
+                + 0.12 + 0.13 + 0.12 + 0.05 + 0.06;
         double random = Math.random() * total;
         NpcEntity npc;
         if (random < 0.8) {
@@ -1410,6 +1418,16 @@ public final class World implements WorldView {
             npc = new IvoryWandererIw1Npc(position, null, null);
         } else if ((random -= 0.06) < 0.07) {
             npc = new CeladonMenderCm9Npc(position, null, null);
+        } else if ((random -= 0.07) < 0.12) {
+            npc = new SaltSentinelSs2Npc(position, null, null);
+        } else if ((random -= 0.12) < 0.13) {
+            npc = new AshenBoomerangAh3Npc(position, null, null);
+        } else if ((random -= 0.13) < 0.12) {
+            npc = new VerdantLancerVl4Npc(position, null, null);
+        } else if ((random -= 0.12) < 0.05) {
+            npc = new AmethystDrifterAd5Npc(position, null, null);
+        } else if ((random -= 0.05) < 0.06) {
+            npc = new RoseBeaconRb7Npc(position, null, null);
         } else {
             npc = new PurpleShieldNpc(position, null, null);
         }
