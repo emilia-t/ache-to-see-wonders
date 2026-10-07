@@ -10,6 +10,8 @@ export { LaserBulletDynamicEntity, H_setLaserClockPaused, H_isLaserClockPaused }
 export { OrdinaryBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/OrdinaryBulletDynamicEntity/OrdinaryBulletDynamicEntity';
 export { SniperBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/SniperBulletDynamicEntity/SniperBulletDynamicEntity';
 export { SpiralBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/SpiralBulletDynamicEntity/SpiralBulletDynamicEntity';
+export { PiercingBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/PiercingBulletDynamicEntity/PiercingBulletDynamicEntity';
+export { RicochetBulletDynamicEntity } from './Entity/DynamicEntity/BulletDynamicEntity/RicochetBulletDynamicEntity/RicochetBulletDynamicEntity';
 // GrenadeDynamicEntity and its subclasses
 export { GrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/GrenadeDynamicEntity';
 export { FragGrenadeDynamicEntity } from './Entity/DynamicEntity/GrenadeDynamicEntity/FragGrenadeDynamicEntity/FragGrenadeDynamicEntity';
@@ -92,6 +94,7 @@ export { NpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NpcDyn
 export { FriendlyNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/FriendlyNpcDynamicEntity';
 export { SkyBluePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/SkyBluePixelEntity/SkyBluePixelEntity';
 export { PurpleShieldEntity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/PurpleShieldEntity/PurpleShieldEntity';
+export { CeladonMenderCm9Entity } from './Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/CeladonMenderCm9Entity/CeladonMenderCm9Entity';
 // HostileNpcDynamicEntity and its subclasses
 export { HostileNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/HostileNpcDynamicEntity';
 export { WhitePixelEntity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/WhitePixelEntity/WhitePixelEntity';
@@ -104,8 +107,10 @@ export { CoralRedTentacleT1Entity } from './Entity/DynamicEntity/NpcDynamicEntit
 export { AmberTurretAt7Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/AmberTurretAt7Entity/AmberTurretAt7Entity';
 export { MagentaSwarmSw5Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/MagentaSwarmSw5Entity/MagentaSwarmSw5Entity';
 export { TitaniumPrismTp9Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/TitaniumPrismTp9Entity/TitaniumPrismTp9Entity';
+export { CobaltBouncerCb6Entity } from './Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/CobaltBouncerCb6Entity/CobaltBouncerCb6Entity';
 // NeutralNpcDynamicEntity
 export { NeutralNpcDynamicEntity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/NeutralNpcDynamicEntity';
+export { IvoryWandererIw1Entity } from './Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/IvoryWandererIw1Entity/IvoryWandererIw1Entity';
 // PlayerDynamicEntity
 export { PlayerDynamicEntity } from './Entity/DynamicEntity/PlayerDynamicEntity/PlayerDynamicEntity';
 // EmptyEntity

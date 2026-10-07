@@ -330,7 +330,8 @@ public final class Protocol {
      *
      * <p>width/height 固定为 25 不再下发;name 为空字符串时置 null(序列化时直接被忽略);
      * deathEffectTimer 仅在死亡特效期间有值(平时 null);level 为 0 时置 null(默认等级 0 不下发);
-     * tentacleTicks 仅珊瑚红触手等自带旋转线段的 NPC 使用,为 0 时置 null(不下发)。</p>
+     * tentacleTicks 仅珊瑚红触手等自带旋转线段的 NPC 使用,为 0 时置 null(不下发);
+     * enraged 仅象牙游荡者使用,为 false 时置 null(不下发,缺省视为未激怒)。</p>
      */
     public record NpcSnapshot(
             long id,
@@ -350,7 +351,9 @@ public final class Protocol {
             Double deathEffectTimer,
             Integer level,
             /** 触手旋转相位(tick 计数):仅带旋转线段的 NPC(珊瑚红触手)使用 */
-            Integer tentacleTicks
+            Integer tentacleTicks,
+            /** 是否处于「激怒」状态:仅象牙游荡者使用(激怒时拒绝被吸取为从者) */
+            Boolean enraged
     ) {
 
         public NpcSnapshot {
@@ -370,6 +373,9 @@ public final class Protocol {
             }
             if (tentacleTicks != null && tentacleTicks <= 0) {
                 tentacleTicks = null;// 相位 0 不下发(缺省视为 0)
+            }
+            if (enraged != null && !enraged) {
+                enraged = null;// 未激怒不下发(缺省视为 false)
             }
         }
     }

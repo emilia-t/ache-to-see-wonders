@@ -53,7 +53,8 @@
   "players": [ /* PlayerPublic[]:视野内的玩家(含自己,自己的实体固定排在首位的是 self) */ ],
   "npcs":      [ { "id", "tag", "name", "ownerId", "teamId", "attitude", "position", "facingDirection",
                    "width", "height", "health", "healthMax", "dead", "moving", "mapColor", "killScore", "level",
-                   /* 仅带旋转线段的 NPC(珊瑚红触手)额外携带 */ "tentacleTicks" } ],
+                   /* 仅带旋转线段的 NPC(珊瑚红触手)额外携带 */ "tentacleTicks",
+                   /* 仅被激怒的象牙游荡者额外携带 */ "enraged" } ],
   "bullets":   [ { "id", "position", "velocity", "ownerId", "bulletColor",
                    /* 非普通弹携带自身弹种 tag */ "tag",
                    /* 仅激光弹额外携带 */ "laserMaxLength", "laserExpandSpeed", "laserHoldSeconds", "laserElapsed", "laserGlowColor" } ],
@@ -78,23 +79,32 @@
 > 客户端不会调用实体 `update()`，因此必须由服务端下发该相位才能画出与权威判定一致的角度。
 > 触手的持续接触伤害完全由服务端结算（首次接触 1 点，持续接触每 10 tick 再 1 点），不占用协议。
 
-> 新增 NPC（`amber_turret_at7` 琥珀炮台 / `magenta_swarm_sw5` 品红蜂群 / `titanium_prism_tp9` 钛白棱镜）
+> `NpcSnapshot.enraged`：**仅象牙游荡者（`ivory_wanderer_iw1`）使用**，表示它是否处于「激怒」状态
+> （被任意伤害击中后锁定伤害来源并转为追击 + 射击）。为节省带宽，**false 时该字段不下发**，客户端缺省视为 false。
+> 客户端需要该字段的原因：激怒会改变外观（亮红脉动描边），且**激怒期间该 NPC 拒绝被任何玩家吸附为从者**
+> （`NpcEntity.canBeAbsorbedAsServant()`），玩家需要能看见它为什么吸不动。注意：解除激怒（仇家死亡/离开世界）时
+> 服务端会停发该字段，映射层必须显式补 `false`（否则客户端残留 true，红色描边会一直留着）。
+
+> 新增 NPC（`amber_turret_at7` 琥珀炮台 / `magenta_swarm_sw5` 品红蜂群 / `titanium_prism_tp9` 钛白棱镜 /
+> `cobalt_bouncer_cb6` 钴蓝跳弹手 / `ivory_wanderer_iw1` 象牙游荡者 / `celadon_mender_cm9` 青玉再生者）
 > **不引入任何新字段**：全部复用 `NpcSnapshot` 的通用字段（位置/朝向/生命/等级等），
-> 开火与命中均完全由服务端裁决。
+> 开火、治疗与命中均完全由服务端裁决。
 
 > `BulletSnapshot`：所有子弹都下发 `id / position / velocity / ownerId / bulletColor`
 > （尺寸恒为 8×8、伤害恒为 1 且命中由服务端裁决，不再下发）。
 > `tag` 用于区分弹种：**普通子弹不下发**（客户端缺省视为 `ordinary_bullet`），
-> 其余弹种下发自身 tag —— `laser_bullet` / `sniper_bullet` / `buckshot_bullet` / `spiral_bullet`
+> 其余弹种下发自身 tag —— `laser_bullet` / `sniper_bullet` / `buckshot_bullet` / `spiral_bullet` /
+> `piercing_bullet` / `ricochet_bullet`
 > （对应 `entity/dynamicEntity/` 下的 `LaserBulletEntity` / `SniperBulletEntity` /
-> `BuckshotBulletEntity` / `SpiralBulletEntity`）。
+> `BuckshotBulletEntity` / `SpiralBulletEntity` / `PiercingBulletEntity` / `RicochetBulletEntity`）。
 > **激光弹**在此基础上额外下发 5 个字段：`laserMaxLength`（最大长度 px，已按围墙截断）、
 > `laserExpandSpeed`（前端展开速度 px/s）、`laserHoldSeconds`（阶段 3 持续发光秒数）、
 > `laserElapsed`（已存在秒数）、`laserGlowColor`（辉光色）；
 > 客户端据此在本地按时间轴还原「展开 → 渐亮 0.1s → 持续发光 → 渐暗 0.1s」动画
 > （其余弹种这些字段缺省，水合时会被跳过）。
 > 激光的持续接触伤害完全由服务端结算，不占用协议；
-> 螺旋弹（`spiral_bullet`）的弯曲由服务端推进，`velocity` 已是当前（偏转后）方向，客户端无需额外逻辑。
+> 螺旋弹（`spiral_bullet`）的弯曲、穿甲弹（`piercing_bullet`）的穿透与跳弹（`ricochet_bullet`）的反弹
+> 均由服务端推进；`velocity` 已是当前（偏转/反弹后）方向，客户端无需额外逻辑。
 
 `PlayerPrivate`：`playerId / score / level / exp / expToNextLevel / stamina / staminaMax / sprinting / fireCooldownNow / fireCooldownMax / bulletCount / bulletMaxCount / equippedSkillCooldowns / inventory / servantIds / research / researchPendingOptions / deathRespawnDelay / deathRespawnRemaining / lastDamagerName / lastDeathReport`
 

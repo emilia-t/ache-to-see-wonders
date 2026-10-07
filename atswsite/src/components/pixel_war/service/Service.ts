@@ -34,6 +34,9 @@ import {
   AmberTurretAt7Entity,
   MagentaSwarmSw5Entity,
   TitaniumPrismTp9Entity,
+  CobaltBouncerCb6Entity,
+  IvoryWandererIw1Entity,
+  CeladonMenderCm9Entity,
   DodgeSkill,
   HealingGemItemEntity,
   GrenadeDynamicEntity,
@@ -92,7 +95,10 @@ const SPAWNABLE_NPC_CLASSES = [
   CoralRedTentacleT1Entity,
   AmberTurretAt7Entity,
   MagentaSwarmSw5Entity,
-  TitaniumPrismTp9Entity
+  TitaniumPrismTp9Entity,
+  CobaltBouncerCb6Entity,
+  IvoryWandererIw1Entity,
+  CeladonMenderCm9Entity
   // more
 ] as const;
 
@@ -590,6 +596,8 @@ const H_applyBulletDamage = (
   damage: number
 ): void => {
   const wasAlive = !entity.isDead;
+  // 记录最近伤害来源 id(供 NPC 记仇追击等逻辑使用;必须先于 applyDamage 写入)
+  entity.lastDamagerId = attackerOwnerId;
   // 记录伤害来源(用于死亡界面「你被 xxx 击倒了」)
   if (entity instanceof PlayerDynamicEntity) {
     const damagerName = H_resolveDamagerName(MAP_DATA.dynamicEntitie, attackerOwnerId);
@@ -901,9 +909,13 @@ const updateBulletEntities = (deltaTime: number): boolean => {
       const hitRadius = entity.width * 0.45 + bullet.width * 0.5;
 
       if (hitDistance <= hitRadius) {// 受击
+        // 穿甲弹:同一目标只结算一次,且命中后不消失(继续检测其余候选目标)
+        if (bullet.hasDamagedTarget(entity.id)) continue;
         H_applyBulletDamage(bullet.ownerId, bullet.teamId, entity, bullet.damage);
-        bullet.shouldRemove = true;
+        bullet.markDamagedTarget(entity.id);
         changed = true;
+        if (bullet.piercesTargets) continue;
+        bullet.shouldRemove = true;
         break;
       }
     }
@@ -1498,6 +1510,7 @@ const resolveDynamicEntityCollisions = () => {
           const npc = entityA instanceof NpcDynamicEntity ? (entityA as NpcDynamicEntity) : (entityB as NpcDynamicEntity);
 
           if (npc.ownerId !== null) continue; // 已有归属
+          if (!npc.canBeAbsorbedAsServant()) continue; // 硬性门禁:激怒等状态拒绝被吸附
           if (player.selectServantByID(npc.id) !== null) continue; // 重复
 
           const boxA = player.collisionBox;
@@ -1523,6 +1536,7 @@ const resolveDynamicEntityCollisions = () => {
         if (entityA instanceof NpcDynamicEntity && entityA.ownerId !== null && entityB instanceof NpcDynamicEntity) {
           const owner = getPlayerDynamicEntityById(entityA.ownerId);
           if (owner !== null) {
+            if (!entityB.canBeAbsorbedAsServant()) continue; // 硬性门禁:激怒等状态拒绝被吸附
             if (owner.selectServantByID(entityB.id) !== null) continue;
             const boxA = entityA.collisionBox;
             const boxB = entityB.collisionBox;
@@ -1545,6 +1559,7 @@ const resolveDynamicEntityCollisions = () => {
         if (entityB instanceof NpcDynamicEntity && entityB.ownerId !== null && entityA instanceof NpcDynamicEntity) {
           const owner = getPlayerDynamicEntityById(entityB.ownerId);
           if (owner !== null) {
+            if (!entityA.canBeAbsorbedAsServant()) continue; // 硬性门禁:激怒等状态拒绝被吸附
             if (owner.selectServantByID(entityA.id) !== null) continue;
             const boxA = entityB.collisionBox;
             const boxB = entityA.collisionBox;

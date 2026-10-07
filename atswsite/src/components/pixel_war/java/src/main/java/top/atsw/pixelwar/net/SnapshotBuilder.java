@@ -9,6 +9,7 @@ import top.atsw.pixelwar.entity.dynamicEntity.LaserBulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.SkillOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.CoralRedTentacleT1Npc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.IvoryWandererIw1Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
 import top.atsw.pixelwar.entity.itemEntity.ItemEntity;
 import top.atsw.pixelwar.entity.staticEntity.StaticEntity;
@@ -102,7 +103,9 @@ public final class SnapshotBuilder {
                     npc.deathEffectTimer,
                     npc.level,
                     // 触手旋转相位:仅珊瑚红触手使用,其余 NPC 不下发
-                    npc instanceof CoralRedTentacleT1Npc tentacleNpc ? tentacleNpc.tentacleTicks : null));
+                    npc instanceof CoralRedTentacleT1Npc tentacleNpc ? tentacleNpc.tentacleTicks : null,
+                    // 激怒状态:仅象牙游荡者使用,其余 NPC 不下发(false 由 Protocol 归一化为 null)
+                    npc instanceof IvoryWandererIw1Npc wandererNpc ? wandererNpc.enraged : null));
         }
 
         List<Protocol.BulletSnapshot> bullets = new ArrayList<>();

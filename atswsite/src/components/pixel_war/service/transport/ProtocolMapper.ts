@@ -194,7 +194,10 @@ export const H_toNpcEntity = (npc: JavaNpc): Record<string, unknown> => ({
   // NPC 等级(0 不下发,缺省视为 0)
   level: npc.level ?? 0,
   // 触手旋转相位(仅珊瑚红触手有值;缺省保持实体默认值 0)
-  tentacleTicks: npc.tentacleTicks ?? undefined
+  tentacleTicks: npc.tentacleTicks ?? undefined,
+  // 激怒状态(仅象牙游荡者有值):服务端仅在 true 时下发,这里显式补 false ——
+  // 否则「解除激怒」后客户端会残留 true,红色警告描边会一直留着
+  enraged: npc.enraged ?? false
 });
 
 /** Java 子弹 -> 前端子弹快照(普通子弹的激光字段为 undefined,水合时会被跳过) */

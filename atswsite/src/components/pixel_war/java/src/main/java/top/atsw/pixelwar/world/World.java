@@ -14,8 +14,11 @@ import top.atsw.pixelwar.entity.dynamicEntity.LaserBulletEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.PlayerEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.SkillOrbEntity;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.AmberTurretAt7Npc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.CeladonMenderCm9Npc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.CobaltBouncerCb6Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.CoralRedTentacleT1Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.GoldenDodgeXa4Npc;
+import top.atsw.pixelwar.entity.dynamicEntity.npc.IvoryWandererIw1Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.MagentaSwarmSw5Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.TitaniumPrismTp9Npc;
 import top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity;
@@ -552,7 +555,15 @@ public final class World implements WorldView {
                         bullet.position.x, bullet.position.y);
                 double hitRadius = entity.width * 0.45 + bullet.width * 0.5;
                 if (hitDistance <= hitRadius) {
+                    // 穿甲弹:同一目标只结算一次,且命中后不消失(继续检测其余候选目标)
+                    if (bullet.hasDamagedTarget(entity.id)) {
+                        continue;
+                    }
                     applyBulletDamage(bullet.ownerId, bullet.teamId, entity, bullet.damage);
+                    bullet.markDamagedTarget(entity.id);
+                    if (bullet.piercesTargets) {
+                        continue;
+                    }
                     bullet.shouldRemove = true;
                     break;
                 }
@@ -577,6 +588,8 @@ public final class World implements WorldView {
     private void applyBulletDamage(Long attackerOwnerId, Long attackerTeamId,
                                    DynamicEntity entity, double damage) {
         boolean wasAlive = !entity.isDead;
+        // 记录最近伤害来源 id(供 NPC 记仇追击等逻辑使用;必须先于 applyDamage 写入)
+        entity.lastDamagerId = attackerOwnerId;
         // 记录伤害来源(用于死亡界面「你被 xxx 击倒了」)
         if (entity instanceof PlayerEntity playerTarget) {
             recordDamageSource(playerTarget, attackerOwnerId);
@@ -1361,11 +1374,12 @@ public final class World implements WorldView {
      * 按权重随机创建一个 NPC。
      * 权重与 TS 版一致:白像素 0.8、va2 0.4、天蓝像素 0.2、红像素 0.1、紫盾 0.08、
      * 金色闪避者 0.11、紫色烟花 oa18 0.21、幽蓝孤光 ls1 0.14、珊瑚红触手 t1 0.22、
-     * 琥珀炮台 at7 0.09、品红蜂群 sw5 0.17、钛白棱镜 tp9 0.13。
+     * 琥珀炮台 at7 0.09、品红蜂群 sw5 0.17、钛白棱镜 tp9 0.13、
+     * 钴蓝跳弹手 cb6 0.11、象牙游荡者 iw1 0.06、青玉再生者 cm9 0.07。
      */
     private NpcEntity createRandomNpc(Geometry.Vec2 position) {
         double total = 0.2 + 0.1 + 0.4 + 0.8 + 0.08 + 0.11 + 0.21 + 0.14 + 0.22
-                + 0.09 + 0.17 + 0.13;
+                + 0.09 + 0.17 + 0.13 + 0.11 + 0.06 + 0.07;
         double random = Math.random() * total;
         NpcEntity npc;
         if (random < 0.8) {
@@ -1390,6 +1404,12 @@ public final class World implements WorldView {
             npc = new MagentaSwarmSw5Npc(position, null, null);
         } else if ((random -= 0.17) < 0.13) {
             npc = new TitaniumPrismTp9Npc(position, null, null);
+        } else if ((random -= 0.13) < 0.11) {
+            npc = new CobaltBouncerCb6Npc(position, null, null);
+        } else if ((random -= 0.11) < 0.06) {
+            npc = new IvoryWandererIw1Npc(position, null, null);
+        } else if ((random -= 0.06) < 0.07) {
+            npc = new CeladonMenderCm9Npc(position, null, null);
         } else {
             npc = new PurpleShieldNpc(position, null, null);
         }
@@ -1555,6 +1575,10 @@ public final class World implements WorldView {
         if (player.isDead || npc.isDead || npc.ownerId != null) {
             return;
         }
+        // 硬性门禁:处于激怒等状态的 NPC 拒绝被任何玩家吸附
+        if (!npc.canBeAbsorbedAsServant()) {
+            return;
+        }
         if (player.selectServantByID(npc.id) != null) {
             return;
         }
@@ -1587,6 +1611,10 @@ public final class World implements WorldView {
      */
     private boolean absorbByServant(NpcEntity servant, NpcEntity target) {
         if (servant.ownerId == null || target.ownerId != null || servant.isDead || target.isDead) {
+            return false;
+        }
+        // 硬性门禁:处于激怒等状态的目标拒绝被收纳
+        if (!target.canBeAbsorbedAsServant()) {
             return false;
         }
         PlayerEntity owner = getPlayerById(servant.ownerId);

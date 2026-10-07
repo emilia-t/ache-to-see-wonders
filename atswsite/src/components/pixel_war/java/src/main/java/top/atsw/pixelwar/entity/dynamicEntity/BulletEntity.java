@@ -34,6 +34,13 @@ public class BulletEntity extends DynamicEntity {
     public String bulletColor;
     /** 射程类型:'short' | 'long' */
     public String rangeType;
+    /**
+     * 命中目标后是否立即消失。
+     * 普通子弹为 true;穿甲弹({@link PiercingBulletEntity})覆写为 false。
+     */
+    public boolean piercesTargets = false;
+    /** 本发子弹已伤害过的目标 id(仅穿甲类子弹使用) */
+    protected java.util.Set<Long> hitTargetIds = null;
     private double lifetimeRemaining = MAX_LIFETIME;
 
     public BulletEntity(Geometry.Vec2 position, Geometry.Vec2 direction, Long ownerId, Long teamId,
@@ -99,19 +106,9 @@ public class BulletEntity extends DynamicEntity {
                 position.x + velocity.x * dt,
                 position.y + velocity.y * dt);
 
-        double halfW = width / 2;
-        double halfH = height / 2;
-        double minX = nextPos.x - halfW;
-        double maxX = nextPos.x + halfW;
-        double minY = nextPos.y - halfH;
-        double maxY = nextPos.y + halfH;
-        for (StaticEntity staticEntity : world.staticEntitiesInRect(minX, minY, maxX - minX, maxY - minY)) {
-            Geometry.Box box = staticEntity.collisionBox;
-            boolean separated = maxX <= box.x || minX >= box.maxX() || maxY <= box.y || minY >= box.maxY();
-            if (!separated) {
-                shouldRemove = true;
-                return;
-            }
+        if (collidesWithStatic(nextPos, world)) {
+            onStaticCollision(nextPos, world);
+            return;
         }
 
         position.set(nextPos);
@@ -122,5 +119,49 @@ public class BulletEntity extends DynamicEntity {
         currentCurveIndex = 0;
         lastStuckCheckPos = position.copy();
         noMoveLastPos = position.copy();
+    }
+
+    /** 位置 {@code pos} 是否与任意静态实体(AABB)相交(子类如跳弹需要分轴复用,故为 protected) */
+    protected boolean collidesWithStatic(Geometry.Vec2 pos, WorldView world) {
+        double halfW = width / 2;
+        double halfH = height / 2;
+        double minX = pos.x - halfW;
+        double maxX = pos.x + halfW;
+        double minY = pos.y - halfH;
+        double maxY = pos.y + halfH;
+        for (StaticEntity staticEntity : world.staticEntitiesInRect(minX, minY, maxX - minX, maxY - minY)) {
+            Geometry.Box box = staticEntity.collisionBox;
+            boolean separated = maxX <= box.x || minX >= box.maxX() || maxY <= box.y || minY >= box.maxY();
+            if (!separated) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 撞到静态实体时的处理。默认标记移除;跳弹类覆写为「反弹」。
+     *
+     * @param nextPos 本帧将要到达的位置(已确认与静态实体相交)
+     * @param world   世界视图(供子类分轴复检)
+     */
+    protected void onStaticCollision(Geometry.Vec2 nextPos, WorldView world) {
+        shouldRemove = true;
+    }
+
+    /** 该目标是否已被本发子弹伤害过(普通子弹恒为 false) */
+    public boolean hasDamagedTarget(long targetId) {
+        return hitTargetIds != null && hitTargetIds.contains(targetId);
+    }
+
+    /** 记录本发子弹已伤害某目标(仅穿甲类子弹会真正记录) */
+    public void markDamagedTarget(long targetId) {
+        if (!piercesTargets) {
+            return;
+        }
+        if (hitTargetIds == null) {
+            hitTargetIds = new java.util.HashSet<>();
+        }
+        hitTargetIds.add(targetId);
     }
 }

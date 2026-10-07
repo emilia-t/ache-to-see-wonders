@@ -18,6 +18,9 @@ import { CoralRedTentacleT1Entity } from '@/components/pixel_war/class/Entity/Dy
 import { AmberTurretAt7Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/AmberTurretAt7Entity/AmberTurretAt7Entity';
 import { MagentaSwarmSw5Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/MagentaSwarmSw5Entity/MagentaSwarmSw5Entity';
 import { TitaniumPrismTp9Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/TitaniumPrismTp9Entity/TitaniumPrismTp9Entity';
+import { CobaltBouncerCb6Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/HostileNpcDynamicEntity/CobaltBouncerCb6Entity/CobaltBouncerCb6Entity';
+import { IvoryWandererIw1Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/NeutralNpcDynamicEntity/IvoryWandererIw1Entity/IvoryWandererIw1Entity';
+import { CeladonMenderCm9Entity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/CeladonMenderCm9Entity/CeladonMenderCm9Entity';
 import { SkyBluePixelEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/SkyBluePixelEntity/SkyBluePixelEntity';
 import { PurpleShieldEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/NpcDynamicEntity/FriendlyNpcDynamicEntity/PurpleShieldEntity/PurpleShieldEntity';
 // 玩家与弹体
@@ -27,6 +30,8 @@ import { LaserBulletDynamicEntity } from '@/components/pixel_war/class/Entity/Dy
 import { SniperBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/SniperBulletDynamicEntity/SniperBulletDynamicEntity';
 import { BuckshotBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/BuckshotBulletDynamicEntity/BuckshotBulletDynamicEntity';
 import { SpiralBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/SpiralBulletDynamicEntity/SpiralBulletDynamicEntity';
+import { PiercingBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/PiercingBulletDynamicEntity/PiercingBulletDynamicEntity';
+import { RicochetBulletDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/BulletDynamicEntity/RicochetBulletDynamicEntity/RicochetBulletDynamicEntity';
 import { RedPixelBombEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/GrenadeDynamicEntity/RedPixelBombEntity/RedPixelBombEntity';
 // 掉落物
 import { ExpOrbDynamicEntity } from '@/components/pixel_war/class/Entity/DynamicEntity/ExpOrbDynamicEntity/ExpOrbDynamicEntity';
@@ -162,6 +167,24 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
           snapshot.ownerId,
           snapshot.teamId
         );
+      case 'cobalt_bouncer_cb6':
+        return new CobaltBouncerCb6Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'ivory_wanderer_iw1':
+        return new IvoryWandererIw1Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
+      case 'celadon_mender_cm9':
+        return new CeladonMenderCm9Entity(
+          snapshot.position,
+          snapshot.ownerId,
+          snapshot.teamId
+        );
     }
   }
   else if(kind === 'player'){
@@ -215,6 +238,22 @@ const H_createEntityFromSnapshot = (snapshot: any): Entity => {
         );
       case 'spiral_bullet':
         return new SpiralBulletDynamicEntity(
+          snapshot.position,
+          H_getBulletDirectionFromSnapshot(snapshot),
+          snapshot.ownerId,
+          snapshot.teamId,
+          snapshot.name
+        );
+      case 'piercing_bullet':
+        return new PiercingBulletDynamicEntity(
+          snapshot.position,
+          H_getBulletDirectionFromSnapshot(snapshot),
+          snapshot.ownerId,
+          snapshot.teamId,
+          snapshot.name
+        );
+      case 'ricochet_bullet':
+        return new RicochetBulletDynamicEntity(
           snapshot.position,
           H_getBulletDirectionFromSnapshot(snapshot),
           snapshot.ownerId,

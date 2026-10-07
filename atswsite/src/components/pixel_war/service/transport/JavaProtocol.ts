@@ -148,6 +148,8 @@ export interface JavaNpc {
   level?: number | null;
   /** 触手旋转相位(tick 计数):仅带旋转线段的 NPC(珊瑚红触手)有值,缺省视为 0 */
   tentacleTicks?: number | null;
+  /** 是否处于「激怒」状态:仅象牙游荡者使用;服务端仅在 true 时下发,缺省视为 false */
+  enraged?: boolean | null;
 }
 
 /**

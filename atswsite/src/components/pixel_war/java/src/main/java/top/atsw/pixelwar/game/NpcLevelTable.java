@@ -6,9 +6,10 @@ package top.atsw.pixelwar.game;
  * <p>同一类 NPC 生成时按等级概率表随机等级,等级越高能力越强(见
  * {@link top.atsw.pixelwar.entity.dynamicEntity.npc.NpcEntity#applyNpcLevel(int)})。</p>
  * <ul>
- *   <li>等级上限为 5 的 NPC(白像素 / va2 / 金色闪避者 / 幽蓝孤光 ls1 / 品红蜂群 sw5)使用 6 档概率表;</li>
+ *   <li>等级上限为 5 的 NPC(白像素 / va2 / 金色闪避者 / 幽蓝孤光 ls1 / 品红蜂群 sw5 /
+ *     钴蓝跳弹手 cb6)使用 6 档概率表;</li>
  *   <li>等级上限为 2 的 NPC(红像素 / 天蓝像素 / 紫盾 / 紫色烟花 oa18 / 珊瑚红触手 t1 /
- *     琥珀炮台 at7 / 钛白棱镜 tp9)使用 3 档概率表。</li>
+ *     琥珀炮台 at7 / 钛白棱镜 tp9 / 象牙游荡者 iw1 / 青玉再生者 cm9)使用 3 档概率表。</li>
  * </ul>
  *
  * <p>两表在各自的有效等级范围内合计均为 100%;若有效等级概率总和不足 100%

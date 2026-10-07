@@ -169,6 +169,15 @@ public abstract class NpcEntity extends DynamicEntity {
         return ownerId != null;
     }
 
+    /**
+     * 当前是否允许被玩家吸附为从者(吸附逻辑的唯一门禁)。
+     *
+     * <p>默认允许;子类可覆写以拒绝,例如象牙游荡者被激怒时不接受任何玩家的吸附。</p>
+     */
+    public boolean canBeAbsorbedAsServant() {
+        return true;
+    }
+
     /** 释放归属(死亡或断连时调用) */
     public void releaseOwner() {
         this.ownerId = null;

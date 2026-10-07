@@ -26,6 +26,11 @@ public abstract class DynamicEntity extends Entity {
 
     public double health = 1;
     public double healthMax = 1;
+    /**
+     * 最近一次对本实体造成伤害的来源实体 id(子弹/炸弹/触手的 ownerId)。
+     * 由权威端在结算伤害前写入,供 NPC(如象牙游荡者)实现「记仇追击」。
+     */
+    public Long lastDamagerId = null;
     public double speed;
     public double minMoveSpeed;
     public double maxMoveSpeed;

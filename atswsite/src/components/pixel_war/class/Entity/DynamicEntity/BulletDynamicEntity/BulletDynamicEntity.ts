@@ -97,6 +97,13 @@ abstract class BulletDynamicEntity extends DynamicEntity {
   public rangeType: BulletRangeType;// 子弹射程类型（短/长）
   public damage: number;
   public bulletColor: string;// 子弹基色,决定弹体、拖尾与发光颜色
+  /**
+   * 命中目标后是否继续穿透(不消失)。
+   * 普通子弹为 false(命中即消失);穿甲弹覆写为 true(对沿途每个目标各造成一次伤害)。
+   */
+  public piercesTargets = false;
+  /** 本发子弹已伤害过的目标 id(仅穿甲类子弹使用;为 null 表示不记录) */
+  protected hitTargetIds: Set<number> | null = null;
 
   constructor(
     position: Point,
@@ -235,7 +242,8 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     ctx.restore();
   }
 
-  private collidesWithStatic(newPos: Point, staticEntities: StaticEntity[]) {
+  /** 目标位置是否与任意静态实体(AABB)相交(子类如跳弹需要分轴复用,故为 protected) */
+  protected collidesWithStatic(newPos: Point, staticEntities: StaticEntity[]) {
     const myBox = {
       x: newPos.x - this.width / 2,
       y: newPos.y - this.height / 2,
@@ -270,7 +278,7 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     };
 
     if (this.collidesWithStatic(nextPos, staticEntities)) {
-      this.shouldRemove = true;
+      this.onStaticCollision(nextPos, staticEntities);
       return;
     }
 
@@ -280,6 +288,27 @@ abstract class BulletDynamicEntity extends DynamicEntity {
     this.targetHistory = [{ ...this.position }];
     this.curvePoints = [{ ...this.position }];
     this.currentCurveIndex = 0;
+  }
+
+  /**
+   * 撞到静态实体时的处理。默认标记移除;跳弹类覆写为「反弹」。
+   * @param nextPos 本帧将要到达的位置(已确认与静态实体相交)
+   * @param staticEntities 静态实体列表(供子类分轴复检)
+   */
+  protected onStaticCollision(_nextPos: Point, _staticEntities: StaticEntity[]): void {
+    this.shouldRemove = true;
+  }
+
+  /** 该目标是否已被本发子弹伤害过(普通子弹恒为 false) */
+  public hasDamagedTarget(targetId: number): boolean {
+    return this.hitTargetIds !== null && this.hitTargetIds.has(targetId);
+  }
+
+  /** 记录本发子弹已伤害某目标(仅穿甲类子弹会真正记录) */
+  public markDamagedTarget(targetId: number): void {
+    if (!this.piercesTargets) return;
+    if (this.hitTargetIds === null) this.hitTargetIds = new Set<number>();
+    this.hitTargetIds.add(targetId);
   }
 
   public override updateCrowdStuckState(_dt: number) {}

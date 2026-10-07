@@ -95,6 +95,15 @@ abstract class NpcDynamicEntity extends DynamicEntity {
   public abstract actionAfter(context: ActionLoopContext): void;
 
   /**
+   * 当前是否允许被玩家吸附为从者(吸附逻辑的唯一门禁)。
+   *
+   * <p>默认允许;子类可覆写以拒绝,例如象牙游荡者被激怒时不接受任何玩家的吸附。</p>
+   */
+  public canBeAbsorbedAsServant(): boolean {
+    return true;
+  }
+
+  /**
    * 行为循环的时间推进量。
    *
    * 无主 NPC 返回原 dt;玩家从者的开火节奏按其主人的射速倍率加速

@@ -10,6 +10,11 @@ abstract class DynamicEntity extends Entity {
   public nextTarget: Point;            // 下一刻要去的地点-世界坐标
   public healthMax: number;            // 最大生命值
   public health: number;               // 生命值
+  /**
+   * 最近一次对本实体造成伤害的来源实体 id(子弹/炸弹/触手的 ownerId)。
+   * 由权威端在结算伤害前写入,供 NPC(如象牙游荡者)实现「记仇追击」。
+   */
+  public lastDamagerId: number | null = null;
   public speed: number;                // 当前有效移动速度-单位/秒
   public motionVelocity: Point;        // 物理运动速度向量-单位/秒
   public wanderRange: number;          // 随机游走半径(固定属性)
